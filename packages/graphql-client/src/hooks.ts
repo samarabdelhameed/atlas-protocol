@@ -3,7 +3,7 @@
  * Use these hooks in the frontend to fetch CVS and vault data
  */
 
-import { useQuery, UseQueryResult } from '@tanstack/react-query';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { request } from 'graphql-request';
 import { getSubgraphEndpoint } from './client';
 import * as queries from './queries';

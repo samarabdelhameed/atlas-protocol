@@ -2,6 +2,7 @@
   "name": "web",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,8 +10,9 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@atlas-protocol/types": "workspace:*",
     "@atlas-protocol/graphql-client": "workspace:*",
+    "@atlas-protocol/types": "workspace:*",
+    "@tailwindcss/postcss": "^4.1.17",
     "@tanstack/react-query": "^5.90.8",
     "next": "^16.0.2",
     "react": "^19.2.0",

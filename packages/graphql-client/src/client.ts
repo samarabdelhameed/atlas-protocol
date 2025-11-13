@@ -40,20 +40,6 @@ export function createGraphQLClient(endpoint?: string): GraphQLClient {
     headers: {
       'Content-Type': 'application/json',
     },
-    // Add retry logic
-    fetch: async (input, init) => {
-      let retries = 3;
-      while (retries > 0) {
-        try {
-          return await fetch(input, init);
-        } catch (error) {
-          retries--;
-          if (retries === 0) throw error;
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-      throw new Error('Max retries exceeded');
-    },
   });
 }
 
