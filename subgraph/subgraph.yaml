@@ -3,14 +3,14 @@ schema:
   file: ./schema.graphql
 dataSources:
   # ========================================
-  # IP Asset Registry Contract
+  # Story Protocol - IP Asset Registry
   # ========================================
   - kind: ethereum
-    name: IPAssetRegistry
-    network: mainnet # Update with actual network (story-testnet, etc.)
+    name: StoryProtocol
+    network: story-testnet # Story Protocol Network
     source:
-      address: "0x0000000000000000000000000000000000000000" # Update with deployed address
-      abi: IPAssetRegistry
+      address: "0x0000000000000000000000000000000000000000" # Story Protocol IP Registry address
+      abi: StoryProtocol
       startBlock: 0 # Update with deployment block
     mapping:
       kind: ethereum/events
@@ -18,50 +18,66 @@ dataSources:
       language: wasm/assemblyscript
       entities:
         - IPAsset
-        - License
-        - IPUsageEvent
+        - IPAssetUsage
       abis:
-        - name: IPAssetRegistry
-          file: ./abis/IPAssetRegistry.json
+        - name: StoryProtocol
+          file: ./abis/StoryProtocol.json
       eventHandlers:
-        - event: IPAssetRegistered(indexed address,string,string,string)
-          handler: handleIPAssetRegistered
-        - event: LicenseGranted(indexed bytes32,indexed address,uint256)
-          handler: handleLicenseGranted
-        - event: IPUsed(indexed bytes32,indexed address,string)
+        # Core Handler 1: IP Registration
+        - event: IPRegistered(indexed bytes32,indexed address,string,string,string)
+          handler: handleIPRegistered
+        # IP Usage Tracking for CVS
+        - event: IPUsed(indexed bytes32,indexed address,string,uint256)
           handler: handleIPUsed
+        - event: IPRemixed(indexed bytes32,indexed bytes32,indexed address)
+          handler: handleIPRemixed
       file: ./src/mapping.ts
 
   # ========================================
-  # ADLV (Liquidity Vault) Contract
+  # Atlas ADLV - IP-Backed Lending Vault
   # ========================================
   - kind: ethereum
-    name: LiquidityVault
-    network: mainnet
+    name: AtlasADLV
+    network: story-testnet
     source:
-      address: "0x0000000000000000000000000000000000000000" # Update with deployed address
-      abi: LiquidityVault
+      address: "0x0000000000000000000000000000000000000000" # Atlas ADLV Contract address
+      abi: AtlasADLV
       startBlock: 0
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
       language: wasm/assemblyscript
       entities:
-        - LiquidityVault
+        - IDOVault
+        - DataLicenseSale
         - Loan
         - Deposit
       abis:
-        - name: LiquidityVault
-          file: ./abis/LiquidityVault.json
+        - name: AtlasADLV
+          file: ./abis/AtlasADLV.json
       eventHandlers:
-        - event: Deposited(indexed address,uint256,uint256)
-          handler: handleDeposited
-        - event: LoanRequested(indexed address,uint256,uint256,uint256)
-          handler: handleLoanRequested
-        - event: LoanRepaid(indexed address,uint256,uint256)
+        # Vault Creation & CVS Initialization
+        - event: VaultCreated(indexed address,indexed bytes32,uint256)
+          handler: handleVaultCreated
+        # Core Handler 2: License Sale (for CVS calculation)
+        - event: LicenseSold(indexed address,indexed bytes32,indexed address,uint256,string)
+          handler: handleLicenseSale
+        # Core Handler 3: Loan Issuance (based on CVS)
+        - event: LoanIssued(indexed address,indexed address,uint256,uint256,uint256,uint256)
+          handler: handleLoanIssued
+        # CVS Updates
+        - event: CVSUpdated(indexed address,uint256,uint256)
+          handler: handleCVSUpdated
+        # Loan Management
+        - event: LoanRepaid(indexed address,indexed address,uint256,uint256)
           handler: handleLoanRepaid
-        - event: LoanDefaulted(indexed address,uint256)
+        - event: LoanDefaulted(indexed address,indexed address,uint256)
           handler: handleLoanDefaulted
+        # Vault Deposits
+        - event: Deposited(indexed address,indexed address,uint256,uint256)
+          handler: handleDeposited
+        - event: Withdrawn(indexed address,indexed address,uint256,uint256)
+          handler: handleWithdrawn
       file: ./src/mapping.ts
 
   # ========================================

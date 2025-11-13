@@ -1,12 +1,14 @@
 # Atlas Protocol Subgraph Schema
 # This schema defines the entities that will be indexed by Goldsky/The Graph
+# Focus: CVS (Collateral Value Score) calculation for IP-backed lending
 
 # ========================================
-# IP Asset Entities
+# IP Asset & Usage Tracking
 # ========================================
 
 type IPAsset @entity {
   id: ID!
+  ipId: Bytes!
   name: String!
   description: String!
   creator: Bytes!
@@ -14,66 +16,142 @@ type IPAsset @entity {
   timestamp: BigInt!
   blockNumber: BigInt!
   
-  # Licensing
+  # Licensing & Commercial Use
   commercialUse: Boolean!
   derivatives: Boolean!
   royaltyPercent: BigInt!
   mintingFee: BigInt!
   
+  # CVS Related Metrics
+  totalUsageCount: BigInt!
+  totalLicenseRevenue: BigInt!
+  totalRemixes: BigInt!
+  cvsScore: BigInt!
+  
   # Relations
-  licenses: [License!]! @derivedFrom(field: "ipAsset")
-  usageEvents: [IPUsageEvent!]! @derivedFrom(field: "ipAsset")
+  usageEvents: [IPAssetUsage!]! @derivedFrom(field: "ipAsset")
+  licenseSales: [DataLicenseSale!]! @derivedFrom(field: "ipAsset")
+  vault: IDOVault @derivedFrom(field: "ipAsset")
 }
 
-type License @entity {
-  id: ID!
-  ipAsset: IPAsset!
-  licensee: Bytes!
-  isActive: Boolean!
-  timestamp: BigInt!
-  expiryDate: BigInt
-  fee: BigInt!
-}
-
-type IPUsageEvent @entity {
+# Core Entity: تتبع كل عملية استخدام أو ترخيص أو Remix للـ IP
+type IPAssetUsage @entity {
   id: ID!
   ipAsset: IPAsset!
   user: Bytes!
-  usageType: String!
+  usageType: String! # "license", "remix", "commercial", "derivative"
   timestamp: BigInt!
   blockNumber: BigInt!
+  transactionHash: Bytes!
+  
+  # Revenue & Value Tracking
+  revenueGenerated: BigInt!
+  
+  # CVS Impact
+  cvsImpact: BigInt! # How much this usage contributed to CVS
 }
 
 # ========================================
-# ADLV (Liquidity Vault) Entities
+# ADLV (Liquidity Vault) Entities - CVS Focus
 # ========================================
 
-type LiquidityVault @entity {
+# Core Entity: تتبع حالات خزائن ADLV مع CVS
+type IDOVault @entity {
   id: ID!
+  vaultAddress: Bytes!
+  creator: Bytes!
+  ipAsset: IPAsset!
+  
+  # CVS (Collateral Value Score) Metrics
+  currentCVS: BigInt!
+  initialCVS: BigInt!
+  lastCVSUpdate: BigInt!
+  
+  # Vault Status
   totalLiquidity: BigInt!
-  totalLoans: BigInt!
-  activeLoans: BigInt!
+  availableLiquidity: BigInt!
+  totalLoansIssued: BigInt!
+  activeLoansCount: BigInt!
+  
+  # Loan Terms based on CVS
+  maxLoanAmount: BigInt! # Based on CVS
+  interestRate: BigInt! # Dynamic based on CVS
+  collateralRatio: BigInt! # Required collateral %
+  
+  # Financial Metrics
+  totalLicenseRevenue: BigInt!
+  totalLoanRepayments: BigInt!
   utilizationRate: BigDecimal!
-  averageAPY: BigDecimal!
+  
+  # Timestamps
+  createdAt: BigInt!
+  updatedAt: BigInt!
   
   # Relations
   loans: [Loan!]! @derivedFrom(field: "vault")
+  licenseSales: [DataLicenseSale!]! @derivedFrom(field: "vault")
   deposits: [Deposit!]! @derivedFrom(field: "vault")
+}
+
+# Core Entity: تتبع كل عملية بيع لترخيص بيانات عبر ADLV
+type DataLicenseSale @entity {
+  id: ID!
+  vault: IDOVault!
+  ipAsset: IPAsset!
+  licensee: Bytes!
+  
+  # Sale Details
+  salePrice: BigInt!
+  licenseType: String! # "commercial", "derivative", "exclusive"
+  duration: BigInt! # License duration in seconds
+  
+  # Revenue Distribution
+  creatorShare: BigInt!
+  vaultShare: BigInt!
+  protocolFee: BigInt!
+  
+  # CVS Impact
+  cvsIncrement: BigInt! # How much this sale increased CVS
+  
+  # Status
+  isActive: Boolean!
+  expiresAt: BigInt!
+  
+  # Timestamps
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
 }
 
 type Loan @entity {
   id: ID!
-  vault: LiquidityVault!
+  loanId: BigInt!
+  vault: IDOVault!
   borrower: Bytes!
-  collateralAmount: BigInt!
+  
+  # Loan Terms
   loanAmount: BigInt!
+  collateralAmount: BigInt!
   interestRate: BigInt!
   duration: BigInt!
-  startTime: BigInt!
-  endTime: BigInt!
+  
+  # CVS at Loan Issuance
+  cvsAtIssuance: BigInt!
+  requiredCVS: BigInt!
+  
+  # Loan Status
   status: LoanStatus!
   repaidAmount: BigInt!
-  timestamp: BigInt!
+  outstandingAmount: BigInt!
+  
+  # Timestamps
+  startTime: BigInt!
+  endTime: BigInt!
+  issuedAt: BigInt!
+  lastPaymentAt: BigInt
+  
+  # Relations
+  payments: [LoanPayment!]! @derivedFrom(field: "loan")
 }
 
 enum LoanStatus {
@@ -81,13 +159,25 @@ enum LoanStatus {
   Active
   Repaid
   Defaulted
+  Liquidated
+}
+
+type LoanPayment @entity {
+  id: ID!
+  loan: Loan!
+  payer: Bytes!
+  amount: BigInt!
+  isPrincipal: Boolean!
+  timestamp: BigInt!
+  blockNumber: BigInt!
 }
 
 type Deposit @entity {
   id: ID!
-  vault: LiquidityVault!
+  vault: IDOVault!
   depositor: Bytes!
   amount: BigInt!
+  shares: BigInt!
   timestamp: BigInt!
   blockNumber: BigInt!
 }

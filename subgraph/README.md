@@ -73,59 +73,133 @@ graph auth --studio <DEPLOY_KEY>
 npm run deploy
 ```
 
-## Schema Entities
+## Core Entities for CVS (Collateral Value Score)
 
-### IP Assets
-- `IPAsset` - Registered intellectual property assets
-- `License` - Granted licenses
-- `IPUsageEvent` - IP usage tracking
+### 🎯 Primary Entities
 
-### ADLV
-- `LiquidityVault` - Vault statistics
-- `Loan` - Loan details and status
-- `Deposit` - Liquidity deposits
+#### 1. IPAssetUsage
+**Purpose:** تتبع كل عملية استخدام أو ترخيص أو Remix للـ IP
 
-### IDO
-- `IDOPool` - Token sale pools
-- `IDOParticipation` - User participations
+Tracks every usage, license, or remix event of an IP asset. Each event contributes to the CVS calculation.
 
-### Bridge
-- `BridgeTransaction` - Cross-chain transfers
+**Key Fields:**
+- `usageType`: license, remix, commercial, derivative
+- `revenueGenerated`: Revenue from this usage
+- `cvsImpact`: How much this event increased CVS
 
-### World ID
-- `WorldIDVerification` - Identity verifications
+#### 2. IDOVault  
+**Purpose:** تتبع حالات خزائن ADLV مع CVS الحالية
 
-### Statistics
+Tracks ADLV vault state including CVS metrics that determine lending terms.
+
+**Key Fields:**
+- `currentCVS`: Real-time CVS score
+- `maxLoanAmount`: Maximum loan based on CVS (CVS × 0.5)
+- `interestRate`: Dynamic rate based on CVS (20% - CVS/100)
+- `totalLicenseRevenue`: Revenue from all license sales
+
+#### 3. DataLicenseSale
+**Purpose:** تتبع كل عملية بيع لترخيص بيانات عبر ADLV
+
+Tracks every data license sale through ADLV, which significantly impacts CVS.
+
+**Key Fields:**
+- `salePrice`: License sale price
+- `licenseType`: exclusive, commercial, derivative
+- `cvsIncrement`: CVS increase from this sale (2-10% of price)
+- `creatorShare`, `vaultShare`, `protocolFee`: Revenue distribution
+
+### 📊 Supporting Entities
+
+- `IPAsset` - IP assets with CVS metrics
+- `Loan` - Loans issued based on CVS
+- `LoanPayment` - Loan repayment tracking
+- `Deposit` - Vault liquidity deposits
 - `GlobalStats` - Protocol-wide statistics
+
+See [CVS_CALCULATION.md](./CVS_CALCULATION.md) for detailed CVS calculation logic.
 
 ## Querying
 
 Once deployed, you can query the subgraph using GraphQL:
 
+### Query CVS Metrics for an IP Asset
 ```graphql
 {
-  ipAssets(first: 10, orderBy: timestamp, orderDirection: desc) {
-    id
+  ipAsset(id: "0x123...") {
     name
     creator
-    timestamp
-    licenses {
-      licensee
-      fee
+    cvsScore
+    totalUsageCount
+    totalLicenseRevenue
+    totalRemixes
+    
+    usageEvents(first: 10) {
+      usageType
+      revenueGenerated
+      cvsImpact
+    }
+    
+    vault {
+      currentCVS
+      maxLoanAmount
+      interestRate
     }
   }
-  
-  loans(where: { status: Active }) {
-    borrower
-    loanAmount
+}
+```
+
+### Query Vault with Lending Terms
+```graphql
+{
+  idoVault(id: "0xabc...") {
+    currentCVS
+    maxLoanAmount
     interestRate
-    endTime
+    collateralRatio
+    totalLicenseRevenue
+    activeLoansCount
+    
+    ipAsset {
+      name
+      totalUsageCount
+    }
+    
+    loans(where: { status: Active }) {
+      borrower
+      loanAmount
+      cvsAtIssuance
+      outstandingAmount
+    }
+    
+    licenseSales(first: 5) {
+      salePrice
+      licenseType
+      cvsIncrement
+    }
   }
-  
-  idoPools(where: { isActive: true }) {
-    tokenSymbol
-    raised
-    participantCount
+}
+```
+
+### Query High-Impact License Sales
+```graphql
+{
+  dataLicenseSales(
+    first: 10
+    orderBy: cvsIncrement
+    orderDirection: desc
+  ) {
+    salePrice
+    licenseType
+    cvsIncrement
+    ipAsset {
+      name
+      creator
+    }
+    vault {
+      currentCVS
+      maxLoanAmount
+    }
   }
 }
 ```
@@ -133,11 +207,32 @@ Once deployed, you can query the subgraph using GraphQL:
 ## ABI Files
 
 Place your contract ABI files in the `abis/` directory:
-- `abis/IPAssetRegistry.json`
-- `abis/LiquidityVault.json`
-- `abis/IDOContract.json`
-- `abis/BridgeContract.json`
-- `abis/WorldIDVerifier.json`
+- `abis/StoryProtocol.json` - Story Protocol IP Registry
+- `abis/AtlasADLV.json` - Atlas ADLV Contract
+- `abis/IDOContract.json` - IDO Token Sale Contract (optional)
+- `abis/BridgeContract.json` - Cross-chain Bridge (optional)
+- `abis/WorldIDVerifier.json` - World ID Verification (optional)
+
+**Required Events in ABIs:**
+
+**StoryProtocol.json:**
+```solidity
+event IPRegistered(bytes32 indexed ipId, address indexed creator, string name, string description, string ipHash);
+event IPUsed(bytes32 indexed ipId, address indexed user, string usageType, uint256 revenue);
+event IPRemixed(bytes32 indexed originalIPId, bytes32 indexed newIPId, address indexed remixer);
+```
+
+**AtlasADLV.json:**
+```solidity
+event VaultCreated(address indexed vaultAddress, bytes32 indexed ipId, uint256 initialCVS);
+event LicenseSold(address indexed vaultAddress, bytes32 indexed ipId, address indexed licensee, uint256 price, string licenseType);
+event LoanIssued(address indexed vaultAddress, address indexed borrower, uint256 loanId, uint256 amount, uint256 collateral, uint256 duration);
+event CVSUpdated(address indexed vaultAddress, uint256 oldCVS, uint256 newCVS);
+event LoanRepaid(address indexed vaultAddress, address indexed borrower, uint256 loanId, uint256 amount);
+event LoanDefaulted(address indexed vaultAddress, address indexed borrower, uint256 loanId);
+event Deposited(address indexed vaultAddress, address indexed depositor, uint256 amount, uint256 shares);
+event Withdrawn(address indexed vaultAddress, address indexed withdrawer, uint256 amount, uint256 shares);
+```
 
 ## Goldsky Integration
 
