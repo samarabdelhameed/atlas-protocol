@@ -1,5 +1,5 @@
 {
-  "name": "atlas-protocol",
+  "name": "atlas-protocol-monorepo",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -8,14 +8,17 @@
     "packages/*"
   ],
   "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
     "dev:frontend": "cd apps/frontend && bun dev",
     "dev:backend": "cd apps/backend && bun run index.ts",
     "build:frontend": "cd apps/frontend && bun run build",
     "test:contracts": "cd contracts && forge test",
-    "deploy:contracts": "cd contracts && forge script",
-    "install:all": "bun install && cd apps/backend && bun install && cd ../frontend && bun install"
+    "deploy:contracts": "cd contracts && forge script"
   },
   "devDependencies": {
+    "turbo": "latest",
     "typescript": "^5.9.3"
   }
 }
