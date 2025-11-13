@@ -11,9 +11,11 @@
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
     "lint": "turbo run lint",
+    "dev:web": "cd apps/web && bun run dev",
     "dev:frontend": "cd apps/frontend && bun dev",
     "dev:backend": "cd apps/backend && bun run index.ts",
     "dev:agent": "cd apps/agent-service && bun run dev",
+    "build:web": "cd apps/web && bun run build",
     "build:frontend": "cd apps/frontend && bun run build",
     "test:contracts": "cd contracts && forge test",
     "deploy:contracts": "cd contracts && forge script"
