@@ -1,0 +1,22 @@
+{
+  "name": "atlas-protocol",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:frontend": "cd apps/frontend && bun dev",
+    "dev:backend": "cd apps/backend && bun run index.ts",
+    "build:frontend": "cd apps/frontend && bun run build",
+    "test:contracts": "cd contracts && forge test",
+    "deploy:contracts": "cd contracts && forge script",
+    "install:all": "bun install && cd apps/backend && bun install && cd ../frontend && bun install"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
+
