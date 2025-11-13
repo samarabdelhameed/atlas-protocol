@@ -13,6 +13,7 @@
     "lint": "turbo run lint",
     "dev:frontend": "cd apps/frontend && bun dev",
     "dev:backend": "cd apps/backend && bun run index.ts",
+    "dev:agent": "cd apps/agent-service && bun run dev",
     "build:frontend": "cd apps/frontend && bun run build",
     "test:contracts": "cd contracts && forge test",
     "deploy:contracts": "cd contracts && forge script"
