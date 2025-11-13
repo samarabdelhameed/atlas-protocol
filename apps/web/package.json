@@ -9,9 +9,13 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@atlas-protocol/types": "workspace:*",
+    "@tanstack/react-query": "^5.90.8",
     "next": "^16.0.2",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "viem": "^2.39.0",
+    "wagmi": "^2.19.3"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
