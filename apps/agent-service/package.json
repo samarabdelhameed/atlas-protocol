@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@atlas-protocol/types": "workspace:*",
+    "@atlas-protocol/graphql-client": "workspace:*",
     "@types/node": "^24.10.1",
     "ethers": "^6.15.0",
     "typescript": "^5.9.3",
