@@ -1,0 +1,177 @@
+# Atlas Protocol Subgraph Schema
+# This schema defines the entities that will be indexed by Goldsky/The Graph
+
+# ========================================
+# IP Asset Entities
+# ========================================
+
+type IPAsset @entity {
+  id: ID!
+  name: String!
+  description: String!
+  creator: Bytes!
+  ipHash: String!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  
+  # Licensing
+  commercialUse: Boolean!
+  derivatives: Boolean!
+  royaltyPercent: BigInt!
+  mintingFee: BigInt!
+  
+  # Relations
+  licenses: [License!]! @derivedFrom(field: "ipAsset")
+  usageEvents: [IPUsageEvent!]! @derivedFrom(field: "ipAsset")
+}
+
+type License @entity {
+  id: ID!
+  ipAsset: IPAsset!
+  licensee: Bytes!
+  isActive: Boolean!
+  timestamp: BigInt!
+  expiryDate: BigInt
+  fee: BigInt!
+}
+
+type IPUsageEvent @entity {
+  id: ID!
+  ipAsset: IPAsset!
+  user: Bytes!
+  usageType: String!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+}
+
+# ========================================
+# ADLV (Liquidity Vault) Entities
+# ========================================
+
+type LiquidityVault @entity {
+  id: ID!
+  totalLiquidity: BigInt!
+  totalLoans: BigInt!
+  activeLoans: BigInt!
+  utilizationRate: BigDecimal!
+  averageAPY: BigDecimal!
+  
+  # Relations
+  loans: [Loan!]! @derivedFrom(field: "vault")
+  deposits: [Deposit!]! @derivedFrom(field: "vault")
+}
+
+type Loan @entity {
+  id: ID!
+  vault: LiquidityVault!
+  borrower: Bytes!
+  collateralAmount: BigInt!
+  loanAmount: BigInt!
+  interestRate: BigInt!
+  duration: BigInt!
+  startTime: BigInt!
+  endTime: BigInt!
+  status: LoanStatus!
+  repaidAmount: BigInt!
+  timestamp: BigInt!
+}
+
+enum LoanStatus {
+  Pending
+  Active
+  Repaid
+  Defaulted
+}
+
+type Deposit @entity {
+  id: ID!
+  vault: LiquidityVault!
+  depositor: Bytes!
+  amount: BigInt!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+}
+
+# ========================================
+# IDO Entities
+# ========================================
+
+type IDOPool @entity {
+  id: ID!
+  tokenAddress: Bytes!
+  tokenSymbol: String!
+  totalSupply: BigInt!
+  price: BigInt!
+  startTime: BigInt!
+  endTime: BigInt!
+  minContribution: BigInt!
+  maxContribution: BigInt!
+  raised: BigInt!
+  participantCount: BigInt!
+  isActive: Boolean!
+  
+  # Relations
+  participations: [IDOParticipation!]! @derivedFrom(field: "pool")
+}
+
+type IDOParticipation @entity {
+  id: ID!
+  pool: IDOPool!
+  participant: Bytes!
+  amount: BigInt!
+  timestamp: BigInt!
+  claimed: Boolean!
+}
+
+# ========================================
+# Cross-Chain Bridge Entities
+# ========================================
+
+type BridgeTransaction @entity {
+  id: ID!
+  fromChainId: BigInt!
+  toChainId: BigInt!
+  sender: Bytes!
+  recipient: Bytes!
+  tokenAddress: Bytes!
+  amount: BigInt!
+  status: BridgeStatus!
+  timestamp: BigInt!
+  completedAt: BigInt
+}
+
+enum BridgeStatus {
+  Initiated
+  Pending
+  Completed
+  Failed
+}
+
+# ========================================
+# World ID Verification Entities
+# ========================================
+
+type WorldIDVerification @entity {
+  id: ID!
+  user: Bytes!
+  nullifierHash: String!
+  verified: Boolean!
+  verificationLevel: String!
+  timestamp: BigInt!
+}
+
+# ========================================
+# Global Statistics
+# ========================================
+
+type GlobalStats @entity {
+  id: ID!
+  totalIPAssets: BigInt!
+  totalLicenses: BigInt!
+  totalLoans: BigInt!
+  totalIDOPools: BigInt!
+  totalBridgeTransactions: BigInt!
+  totalVerifiedUsers: BigInt!
+  lastUpdated: BigInt!
+}
+

@@ -1,0 +1,21 @@
+{
+  "name": "@atlas-protocol/subgraph",
+  "version": "1.0.0",
+  "description": "Goldsky/The Graph indexer for Atlas Protocol",
+  "private": true,
+  "scripts": {
+    "codegen": "graph codegen",
+    "build": "graph build",
+    "deploy": "graph deploy --node https://api.goldsky.com/api/public/atlas-protocol/subgraphs",
+    "create-local": "graph create --node http://localhost:8020/ atlas-protocol",
+    "deploy-local": "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 atlas-protocol"
+  },
+  "dependencies": {
+    "@graphprotocol/graph-cli": "^0.69.0",
+    "@graphprotocol/graph-ts": "^0.35.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
+

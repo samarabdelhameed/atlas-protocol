@@ -7,19 +7,31 @@ A decentralized protocol featuring ADLV (Adaptive Dynamic Liquidity Vault) and I
 ```
 atlas-protocol/
 ├── contracts/          # Solidity smart contracts (Foundry)
+│   ├── src/           # Contract source files
+│   ├── test/          # Contract tests
+│   └── script/        # Deployment scripts
 ├── apps/
-│   ├── backend/       # Backend agent service (Bun + TypeScript)
-│   └── frontend/      # Frontend application (React + Vite + TypeScript)
-├── packages/          # Shared TypeScript packages
-└── subgraph/          # Goldsky/Subgraph indexing definitions
+│   ├── web/           # Next.js frontend (Main UI)
+│   ├── frontend/      # Vite React frontend (Alternative)
+│   ├── backend/       # Basic backend service
+│   └── agent-service/ # Blockchain agent service
+├── packages/
+│   └── types/         # Shared TypeScript types
+└── subgraph/          # Goldsky/The Graph indexer
+    ├── schema.graphql # GraphQL schema
+    ├── subgraph.yaml  # Subgraph configuration
+    └── src/           # Event handlers
 ```
 
 ## Tech Stack
 
 - **Smart Contracts**: Solidity + Foundry
-- **Backend**: Bun + TypeScript
-- **Frontend**: React + Vite + TypeScript
-- **Indexing**: Goldsky/Subgraph
+- **Frontend**: Next.js 16 + React 19 + TypeScript
+- **Backend**: Bun + TypeScript + ethers.js + viem
+- **Web3**: wagmi + @tanstack/react-query
+- **Styling**: Tailwind CSS
+- **Indexing**: Goldsky/The Graph
+- **Monorepo**: Turborepo
 - **Package Manager**: Bun
 
 ## Getting Started
@@ -43,14 +55,44 @@ cd apps/frontend && bun install
 ### Development
 
 ```bash
-# Run frontend
+# Run Next.js web app
+bun run dev:web
+
+# Run Vite frontend (alternative)
 bun run dev:frontend
 
-# Run backend
+# Run backend service
 bun run dev:backend
 
-# Test contracts
+# Run agent service
+bun run dev:agent
+
+# Run all apps in parallel
+bun run dev
+
+# Test smart contracts
 bun run test:contracts
+
+# Build all apps
+bun run build
+```
+
+### Subgraph Development
+
+```bash
+cd subgraph
+
+# Install dependencies
+npm install
+
+# Generate types from schema
+npm run codegen
+
+# Build subgraph
+npm run build
+
+# Deploy to Goldsky
+npm run deploy
 ```
 
 ## Integrated Sponsor Tools

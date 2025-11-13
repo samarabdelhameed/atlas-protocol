@@ -1,0 +1,11 @@
+# ABI Files Directory
+
+Place your contract ABI JSON files here:
+- IPAssetRegistry.json
+- LiquidityVault.json
+- IDOContract.json
+- BridgeContract.json
+- WorldIDVerifier.json
+
+These files will be generated from your Solidity contracts after deployment.
+
