@@ -28,6 +28,9 @@ out/
 .env
 .env.local
 .env.*.local
+deployed_addresses.env
+*.env
+!*.env.example
 
 # Cache
 .cache/
