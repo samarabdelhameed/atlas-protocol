@@ -15,6 +15,10 @@ interface LandingPageProps {
 }
 
 export default function LandingPage({ onNavigate }: LandingPageProps) {
+  const prefersReducedMotion =
+    typeof window !== "undefined" &&
+    window.matchMedia &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const metrics = [
     {
       label: "Total CVS Valued (TVV)",
@@ -84,7 +88,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
 
   return (
     <div className="relative min-h-screen bg-black overflow-hidden">
-      <ParticleField />
+      {!prefersReducedMotion && <ParticleField />}
 
       <div className="relative z-10 pt-32 pb-20 px-6">
         <div className="max-w-7xl mx-auto">
@@ -101,7 +105,11 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
               className="inline-block mb-6"
             >
               <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-r from-orange-500 to-amber-600 blur-3xl opacity-50 animate-pulse" />
+                <div
+                  className={`absolute inset-0 bg-gradient-to-r from-orange-500 to-amber-600 ${
+                    prefersReducedMotion ? "blur-xl" : "blur-3xl animate-pulse"
+                  } opacity-50`}
+                />
                 <div className="relative w-32 h-32 mx-auto bg-gradient-to-br from-orange-500 to-amber-600 rounded-full flex items-center justify-center shadow-2xl shadow-orange-500/50">
                   <Zap className="w-16 h-16 text-white" />
                 </div>
@@ -187,35 +195,53 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                 {/* <div className="text-xs text-gray-500">Mock data</div> */}
               </div>
               <div className="overflow-hidden">
-                <motion.div
-                  initial={{ x: 0 }}
-                  animate={{ x: ["0%", "-100%"] }}
-                  transition={{
-                    duration: 28,
-                    repeat: Infinity,
-                    ease: "linear",
-                  }}
-                  className="flex items-center gap-6 whitespace-nowrap"
-                  style={{ willChange: "transform" }}
-                >
-                  {[...tickerItems, ...tickerItems].map((item, idx) => (
-                    <div
-                      key={item.company + idx}
-                      className="px-4 py-2 rounded-full border border-gray-700/60 bg-gray-800/40 text-gray-200 text-sm flex items-center gap-3"
-                    >
-                      <span className="text-white font-semibold">
-                        {item.company}
-                      </span>
-                      <span className="text-gray-400">{item.tier}</span>
-                      <span className="text-orange-400 font-bold">
-                        {item.amount}
-                      </span>
-                      <span className="text-green-400 font-bold">
-                        {item.cvs} CVS
-                      </span>
-                    </div>
-                  ))}
-                </motion.div>
+                {prefersReducedMotion ? (
+                  <div className="flex items-center gap-4 flex-wrap justify-center">
+                    {tickerItems.map((item, idx) => (
+                      <div
+                        key={item.company + idx}
+                        className="px-4 py-2 rounded-full border border-gray-700/60 bg-gray-800/40 text-gray-200 text-sm flex items-center gap-3"
+                      >
+                        <span className="text-white font-semibold">
+                          {item.company}
+                        </span>
+                        <span className="text-gray-400">{item.tier}</span>
+                        <span className="text-orange-400 font-bold">
+                          {item.amount}
+                        </span>
+                        <span className="text-green-400 font-bold">
+                          {item.cvs} CVS
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <motion.div
+                    initial={{ x: 0 }}
+                    animate={{ x: ["0%", "-100%"] }}
+                    transition={{ duration: 28, repeat: Infinity, ease: "linear" }}
+                    className="flex items-center gap-6 whitespace-nowrap"
+                    style={{ willChange: "transform" }}
+                  >
+                    {[...tickerItems, ...tickerItems].map((item, idx) => (
+                      <div
+                        key={item.company + idx}
+                        className="px-4 py-2 rounded-full border border-gray-700/60 bg-gray-800/40 text-gray-200 text-sm flex items-center gap-3"
+                      >
+                        <span className="text-white font-semibold">
+                          {item.company}
+                        </span>
+                        <span className="text-gray-400">{item.tier}</span>
+                        <span className="text-orange-400 font-bold">
+                          {item.amount}
+                        </span>
+                        <span className="text-green-400 font-bold">
+                          {item.cvs} CVS
+                        </span>
+                      </div>
+                    ))}
+                  </motion.div>
+                )}
               </div>
             </div>
           </div>
@@ -311,30 +337,20 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
         </div>
       </div>
 
-      <motion.div
-        animate={{
-          scale: [1, 1.2, 1],
-          rotate: [0, 180, 360],
-        }}
-        transition={{
-          duration: 20,
-          repeat: Infinity,
-          ease: "linear",
-        }}
-        className="absolute top-1/4 right-1/4 w-96 h-96 bg-gradient-to-r from-orange-500/10 to-amber-600/10 rounded-full blur-3xl"
-      />
-      <motion.div
-        animate={{
-          scale: [1.2, 1, 1.2],
-          rotate: [360, 180, 0],
-        }}
-        transition={{
-          duration: 25,
-          repeat: Infinity,
-          ease: "linear",
-        }}
-        className="absolute bottom-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-amber-500/10 to-orange-600/10 rounded-full blur-3xl"
-      />
+      {!prefersReducedMotion && (
+        <>
+          <motion.div
+            animate={{ scale: [1, 1.15, 1], rotate: [0, 180, 360] }}
+            transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
+            className="absolute top-1/4 right-1/4 w-96 h-96 bg-gradient-to-r from-orange-500/10 to-amber-600/10 rounded-full blur-xl"
+          />
+          <motion.div
+            animate={{ scale: [1.1, 1, 1.1], rotate: [360, 180, 0] }}
+            transition={{ duration: 22, repeat: Infinity, ease: "linear" }}
+            className="absolute bottom-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-amber-500/10 to-orange-600/10 rounded-full blur-xl"
+          />
+        </>
+      )}
     </div>
   );
 }
