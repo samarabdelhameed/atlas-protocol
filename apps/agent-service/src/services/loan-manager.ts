@@ -488,4 +488,65 @@ export class LoanManager {
   async getVault(vaultAddress: string) {
     return await this.adlvContract.getVault(vaultAddress);
   }
+
+  /**
+   * Create a new vault for an IP asset
+   * This function calls ADLV.createVault() on-chain
+   */
+  async createVault(ipId: string): Promise<{ vaultAddress: string; transactionHash: string }> {
+    if (!this.signer) {
+      throw new Error('Signer not initialized. Provide PRIVATE_KEY in config.');
+    }
+
+    try {
+      // Convert ipId string to bytes32 using keccak256 (same as in tests)
+      // If ipId is already a hex string (0x...), use it directly, otherwise hash it
+      let ipIdBytes32: string;
+      if (ipId.startsWith('0x') && ipId.length === 66) {
+        // Already a bytes32 hex string
+        ipIdBytes32 = ipId;
+      } else {
+        // Hash the string to bytes32
+        ipIdBytes32 = ethers.keccak256(ethers.toUtf8Bytes(ipId));
+      }
+
+      // Call createVault on ADLV contract
+      const tx = await this.adlvContract.createVault(ipIdBytes32);
+      
+      // Wait for transaction receipt
+      const receipt = await tx.wait();
+
+      // Get vault address from event
+      const vaultCreatedEvent = receipt.logs.find((log: any) => {
+        try {
+          const parsed = this.adlvContract.interface.parseLog({
+            topics: log.topics,
+            data: log.data,
+          });
+          return parsed?.name === 'VaultCreated';
+        } catch {
+          return false;
+        }
+      });
+
+      if (!vaultCreatedEvent) {
+        throw new Error('VaultCreated event not found in transaction receipt');
+      }
+
+      const parsed = this.adlvContract.interface.parseLog({
+        topics: vaultCreatedEvent.topics,
+        data: vaultCreatedEvent.data,
+      });
+
+      const vaultAddress = parsed?.args[0] as string; // vaultAddress is the first argument
+
+      return {
+        vaultAddress,
+        transactionHash: receipt.hash,
+      };
+    } catch (error) {
+      console.error('Error creating vault:', error);
+      throw error;
+    }
+  }
 }
