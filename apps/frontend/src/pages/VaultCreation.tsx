@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
-import { IDKitWidget } from "@worldcoin/idkit";
+import { IDKitWidget, VerificationLevel } from "@worldcoin/idkit";
 
 interface VaultCreationProps {
   onNavigate?: (page: string) => void;
@@ -388,6 +388,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                         app_id={WORLD_ID_APP_ID}
                         action={WORLD_ID_ACTION}
                         signal={ipAssetId || "vault_creation"}
+                        verification_level={VerificationLevel.Device}
                         onSuccess={handleWorldIDSuccess}
                       >
                         {({ open }) => (
