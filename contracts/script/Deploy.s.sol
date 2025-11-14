@@ -49,7 +49,7 @@ contract DeployScript is Script {
         // Verify setup
         console.log("Verifying contract setup...");
         require(ido.owner() == address(adlv), "IDO ownership transfer failed");
-        require(adlv.idoContract() == address(ido), "ADLV IDO reference incorrect");
+        require(address(adlv.idoContract()) == address(ido), "ADLV IDO reference incorrect");
         console.log("[OK] Contract setup verified");
         console.log("");
 
