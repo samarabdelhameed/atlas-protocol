@@ -5,10 +5,13 @@
  * Integrates with ADLV contract and Owlto Finance for cross-chain loans
  */
 
-import { Contract, Wallet, JsonRpcProvider, type EventLog } from 'ethers';
+import { Contract, Wallet, JsonRpcProvider, type EventLog, keccak256, toUtf8Bytes } from 'ethers';
 import { config } from '../config/index.js';
-import ADLV_ABI from '../../contracts/ADLV.json' assert { type: 'json' };
-import IDO_ABI from '../../contracts/IDO.json' assert { type: 'json' };
+import ADLV_JSON from '../../contracts/ADLV.json' assert { type: 'json' };
+import IDO_JSON from '../../contracts/IDO.json' assert { type: 'json' };
+
+const ADLV_ABI = ADLV_JSON.abi;
+const IDO_ABI = IDO_JSON.abi;
 
 // Owlto Finance API URL
 const OWLTO_API_URL = process.env.OWLTO_API_URL || 'https://api.owlto.finance/api/v2/bridge';
@@ -490,6 +493,30 @@ export class LoanManager {
   }
 
   /**
+   * Get vault address by IP ID
+   */
+  async getVaultByIpId(ipId: string): Promise<string | null> {
+    try {
+      // Convert ipId to bytes32 if needed
+      let ipIdBytes32: string;
+      if (ipId.startsWith('0x') && ipId.length === 66) {
+        ipIdBytes32 = ipId;
+      } else {
+        ipIdBytes32 = keccak256(toUtf8Bytes(ipId));
+      }
+      
+      const vaultAddress = await this.adlvContract.ipToVault(ipIdBytes32);
+      if (vaultAddress === '0x0000000000000000000000000000000000000000') {
+        return null;
+      }
+      return vaultAddress;
+    } catch (error) {
+      console.error('Error getting vault by IP ID:', error);
+      return null;
+    }
+  }
+
+  /**
    * Create a new vault for an IP asset
    * This function calls ADLV.createVault() on-chain
    */
@@ -507,7 +534,7 @@ export class LoanManager {
         ipIdBytes32 = ipId;
       } else {
         // Hash the string to bytes32
-        ipIdBytes32 = ethers.keccak256(ethers.toUtf8Bytes(ipId));
+        ipIdBytes32 = keccak256(toUtf8Bytes(ipId));
       }
 
       // Call createVault on ADLV contract
