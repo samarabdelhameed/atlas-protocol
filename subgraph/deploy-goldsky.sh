@@ -65,7 +65,7 @@ if [ $? -eq 0 ]; then
     echo ""
     echo "   Or manually update:"
     echo "   - apps/agent-service/.env: SUBGRAPH_URL=<url>"
-    echo "   - apps/web/.env: NEXT_PUBLIC_SUBGRAPH_URL=<url>"
+    echo "   - apps/frontend/.env: VITE_SUBGRAPH_URL=<url>"
 else
     echo "❌ Deployment failed"
     exit 1
