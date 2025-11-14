@@ -72,10 +72,13 @@ atlas-protocol/
 ```bash
 cd contracts
 cp .env.example .env
-# Edit .env with your PRIVATE_KEY and STORY_PROTOCOL_RPC
+# Edit .env with your PRIVATE_KEY
+# STORY_PROTOCOL_RPC is already set to: https://rpc-storyevm-testnet.aldebaranode.xyz
 
 # Deploy to Story Protocol
 ./scripts/deploy-story.sh
+# Or use the main deployment script:
+cd .. && ./deploy.sh
 ```
 
 ### 2. Setup Agent Service
@@ -108,6 +111,13 @@ bun run dev
 - **[Contracts Documentation](./contracts/DEPLOYMENT.md)** - Smart contract details
 - **[Agent Service README](./apps/agent-service/README.md)** - Backend service guide
 
+## 🌐 Network Configuration
+
+### Story Protocol Testnet
+- **RPC URL:** https://rpc-storyevm-testnet.aldebaranode.xyz
+- **Explorer:** Check Story Protocol documentation
+- **Chain ID:** Check Story Protocol documentation
+
 ## 🧪 Testing
 
 ### Smart Contracts
@@ -132,7 +142,7 @@ cd apps/agent-service
 
 **Contracts:**
 - `PRIVATE_KEY` - Deployer private key
-- `STORY_PROTOCOL_RPC` - Story Protocol RPC URL
+- `STORY_PROTOCOL_RPC` - Story Protocol RPC URL (default: https://rpc-storyevm-testnet.aldebaranode.xyz)
 
 **Agent Service:**
 - `ADLV_ADDRESS` - Deployed ADLV contract address
