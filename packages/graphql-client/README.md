@@ -15,7 +15,7 @@ Shared GraphQL client for querying the Atlas Protocol Goldsky subgraph.
 This package is part of the Atlas Protocol monorepo workspace.
 
 ```bash
-# In apps/web or apps/agent-service
+# In apps/frontend or apps/agent-service
 bun add @atlas-protocol/graphql-client
 ```
 
@@ -197,6 +197,6 @@ function Leaderboard() {
 bun run build
 
 # Use in other packages
-cd ../../apps/web
+cd ../../apps/frontend
 bun add @atlas-protocol/graphql-client
 ```

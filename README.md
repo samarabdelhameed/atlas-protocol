@@ -210,7 +210,7 @@ bun run dev
 5. **Update SUBGRAPH_URL:**
    After deployment, update:
    - `apps/agent-service/.env`: `SUBGRAPH_URL=https://api.goldsky.com/api/public/atlas-protocol/subgraphs/atlas-v1`
-   - `apps/web/.env`: `NEXT_PUBLIC_SUBGRAPH_URL=https://api.goldsky.com/api/public/atlas-protocol/subgraphs/atlas-v1`
+   - `apps/frontend/.env`: `VITE_SUBGRAPH_URL=https://api.goldsky.com/api/public/atlas-protocol/subgraphs/atlas-v1`
 
 **Note:** Subgraph endpoint will be available after deployment from Goldsky dashboard.
 

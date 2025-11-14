@@ -54,9 +54,9 @@
    SUBGRAPH_URL=https://api.goldsky.com/api/public/atlas-protocol/subgraphs/atlas-v1
    ```
 
-   **apps/web/.env:**
+   **apps/frontend/.env:**
    ```env
-   NEXT_PUBLIC_SUBGRAPH_URL=https://api.goldsky.com/api/public/atlas-protocol/subgraphs/atlas-v1
+   VITE_SUBGRAPH_URL=https://api.goldsky.com/api/public/atlas-protocol/subgraphs/atlas-v1
    ```
 
 ## Verification

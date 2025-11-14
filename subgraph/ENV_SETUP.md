@@ -25,5 +25,5 @@ https://api.goldsky.com/api/public/atlas-protocol/subgraphs/atlas-v1
 
 Update this in:
 - `apps/agent-service/.env`: `SUBGRAPH_URL=...`
-- `apps/web/.env`: `NEXT_PUBLIC_SUBGRAPH_URL=...`
+- `apps/frontend/.env`: `VITE_SUBGRAPH_URL=...`
 

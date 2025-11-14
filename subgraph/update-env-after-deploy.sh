@@ -34,17 +34,17 @@ else
     echo "⚠️  apps/agent-service/.env not found"
 fi
 
-# Update apps/web/.env
-if [ -f "../apps/web/.env" ]; then
-    echo "Updating apps/web/.env..."
-    if grep -q "NEXT_PUBLIC_SUBGRAPH_URL=" ../apps/web/.env; then
-        sed -i.bak "s|NEXT_PUBLIC_SUBGRAPH_URL=.*|NEXT_PUBLIC_SUBGRAPH_URL=$SUBGRAPH_URL|" ../apps/web/.env
+# Update apps/frontend/.env
+if [ -f "../apps/frontend/.env" ]; then
+    echo "Updating apps/frontend/.env..."
+    if grep -q "VITE_SUBGRAPH_URL=" ../apps/frontend/.env; then
+        sed -i.bak "s|VITE_SUBGRAPH_URL=.*|VITE_SUBGRAPH_URL=$SUBGRAPH_URL|" ../apps/frontend/.env
     else
-        echo "NEXT_PUBLIC_SUBGRAPH_URL=$SUBGRAPH_URL" >> ../apps/web/.env
+        echo "VITE_SUBGRAPH_URL=$SUBGRAPH_URL" >> ../apps/frontend/.env
     fi
-    echo "✅ Updated apps/web/.env"
+    echo "✅ Updated apps/frontend/.env"
 else
-    echo "⚠️  apps/web/.env not found"
+    echo "⚠️  apps/frontend/.env not found"
 fi
 
 echo ""
@@ -54,6 +54,6 @@ echo "=========================================="
 echo ""
 echo "📝 Updated files:"
 echo "   - apps/agent-service/.env"
-echo "   - apps/web/.env"
+echo "   - apps/frontend/.env"
 echo ""
 

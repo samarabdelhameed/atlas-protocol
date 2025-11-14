@@ -5,8 +5,7 @@ Shared TypeScript type definitions for Atlas Protocol monorepo.
 ## Purpose
 
 This package contains all shared type definitions used across:
-- **Frontend** (`apps/web`)
-- **Backend** (`apps/backend`)
+- **Frontend** (`apps/frontend`)
 - **Agent Service** (`apps/agent-service`)
 
 ## Type Categories
