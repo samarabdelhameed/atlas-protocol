@@ -8,8 +8,11 @@
 import { createPublicClient, http, type Address } from 'viem';
 import { config } from '../config/index.js';
 import { cvsEngine } from './cvs-engine.js';
-import ADLV_ABI from '../../contracts/ADLV.json' assert { type: 'json' };
-import IDO_ABI from '../../contracts/IDO.json' assert { type: 'json' };
+import ADLV_JSON from '../../contracts/ADLV.json' assert { type: 'json' };
+import IDO_JSON from '../../contracts/IDO.json' assert { type: 'json' };
+
+const ADLV_ABI = ADLV_JSON.abi;
+const IDO_ABI = IDO_JSON.abi;
 
 export class ContractMonitor {
   private publicClient: ReturnType<typeof createPublicClient>;

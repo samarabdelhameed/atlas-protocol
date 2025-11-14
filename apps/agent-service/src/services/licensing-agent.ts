@@ -8,8 +8,11 @@
 
 import { Contract, Wallet, JsonRpcProvider, type EventLog } from 'ethers';
 import { config } from '../config/index.js';
-import ADLV_ABI from '../../contracts/ADLV.json' assert { type: 'json' };
-import IDO_ABI from '../../contracts/IDO.json' assert { type: 'json' };
+import ADLV_JSON from '../../contracts/ADLV.json' assert { type: 'json' };
+import IDO_JSON from '../../contracts/IDO.json' assert { type: 'json' };
+
+const ADLV_ABI = ADLV_JSON.abi;
+const IDO_ABI = IDO_JSON.abi;
 
 // abv.dev API URL
 const ABV_API_URL = process.env.ABV_API_URL || 'https://api.abv.dev/v1/licenses';

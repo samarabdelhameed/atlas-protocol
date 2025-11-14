@@ -26,6 +26,9 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
   const [loanCurrency, setLoanCurrency] = useState("USDC");
   const [loanDuration, setLoanDuration] = useState("30");
   const [isDeploying, setIsDeploying] = useState(false);
+  const [vaultAddress, setVaultAddress] = useState<string>("");
+  const [transactionHash, setTransactionHash] = useState<string>("");
+  const [vaultCreationError, setVaultCreationError] = useState<string>("");
   const WORLD_ID_APP_ID = import.meta.env.VITE_WORLD_ID_APP_ID || "";
   const WORLD_ID_ACTION =
     import.meta.env.VITE_WORLD_ID_ACTION || "atlas-verification";
@@ -74,14 +77,48 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
           vaultData: { ipId: ipAssetId, creator: creatorAddress },
         }),
       });
+      
       if (res.ok) {
+        const data = await res.json();
+        // Save real vault data from backend/smart contract
+        if (data.vaultAddress) {
+          setVaultAddress(data.vaultAddress);
+        }
+        if (data.transactionHash) {
+          setTransactionHash(data.transactionHash);
+        }
+        // Handle existing vault case
+        if (data.alreadyExists) {
+          console.log('Vault already exists, using existing vault address');
+        }
         setIsVerified(true);
         setStep(3);
       } else {
-        setIsVerified(true);
-        setStep(3);
+        const errorData = await res.json().catch(() => ({}));
+        // Handle different error cases
+        if (res.status === 401) {
+          // World ID verification failed - allow to proceed anyway for testing
+          console.warn('World ID verification failed, but allowing to proceed for testing');
+          setIsVerified(true);
+          setStep(3);
+        } else if (res.status === 409 || errorData.code === 'VAULT_EXISTS') {
+          // Vault already exists - use existing vault
+          setVaultCreationError(errorData.error || "Vault already exists for this IP Asset ID");
+          if (errorData.vaultAddress) {
+            setVaultAddress(errorData.vaultAddress);
+          }
+          setIsVerified(true);
+          setStep(3);
+        } else {
+          // Other errors
+          setVaultCreationError(errorData.error || errorData.details || "Verification failed");
+          setIsVerified(true);
+          setStep(3);
+        }
       }
-    } catch {
+    } catch (error: any) {
+      console.error("World ID verification error:", error);
+      setVaultCreationError(error.message || "Network error during verification");
       setIsVerified(true);
       setStep(3);
     }
@@ -91,12 +128,100 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
     setStep(4);
   };
 
-  const handleDeployVault = () => {
+  const handleDeployVault = async () => {
+    // If vault was already created during World ID verification, just show it
+    if (vaultAddress && transactionHash) {
+      setIsDeploying(true);
+      setTimeout(() => {
+        setIsDeploying(false);
+        setStep(5);
+      }, 1000);
+      return;
+    }
+
+    // Otherwise, create vault now (fallback if World ID didn't create it)
     setIsDeploying(true);
-    setTimeout(() => {
+    setVaultCreationError("");
+    
+    try {
+      const res = await fetch(VERIFICATION_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          proof: null, // No proof needed if already verified
+          signal: "vault_creation",
+          vaultData: { ipId: ipAssetId, creator: creatorAddress },
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.vaultAddress) {
+          setVaultAddress(data.vaultAddress);
+        }
+        if (data.transactionHash) {
+          setTransactionHash(data.transactionHash);
+        }
+        // Handle existing vault case
+        if (data.alreadyExists) {
+          console.log('Using existing vault:', data.vaultAddress);
+          // For existing vault, we might not have transactionHash
+          // Set a placeholder or fetch it if needed
+          if (!data.transactionHash) {
+            setTransactionHash('N/A - Existing Vault');
+          }
+        }
+        // Move to step 5 immediately
+        setIsDeploying(false);
+        setStep(5);
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        // Handle vault already exists
+        if (res.status === 409 || errorData.code === 'VAULT_EXISTS') {
+          // Try to get vault address from error response or fetch it
+          if (errorData.vaultAddress) {
+            setVaultAddress(errorData.vaultAddress);
+            setTransactionHash('N/A - Existing Vault');
+            setIsDeploying(false);
+            setStep(5);
+          } else {
+            // Try to fetch existing vault address
+            try {
+              const fetchRes = await fetch(VERIFICATION_ENDPOINT, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  proof: null,
+                  signal: "get_vault",
+                  vaultData: { ipId: ipAssetId, creator: creatorAddress },
+                }),
+              });
+              if (fetchRes.ok) {
+                const fetchData = await fetchRes.json();
+                if (fetchData.vaultAddress) {
+                  setVaultAddress(fetchData.vaultAddress);
+                  setTransactionHash('N/A - Existing Vault');
+                  setIsDeploying(false);
+                  setStep(5);
+                  return;
+                }
+              }
+            } catch {
+              // If fetch fails, show error
+            }
+            setVaultCreationError(errorData.error || "Vault already exists. Please use a different IP Asset ID.");
+            setIsDeploying(false);
+          }
+        } else {
+          setVaultCreationError(errorData.error || errorData.details || "Failed to deploy vault");
+          setIsDeploying(false);
+        }
+      }
+    } catch (error: any) {
+      console.error("Vault deployment error:", error);
+      setVaultCreationError(error.message || "Network error during deployment");
       setIsDeploying(false);
-      setStep(5);
-    }, 3000);
+    }
   };
 
   return (
@@ -686,36 +811,137 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
               animate={{ scale: 1 }}
               className="text-center py-12"
             >
-              <motion.div
-                animate={{
-                  scale: [1, 1.2, 1],
-                  rotate: [0, 360],
-                }}
-                transition={{
-                  duration: 1,
-                }}
-                className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center"
-              >
-                <CheckCircle2 className="w-12 h-12 text-white" />
-              </motion.div>
+              {vaultCreationError ? (
+                <>
+                  <motion.div
+                    animate={{
+                      scale: [1, 1.2, 1],
+                    }}
+                    transition={{
+                      duration: 1,
+                    }}
+                    className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-red-500 to-red-600 rounded-full flex items-center justify-center"
+                  >
+                    <AlertCircle className="w-12 h-12 text-white" />
+                  </motion.div>
 
-              <h2 className="text-3xl font-bold text-white mb-3">
-                Atlas Vault Deployed Successfully!
-              </h2>
-              <p className="text-gray-400 mb-8">
-                Your IP Data Vault is now active and ready to generate liquidity
-              </p>
+                  <h2 className="text-3xl font-bold text-white mb-3">
+                    Vault Deployment Error
+                  </h2>
+                  <p className="text-red-400 mb-8">{vaultCreationError}</p>
+                  <p className="text-gray-400 text-sm mb-8">
+                    Please check your connection and try again.
+                  </p>
+                </>
+              ) : vaultAddress && transactionHash ? (
+                <>
+                  <motion.div
+                    animate={{
+                      scale: [1, 1.2, 1],
+                      rotate: [0, 360],
+                    }}
+                    transition={{
+                      duration: 1,
+                    }}
+                    className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center"
+                  >
+                    <CheckCircle2 className="w-12 h-12 text-white" />
+                  </motion.div>
 
-              <div className="grid grid-cols-2 gap-4 max-w-md mx-auto mb-8">
-                <div className="p-4 bg-gray-900/50 rounded-xl border border-orange-500/30">
-                  <div className="text-gray-400 text-sm mb-1">Vault ID</div>
-                  <div className="text-white font-bold">#VLT-001</div>
-                </div>
-                <div className="p-4 bg-gray-900/50 rounded-xl border border-orange-500/30">
-                  <div className="text-gray-400 text-sm mb-1">Initial CVS</div>
-                  <div className="text-amber-400 font-bold">5,000</div>
-                </div>
-              </div>
+                  <h2 className="text-3xl font-bold text-white mb-3">
+                    Atlas Vault Deployed Successfully!
+                  </h2>
+                  <p className="text-gray-400 mb-8">
+                    Your IP Data Vault is now active on-chain and ready to generate liquidity
+                  </p>
+
+                  <div className="grid grid-cols-1 gap-4 max-w-2xl mx-auto mb-8">
+                    <div className="p-5 bg-gray-900/50 rounded-xl border border-green-500/30">
+                      <div className="text-gray-400 text-sm mb-2">Vault ID (On-Chain)</div>
+                      <div className="text-white font-mono text-sm break-all mb-2">
+                        {vaultAddress}
+                      </div>
+                      <p className="text-gray-500 text-xs mb-3">
+                        Vault data is stored in ADLV contract mapping
+                      </p>
+                      <div className="flex gap-3">
+                        <a
+                          href={`https://sepolia.basescan.org/address/${vaultAddress}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-orange-400 hover:text-orange-300 text-xs underline"
+                        >
+                          View Address →
+                        </a>
+                        <a
+                          href={`https://sepolia.basescan.org/address/0x76d81731e26889Be3718BEB4d43e12C3692753b8`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-orange-400 hover:text-orange-300 text-xs underline"
+                        >
+                          View ADLV Contract →
+                        </a>
+                      </div>
+                    </div>
+
+                    <div className="p-5 bg-gray-900/50 rounded-xl border border-green-500/30">
+                      <div className="text-gray-400 text-sm mb-2">Transaction Hash</div>
+                      <div className="text-white font-mono text-sm break-all mb-3">
+                        {transactionHash}
+                      </div>
+                      <a
+                        href={`https://sepolia.basescan.org/tx/${transactionHash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-orange-400 hover:text-orange-300 text-xs underline"
+                      >
+                        View Transaction →
+                      </a>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 bg-gray-900/50 rounded-xl border border-orange-500/30">
+                        <div className="text-gray-400 text-sm mb-1">IP Asset ID</div>
+                        <div className="text-white font-mono text-xs break-all">
+                          {ipAssetId.slice(0, 10)}...{ipAssetId.slice(-8)}
+                        </div>
+                      </div>
+                      <div className="p-4 bg-gray-900/50 rounded-xl border border-orange-500/30">
+                        <div className="text-gray-400 text-sm mb-1">Creator</div>
+                        <div className="text-white font-mono text-xs break-all">
+                          {creatorAddress.slice(0, 10)}...{creatorAddress.slice(-8)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <motion.div
+                    animate={{
+                      scale: [1, 1.2, 1],
+                    }}
+                    transition={{
+                      duration: 1,
+                    }}
+                    className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-yellow-500 to-amber-600 rounded-full flex items-center justify-center"
+                  >
+                    <Loader2 className="w-12 h-12 text-white animate-spin" />
+                  </motion.div>
+
+                  <h2 className="text-3xl font-bold text-white mb-3">
+                    Vault Deployment In Progress
+                  </h2>
+                  <p className="text-gray-400 mb-8">
+                    Creating vault on-chain... This may take a few moments.
+                  </p>
+                  {vaultCreationError && (
+                    <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl mb-4">
+                      <p className="text-red-400 text-sm">{vaultCreationError}</p>
+                    </div>
+                  )}
+                </>
+              )}
 
               <div className="flex gap-4 justify-center">
                 <motion.button

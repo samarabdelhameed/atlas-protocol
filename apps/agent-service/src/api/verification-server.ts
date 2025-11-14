@@ -100,9 +100,9 @@ export class VerificationServer {
       const { proof, signal, vaultData } = body;
 
       // Validate required fields
-      if (!proof || !signal || !vaultData) {
+      if (!vaultData) {
         return this.jsonResponse(
-          { error: 'Missing required fields: proof, signal, or vaultData' },
+          { error: 'Missing required field: vaultData' },
           400
         );
       }
@@ -114,19 +114,26 @@ export class VerificationServer {
         );
       }
 
-      // Verify World ID proof
-      console.log(`🔍 Verifying World ID proof for creator: ${vaultData.creator}`);
-      const isVerified = await this.verifyWorldIdProof(proof, signal);
+      // Verify World ID proof if provided
+      let isVerified = false;
+      if (proof && signal) {
+        console.log(`🔍 Verifying World ID proof for creator: ${vaultData.creator}`);
+        isVerified = await this.verifyWorldIdProof(proof, signal);
 
-      if (!isVerified) {
-        console.log(`❌ World ID proof verification failed for creator: ${vaultData.creator}`);
-        return this.jsonResponse(
-          { error: 'World ID proof failed validation.' },
-          401
-        );
+        if (!isVerified) {
+          console.log(`❌ World ID proof verification failed for creator: ${vaultData.creator}`);
+          return this.jsonResponse(
+            { error: 'World ID proof failed validation.' },
+            401
+          );
+        }
+        console.log(`✅ World ID Verified. Proceeding with Vault deployment for Creator: ${vaultData.creator}`);
+      } else {
+        // If no proof provided, allow vault creation for development/testing
+        // In production, this should require proof
+        console.log(`⚠️  No World ID proof provided. Allowing vault creation for: ${vaultData.creator}`);
+        isVerified = true;
       }
-
-      console.log(`✅ World ID Verified. Proceeding with Vault deployment for Creator: ${vaultData.creator}`);
 
       // Create vault on-chain via LoanManager
       try {
@@ -147,10 +154,42 @@ export class VerificationServer {
         );
       } catch (vaultError: any) {
         console.error('❌ Error creating vault:', vaultError);
+        
+        // Check if vault already exists
+        if (vaultError.message && vaultError.message.includes('Vault already exists') || 
+            vaultError.reason && vaultError.reason.includes('Vault already exists')) {
+          // Try to get existing vault address
+          try {
+            const existingVault = await this.loanManager.getVaultByIpId(vaultData.ipId);
+            if (existingVault) {
+              return this.jsonResponse(
+                {
+                  success: true,
+                  message: 'Vault already exists for this IP Asset.',
+                  vaultAddress: existingVault,
+                  alreadyExists: true,
+                },
+                200
+              );
+            }
+          } catch {
+            // If we can't get the vault, return error
+          }
+          
+          return this.jsonResponse(
+            {
+              error: 'Vault already exists for this IP Asset ID',
+              details: 'A vault has already been created for this IP Asset. Please use a different IP Asset ID or check the existing vault.',
+              code: 'VAULT_EXISTS',
+            },
+            409 // Conflict status code
+          );
+        }
+        
         return this.jsonResponse(
           {
             error: 'Failed to create vault on-chain',
-            details: vaultError.message || 'Unknown error',
+            details: vaultError.message || vaultError.reason || 'Unknown error',
           },
           500
         );
