@@ -1,7 +1,5 @@
-import { BigInt, Bytes } from "@graphprotocol/graph-ts";
+import { BigInt, Address } from "@graphprotocol/graph-ts";
 import {
-  IPAsset,
-  IPAssetUsage,
   IDOVault,
   DataLicenseSale,
   Loan,
@@ -9,98 +7,23 @@ import {
   LoanPayment,
   GlobalStats,
 } from "../generated/schema";
-
-// ========================================
-// CORE HANDLER 1: IP Registration (Story Protocol)
-// ========================================
-
-export function handleIPRegistered(event: any): void {
-  let asset = new IPAsset(event.params.ipId.toHex());
-  
-  asset.ipId = event.params.ipId;
-  asset.name = event.params.name;
-  asset.description = event.params.description;
-  asset.creator = event.params.creator;
-  asset.ipHash = event.params.ipHash;
-  asset.timestamp = event.block.timestamp;
-  asset.blockNumber = event.block.number;
-  
-  // Initialize licensing terms
-  asset.commercialUse = false;
-  asset.derivatives = false;
-  asset.royaltyPercent = BigInt.fromI32(0);
-  asset.mintingFee = BigInt.fromI32(0);
-  
-  // Initialize CVS metrics
-  asset.totalUsageCount = BigInt.fromI32(0);
-  asset.totalLicenseRevenue = BigInt.fromI32(0);
-  asset.totalRemixes = BigInt.fromI32(0);
-  asset.cvsScore = BigInt.fromI32(0);
-  
-  asset.save();
-  
-  updateGlobalStats("ipAsset");
-}
-
-// ========================================
-// IP Usage Tracking (for CVS calculation)
-// ========================================
-
-export function handleIPUsed(event: any): void {
-  let usageId = event.transaction.hash.toHex() + "-" + event.logIndex.toString();
-  let usage = new IPAssetUsage(usageId);
-  
-  usage.ipAsset = event.params.ipId.toHex();
-  usage.user = event.params.user;
-  usage.usageType = event.params.usageType;
-  usage.timestamp = event.block.timestamp;
-  usage.blockNumber = event.block.number;
-  usage.transactionHash = event.transaction.hash;
-  usage.revenueGenerated = event.params.revenue;
-  usage.cvsImpact = calculateCVSImpact(event.params.usageType, event.params.revenue);
-  
-  usage.save();
-  
-  // Update IP Asset metrics
-  let asset = IPAsset.load(event.params.ipId.toHex());
-  if (asset) {
-    asset.totalUsageCount = asset.totalUsageCount.plus(BigInt.fromI32(1));
-    asset.totalLicenseRevenue = asset.totalLicenseRevenue.plus(event.params.revenue);
-    asset.cvsScore = asset.cvsScore.plus(usage.cvsImpact);
-    asset.save();
-  }
-}
-
-export function handleIPRemixed(event: any): void {
-  let usageId = event.transaction.hash.toHex() + "-" + event.logIndex.toString();
-  let usage = new IPAssetUsage(usageId);
-  
-  usage.ipAsset = event.params.originalIPId.toHex();
-  usage.user = event.params.remixer;
-  usage.usageType = "remix";
-  usage.timestamp = event.block.timestamp;
-  usage.blockNumber = event.block.number;
-  usage.transactionHash = event.transaction.hash;
-  usage.revenueGenerated = BigInt.fromI32(0);
-  usage.cvsImpact = BigInt.fromI32(100); // Base CVS increment for remix
-  
-  usage.save();
-  
-  // Update IP Asset remix count
-  let asset = IPAsset.load(event.params.originalIPId.toHex());
-  if (asset) {
-    asset.totalRemixes = asset.totalRemixes.plus(BigInt.fromI32(1));
-    asset.totalUsageCount = asset.totalUsageCount.plus(BigInt.fromI32(1));
-    asset.cvsScore = asset.cvsScore.plus(usage.cvsImpact);
-    asset.save();
-  }
-}
+import {
+  VaultCreated,
+  LicenseSold,
+  LoanIssued,
+  CVSUpdated,
+  LoanRepaid,
+  LoanDefaulted,
+  LoanLiquidated,
+  Deposited,
+  Withdrawn,
+} from "../generated/AtlasADLV/AtlasADLV";
 
 // ========================================
 // Vault Management
 // ========================================
 
-export function handleVaultCreated(event: any): void {
+export function handleVaultCreated(event: VaultCreated): void {
   let vault = new IDOVault(event.params.vaultAddress.toHex());
   
   vault.vaultAddress = event.params.vaultAddress;
@@ -137,7 +60,7 @@ export function handleVaultCreated(event: any): void {
 // CORE HANDLER 2: License Sale (CVS Calculation)
 // ========================================
 
-export function handleLicenseSale(event: any): void {
+export function handleLicenseSale(event: LicenseSold): void {
   let saleId = event.transaction.hash.toHex() + "-" + event.logIndex.toString();
   let sale = new DataLicenseSale(saleId);
   
@@ -188,22 +111,21 @@ export function handleLicenseSale(event: any): void {
     vault.save();
   }
   
-  // Update IP Asset
-  let asset = IPAsset.load(event.params.ipId.toHex());
-  if (asset) {
-    asset.totalLicenseRevenue = asset.totalLicenseRevenue.plus(event.params.price);
-    asset.cvsScore = asset.cvsScore.plus(sale.cvsIncrement);
-    asset.save();
-  }
-  
   updateGlobalStats("license");
+  
+  // Update global stats timestamp
+  let stats = GlobalStats.load("global");
+  if (stats) {
+    stats.lastUpdated = event.block.timestamp;
+    stats.save();
+  }
 }
 
 // ========================================
 // CORE HANDLER 3: Loan Issuance (Based on CVS)
 // ========================================
 
-export function handleLoanIssued(event: any): void {
+export function handleLoanIssued(event: LoanIssued): void {
   let loanId = event.params.vaultAddress.toHex() + "-" + event.params.loanId.toString();
   let loan = new Loan(loanId);
   
@@ -258,13 +180,20 @@ export function handleLoanIssued(event: any): void {
   }
   
   updateGlobalStats("loan");
+  
+  // Update global stats timestamp
+  let stats = GlobalStats.load("global");
+  if (stats) {
+    stats.lastUpdated = event.block.timestamp;
+    stats.save();
+  }
 }
 
 // ========================================
 // CVS Update Handler
 // ========================================
 
-export function handleCVSUpdated(event: any): void {
+export function handleCVSUpdated(event: CVSUpdated): void {
   let vault = IDOVault.load(event.params.vaultAddress.toHex());
   
   if (vault) {
@@ -284,7 +213,7 @@ export function handleCVSUpdated(event: any): void {
 // Loan Management Handlers
 // ========================================
 
-export function handleLoanRepaid(event: any): void {
+export function handleLoanRepaid(event: LoanRepaid): void {
   let loanId = event.params.vaultAddress.toHex() + "-" + event.params.loanId.toString();
   let loan = Loan.load(loanId);
   
@@ -327,7 +256,7 @@ export function handleLoanRepaid(event: any): void {
   }
 }
 
-export function handleLoanDefaulted(event: any): void {
+export function handleLoanDefaulted(event: LoanDefaulted): void {
   let loanId = event.params.vaultAddress.toHex() + "-" + event.params.loanId.toString();
   let loan = Loan.load(loanId);
   
@@ -345,11 +274,29 @@ export function handleLoanDefaulted(event: any): void {
   }
 }
 
+export function handleLoanLiquidated(event: LoanLiquidated): void {
+  let loanId = event.params.vaultAddress.toHex() + "-" + event.params.loanId.toString();
+  let loan = Loan.load(loanId);
+  
+  if (loan) {
+    loan.status = "Liquidated";
+    loan.save();
+    
+    // Update vault
+    let vault = IDOVault.load(event.params.vaultAddress.toHex());
+    if (vault) {
+      vault.activeLoansCount = vault.activeLoansCount.minus(BigInt.fromI32(1));
+      vault.updatedAt = event.block.timestamp;
+      vault.save();
+    }
+  }
+}
+
 // ========================================
 // Vault Deposit/Withdrawal Handlers
 // ========================================
 
-export function handleDeposited(event: any): void {
+export function handleDeposited(event: Deposited): void {
   let depositId = event.transaction.hash.toHex() + "-" + event.logIndex.toString();
   let deposit = new Deposit(depositId);
   
@@ -372,7 +319,7 @@ export function handleDeposited(event: any): void {
   }
 }
 
-export function handleWithdrawn(event: any): void {
+export function handleWithdrawn(event: Withdrawn): void {
   let vault = IDOVault.load(event.params.vaultAddress.toHex());
   
   if (vault) {
@@ -386,18 +333,6 @@ export function handleWithdrawn(event: any): void {
 // ========================================
 // Helper Functions for CVS Calculation
 // ========================================
-
-function calculateCVSImpact(usageType: string, revenue: BigInt): BigInt {
-  // Different usage types have different CVS impacts
-  if (usageType == "commercial") {
-    return revenue.div(BigInt.fromI32(100)); // 1% of revenue
-  } else if (usageType == "derivative") {
-    return revenue.div(BigInt.fromI32(50)); // 2% of revenue
-  } else if (usageType == "remix") {
-    return BigInt.fromI32(100); // Fixed increment
-  }
-  return BigInt.fromI32(10); // Default small increment
-}
 
 function calculateCVSIncrementFromLicense(licenseType: string, price: BigInt): BigInt {
   // License sales have significant CVS impact
@@ -453,16 +388,15 @@ function updateGlobalStats(type: string): void {
     stats.totalIDOPools = BigInt.fromI32(0);
     stats.totalBridgeTransactions = BigInt.fromI32(0);
     stats.totalVerifiedUsers = BigInt.fromI32(0);
+    stats.lastUpdated = BigInt.fromI32(0);
   }
   
-  if (type == "ipAsset") {
-    stats.totalIPAssets = stats.totalIPAssets.plus(BigInt.fromI32(1));
-  } else if (type == "license") {
+  if (type == "license") {
     stats.totalLicenses = stats.totalLicenses.plus(BigInt.fromI32(1));
   } else if (type == "loan") {
     stats.totalLoans = stats.totalLoans.plus(BigInt.fromI32(1));
   }
   
-  stats.lastUpdated = BigInt.fromI32(0); // Update with actual timestamp
+  // Note: lastUpdated will be set by individual handlers
   stats.save();
 }

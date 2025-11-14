@@ -112,6 +112,28 @@ bun run dev
 - **[Deployment Guide](./DEPLOYMENT_GUIDE.md)** - Complete deployment instructions
 - **[Contracts Documentation](./contracts/DEPLOYMENT.md)** - Smart contract details
 - **[Agent Service README](./apps/agent-service/README.md)** - Backend service guide
+- **[Subgraph Deployment](./subgraph/DEPLOYMENT_GUIDE.md)** - Goldsky subgraph deployment guide
+- **[Subgraph Quick Deploy](./SUBGRAPH_DEPLOY.md)** - Quick subgraph deployment steps
+
+## 🔗 Quick Links
+
+### Deployed Contracts
+- **IDO Contract:** [`0xB176c1FA7B3feC56cB23681B6E447A7AE60C5254`](https://testnet.storyscan.xyz/address/0xB176c1FA7B3feC56cB23681B6E447A7AE60C5254)
+- **ADLV Contract:** [`0x76d81731e26889Be3718BEB4d43e12C3692753b8`](https://testnet.storyscan.xyz/address/0x76d81731e26889Be3718BEB4d43e12C3692753b8)
+
+### Transactions
+- **IDO Deployment:** [`0xea8e83b28fb2cdbb8ed3be2cee057e976493541840577149362d49ae02503c9c`](https://testnet.storyscan.xyz/tx/0xea8e83b28fb2cdbb8ed3be2cee057e976493541840577149362d49ae02503c9c)
+- **ADLV Deployment:** [`0x2418ae25c4831027099d543525f1c0171074e38fc95e3c523007ed05577ed877`](https://testnet.storyscan.xyz/tx/0x2418ae25c4831027099d543525f1c0171074e38fc95e3c523007ed05577ed877)
+
+### Network & Explorer
+- **Network:** Story Protocol Testnet
+- **Chain ID:** 1315
+- **RPC URL:** https://rpc-storyevm-testnet.aldebaranode.xyz
+- **Explorer:** https://testnet.storyscan.xyz
+
+### Subgraph
+- **Status:** ⚠️ Ready for deployment (see [Subgraph section](#-subgraph-goldsky))
+- **Deployment Guide:** [subgraph/DEPLOYMENT_GUIDE.md](./subgraph/DEPLOYMENT_GUIDE.md)
 
 ## 🌐 Network Configuration
 
@@ -148,6 +170,50 @@ bun run dev
   - ✅ ADLV IDO Reference = IDO Contract
   - ✅ Contracts deployed and accessible via RPC
 
+## 📊 Subgraph (Goldsky)
+
+### Status
+- **Network:** Story Protocol Testnet (story-testnet)
+- **Status:** ⚠️ Ready for deployment (not deployed yet)
+- **Configuration:** ✅ Updated with correct contract addresses
+
+### Contract Addresses in Subgraph
+- **IDO Contract:** `0xB176c1FA7B3feC56cB23681B6E447A7AE60C5254`
+- **ADLV Contract:** `0x76d81731e26889Be3718BEB4d43e12C3692753b8`
+
+### Deployment Steps
+
+1. **Install Goldsky CLI:**
+   ```bash
+   npm install -g @goldskycom/cli
+   ```
+
+2. **Create Goldsky Account:**
+   - Go to [Goldsky](https://goldsky.com)
+   - Create project and get `GOLDSKY_API_KEY` and `GOLDSKY_PROJECT_ID`
+
+3. **Setup Environment:**
+   ```bash
+   cd subgraph
+   # Create .env file with:
+   # GOLDSKY_API_KEY=your_api_key
+   # GOLDSKY_PROJECT_ID=your_project_id
+   ```
+
+4. **Build and Deploy:**
+   ```bash
+   npm run codegen
+   npm run build
+   ./deploy-goldsky.sh
+   ```
+
+5. **Update SUBGRAPH_URL:**
+   After deployment, update:
+   - `apps/agent-service/.env`: `SUBGRAPH_URL=https://api.goldsky.com/api/public/atlas-protocol/subgraphs/atlas-v1`
+   - `apps/web/.env`: `NEXT_PUBLIC_SUBGRAPH_URL=https://api.goldsky.com/api/public/atlas-protocol/subgraphs/atlas-v1`
+
+**Note:** Subgraph endpoint will be available after deployment from Goldsky dashboard.
+
 ## 🧪 Testing
 
 ### Smart Contracts
@@ -181,6 +247,11 @@ cd apps/agent-service
 - `CHAIN_ID` - Chain ID (1315)
 - `PRIVATE_KEY` - For signing transactions
 
+**Subgraph:**
+- `GOLDSKY_API_KEY` - Goldsky API key (for deployment)
+- `GOLDSKY_PROJECT_ID` - Goldsky project ID (for deployment)
+- `SUBGRAPH_URL` - GraphQL endpoint (after deployment)
+
 **Optional:**
 - `OWLTO_API_KEY` - For cross-chain loans
 - `ABV_API_KEY` - For GenAI licensing
@@ -202,6 +273,7 @@ cd apps/agent-service
 
 ### 🚧 In Progress
 
+- [ ] Subgraph deployment on Goldsky
 - [ ] World ID integration in frontend
 - [ ] Full frontend-backend integration
 - [ ] Production deployment
