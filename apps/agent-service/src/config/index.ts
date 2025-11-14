@@ -20,7 +20,9 @@ export const config = {
   // Owlto Finance
   owlto: {
     apiKey: process.env.OWLTO_API_KEY || '',
-    bridgeUrl: process.env.OWLTO_BRIDGE_URL || '',
+    bridgeUrl: process.env.OWLTO_BRIDGE_URL || 'https://api.owlto.finance/api/v2/bridge',
+    slippage: process.env.OWLTO_SLIPPAGE || '0.5',
+    referralCode: process.env.OWLTO_REFERRAL_CODE || '',
   },
   
   // World ID
@@ -31,5 +33,17 @@ export const config = {
   
   // Private Key (for testing)
   privateKey: process.env.PRIVATE_KEY || '',
+  
+  // Contract Addresses
+  contracts: {
+    adlv: process.env.ADLV_ADDRESS || '' as `0x${string}`,
+    ido: process.env.IDO_ADDRESS || '' as `0x${string}`,
+  },
+  
+  // Chain Configuration
+  chain: {
+    id: parseInt(process.env.CHAIN_ID || '8453'), // Base mainnet
+    name: process.env.CHAIN_NAME || 'Base',
+  },
 };
 
