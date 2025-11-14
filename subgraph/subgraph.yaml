@@ -40,7 +40,7 @@ dataSources:
     name: AtlasADLV
     network: story-testnet
     source:
-      address: "0x0000000000000000000000000000000000000000" # Atlas ADLV Contract address
+      address: "0x76d81731e26889Be3718BEB4d43e12C3692753b8" # Atlas ADLV Contract address (deployed)
       abi: AtlasADLV
       startBlock: 0
     mapping:
@@ -85,9 +85,9 @@ dataSources:
   # ========================================
   - kind: ethereum
     name: IDOContract
-    network: mainnet
+    network: story-testnet
     source:
-      address: "0x0000000000000000000000000000000000000000" # Update with deployed address
+      address: "0xB176c1FA7B3feC56cB23681B6E447A7AE60C5254" # IDO Contract address (deployed on Story Protocol Testnet)
       abi: IDOContract
       startBlock: 0
     mapping:
