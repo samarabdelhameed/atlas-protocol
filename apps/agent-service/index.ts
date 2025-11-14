@@ -1,7 +1,10 @@
 import { ethers } from 'ethers';
 import { createPublicClient, http } from 'viem';
-import { cvsEngine } from './src/services/cvs-engine';
-import { config } from './src/config';
+import { cvsEngine } from './src/services/cvs-engine.js';
+import { LoanManager } from './src/services/loan-manager.js';
+import { LicensingAgent } from './src/services/licensing-agent.js';
+import { ContractMonitor } from './src/services/contract-monitor.js';
+import { config } from './src/config/index.js';
 
 /**
  * Atlas Protocol Agent Service
@@ -9,14 +12,19 @@ import { config } from './src/config';
  * Core backend service for:
  * - CVS (Collateral Value Score) monitoring
  * - IP Data Oracle ingestion from Goldsky
- * - Loan risk assessment
+ * - Loan risk assessment and management
  * - Cross-Chain Bridging (Owlto Finance)
+ * - GenAI Licensing (abv.dev)
+ * - Contract event monitoring
  * - Story Protocol integration
  * - World ID verification
  */
 
 class AgentService {
   private provider: ethers.Provider;
+  private loanManager: LoanManager | null = null;
+  private licensingAgent: LicensingAgent | null = null;
+  private contractMonitor: ContractMonitor | null = null;
 
   constructor() {
     console.log('🚀 Initializing Atlas Agent Service...');
@@ -26,6 +34,26 @@ class AgentService {
     this.provider = new ethers.JsonRpcProvider(
       config.rpcUrl
     );
+
+    // Initialize contract services if addresses are configured
+    if (config.contracts.adlv && config.contracts.ido) {
+      this.loanManager = new LoanManager(
+        config.contracts.adlv,
+        config.contracts.ido,
+        config.rpcUrl
+      );
+
+      this.licensingAgent = new LicensingAgent(
+        config.contracts.adlv,
+        config.contracts.ido,
+        config.chain.id
+      );
+
+      this.contractMonitor = new ContractMonitor(
+        config.contracts.adlv,
+        config.contracts.ido
+      );
+    }
   }
 
   async start() {
@@ -36,10 +64,33 @@ class AgentService {
     console.log('   ✓ Loan Monitor - Checking for liquidations');
     console.log('   ✓ Subgraph Client - Querying Goldsky');
     console.log('   ✓ IP Data Oracle - Ready for ingestion');
+    
+    if (this.loanManager) {
+      console.log('   ✓ Loan Manager - IPFi integration ready');
+    }
+    
+    if (this.licensingAgent) {
+      console.log('   ✓ Licensing Agent - GenAI licensing ready');
+    }
+    
+    if (this.contractMonitor) {
+      console.log('   ✓ Contract Monitor - Event monitoring ready');
+    }
+    
     console.log('═══════════════════════════════════════════\n');
 
     // Start CVS monitoring
     this.startCVSMonitoring();
+
+    // Start loan event monitoring (includes Owlto Finance integration)
+    if (this.loanManager) {
+      this.loanManager.startMonitoring();
+    }
+
+    // Start contract event monitoring
+    if (this.contractMonitor) {
+      this.contractMonitor.startMonitoring();
+    }
 
     // Display initial stats
     await this.displayStats();
@@ -125,8 +176,37 @@ class AgentService {
   async shutdown() {
     console.log('\n🛑 Shutting down Agent Service...');
     cvsEngine.stopMonitoring();
+    
+    if (this.loanManager) {
+      this.loanManager.stopMonitoring();
+    }
+    
+    if (this.contractMonitor) {
+      this.contractMonitor.stopMonitoring();
+    }
+    
     console.log('✅ Agent Service stopped');
     process.exit(0);
+  }
+
+  /**
+   * Get Loan Manager instance
+   */
+  getLoanManager(): LoanManager {
+    if (!this.loanManager) {
+      throw new Error('Loan Manager not initialized. Set ADLV_ADDRESS and IDO_ADDRESS in config.');
+    }
+    return this.loanManager;
+  }
+
+  /**
+   * Get Licensing Agent instance
+   */
+  getLicensingAgent(): LicensingAgent {
+    if (!this.licensingAgent) {
+      throw new Error('Licensing Agent not initialized. Set ADLV_ADDRESS and IDO_ADDRESS in config.');
+    }
+    return this.licensingAgent;
   }
 }
 
