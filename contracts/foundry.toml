@@ -6,4 +6,10 @@ via_ir = true
 optimizer = true
 optimizer_runs = 200
 
+# Story Protocol Testnet profile
+# Usage: forge script script/Deploy.s.sol:DeployScript --rpc-url $STORY_PROTOCOL_RPC --broadcast --private-key $PRIVATE_KEY
+[profile.story]
+# Use this profile when deploying to Story Protocol testnet
+# Set STORY_PROTOCOL_RPC in .env file
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

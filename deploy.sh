@@ -95,7 +95,8 @@ if [ -n "$STORY_PROTOCOL_RPC" ]; then
     RPC_URL="$STORY_PROTOCOL_RPC"
     SCRIPT="script/DeployToStory.s.sol:DeployToStoryScript"
     NETWORK="Story Protocol"
-    EXPLORER_BASE="https://story-testnet.blockscout.com"
+    # Explorer may not be available - check Story Protocol docs
+    EXPLORER_BASE=""
 else
     RPC_URL="${RPC_URL:-https://sepolia.base.org}"
     SCRIPT="script/Deploy.s.sol:DeployScript"

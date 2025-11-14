@@ -75,11 +75,13 @@ cp .env.example .env
 # Edit .env with your PRIVATE_KEY
 # STORY_PROTOCOL_RPC is already set to: https://rpc-storyevm-testnet.aldebaranode.xyz
 
-# Deploy to Story Protocol
-./scripts/deploy-story.sh
+# Deploy to Story Protocol using Deploy.s.sol
+./scripts/deploy-to-story.sh
 # Or use the main deployment script:
 cd .. && ./deploy.sh
 ```
+
+**Note:** Contracts are already deployed on Story Protocol Testnet. See [Deployed Contracts](#-deployed-contracts) section for addresses and explorer links.
 
 ### 2. Setup Agent Service
 
@@ -115,8 +117,36 @@ bun run dev
 
 ### Story Protocol Testnet
 - **RPC URL:** https://rpc-storyevm-testnet.aldebaranode.xyz
-- **Explorer:** Check Story Protocol documentation
-- **Chain ID:** Check Story Protocol documentation
+- **Explorer:** https://testnet.storyscan.xyz
+- **Chain ID:** 1315
+
+## 📍 Deployed Contracts
+
+### ✅ Verified Contracts on Story Protocol Testnet
+
+#### IDO Contract (IP Data Oracle)
+- **Address:** [`0xB176c1FA7B3feC56cB23681B6E447A7AE60C5254`](https://testnet.storyscan.xyz/address/0xB176c1FA7B3feC56cB23681B6E447A7AE60C5254)
+- **Transaction:** [`0xea8e83b28fb2cdbb8ed3be2cee057e976493541840577149362d49ae02503c9c`](https://testnet.storyscan.xyz/tx/0xea8e83b28fb2cdbb8ed3be2cee057e976493541840577149362d49ae02503c9c)
+- **Owner:** ADLV Contract (0x76d81731e26889Be3718BEB4d43e12C3692753b8)
+- **Function:** Manages CVS scores and license revenue tracking
+
+#### ADLV Contract (Automated Data Licensing Vault)
+- **Address:** [`0x76d81731e26889Be3718BEB4d43e12C3692753b8`](https://testnet.storyscan.xyz/address/0x76d81731e26889Be3718BEB4d43e12C3692753b8)
+- **Transaction:** [`0x2418ae25c4831027099d543525f1c0171074e38fc95e3c523007ed05577ed877`](https://testnet.storyscan.xyz/tx/0x2418ae25c4831027099d543525f1c0171074e38fc95e3c523007ed05577ed877)
+- **IDO Reference:** IDO Contract (0xB176c1FA7B3feC56cB23681B6E447A7AE60C5254)
+- **Function:** Manages vaults, loans, and revenue distribution
+
+### Deployment Information
+- **Network:** Story Protocol Testnet
+- **Chain ID:** 1315
+- **Deployer:** `0xdAFEE25F98Ff62504C1086eAcbb406190F3110D5`
+- **RPC URL:** https://rpc-storyevm-testnet.aldebaranode.xyz
+- **Explorer Base:** https://testnet.storyscan.xyz
+- **Status:** ✅ Verified and working on network
+- **Verification:**
+  - ✅ IDO Owner = ADLV Contract
+  - ✅ ADLV IDO Reference = IDO Contract
+  - ✅ Contracts deployed and accessible via RPC
 
 ## 🧪 Testing
 
@@ -145,9 +175,10 @@ cd apps/agent-service
 - `STORY_PROTOCOL_RPC` - Story Protocol RPC URL (default: https://rpc-storyevm-testnet.aldebaranode.xyz)
 
 **Agent Service:**
-- `ADLV_ADDRESS` - Deployed ADLV contract address
-- `IDO_ADDRESS` - Deployed IDO contract address
-- `RPC_URL` - RPC endpoint
+- `ADLV_ADDRESS` - Deployed ADLV contract address (`0x76d81731e26889Be3718BEB4d43e12C3692753b8`)
+- `IDO_ADDRESS` - Deployed IDO contract address (`0xB176c1FA7B3feC56cB23681B6E447A7AE60C5254`)
+- `RPC_URL` - RPC endpoint (https://rpc-storyevm-testnet.aldebaranode.xyz)
+- `CHAIN_ID` - Chain ID (1315)
 - `PRIVATE_KEY` - For signing transactions
 
 **Optional:**

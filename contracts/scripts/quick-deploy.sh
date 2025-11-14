@@ -79,7 +79,8 @@ echo ""
 
 # Generate explorer links
 if [[ "$RPC_URL" == *"story"* ]] || [[ "$RPC_URL" == *"Story"* ]]; then
-    EXPLORER_BASE="https://story-testnet.blockscout.com"
+    # Explorer may not be available - check Story Protocol docs
+    EXPLORER_BASE=""
 else
     if [[ "$RPC_URL" == *"sepolia"* ]]; then
         EXPLORER_BASE="https://sepolia.basescan.org"
