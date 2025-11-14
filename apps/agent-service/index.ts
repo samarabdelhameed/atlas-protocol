@@ -46,7 +46,7 @@ class AgentService {
       this.licensingAgent = new LicensingAgent(
         config.contracts.adlv,
         config.contracts.ido,
-        config.chain.id
+        config.rpcUrl
       );
 
       this.contractMonitor = new ContractMonitor(
@@ -85,6 +85,11 @@ class AgentService {
     // Start loan event monitoring (includes Owlto Finance integration)
     if (this.loanManager) {
       this.loanManager.startMonitoring();
+    }
+
+    // Start license event monitoring (includes abv.dev integration)
+    if (this.licensingAgent) {
+      this.licensingAgent.startMonitoring();
     }
 
     // Start contract event monitoring
@@ -179,6 +184,10 @@ class AgentService {
     
     if (this.loanManager) {
       this.loanManager.stopMonitoring();
+    }
+    
+    if (this.licensingAgent) {
+      this.licensingAgent.stopMonitoring();
     }
     
     if (this.contractMonitor) {

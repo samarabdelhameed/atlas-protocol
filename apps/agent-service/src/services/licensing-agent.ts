@@ -3,16 +3,19 @@
  * 
  * Handles GenAI licensing through abv.dev
  * Integrates with ADLV contract for revenue distribution
+ * Automatically updates CVS after license sales
  */
 
-import { createPublicClient, createWalletClient, http, type Address, type Hash } from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
+import { Contract, Wallet, JsonRpcProvider, type EventLog } from 'ethers';
 import { config } from '../config/index.js';
 import ADLV_ABI from '../../contracts/ADLV.json' assert { type: 'json' };
 import IDO_ABI from '../../contracts/IDO.json' assert { type: 'json' };
 
+// abv.dev API URL
+const ABV_API_URL = process.env.ABV_API_URL || 'https://api.abv.dev/v1/licenses';
+
 export interface LicenseRequest {
-  vaultAddress: Address;
+  vaultAddress: string;
   licenseType: 'exclusive' | 'commercial' | 'derivative' | 'standard';
   price: bigint;
   duration?: number; // in seconds, optional
@@ -24,7 +27,7 @@ export interface LicenseRequest {
 }
 
 export interface LicenseResponse {
-  transactionHash: Hash;
+  transactionHash: string;
   licenseId?: string; // If abv.dev returns a license ID
   revenueDistribution: {
     protocolFee: bigint;
@@ -34,75 +37,289 @@ export interface LicenseResponse {
 }
 
 export class LicensingAgent {
-  private publicClient: ReturnType<typeof createPublicClient>;
-  private walletClient: ReturnType<typeof createWalletClient> | null = null;
-  private adlvAddress: Address;
-  private idoAddress: Address;
+  private provider: JsonRpcProvider;
+  private signer: Wallet | null = null;
+  private adlvContract: Contract;
+  private idoContract: Contract;
   private abvApiKey: string;
+  private isMonitoring: boolean = false;
 
   constructor(
-    adlvAddress: Address,
-    idoAddress: Address,
-    chainId: number = 8453 // Base mainnet
+    adlvAddress: string,
+    idoAddress: string,
+    rpcUrl?: string
   ) {
-    this.adlvAddress = adlvAddress;
-    this.idoAddress = idoAddress;
+    const providerUrl = rpcUrl || config.rpcUrl;
+    this.provider = new JsonRpcProvider(providerUrl);
+
+    // Initialize signer if private key is provided
+    if (config.privateKey) {
+      this.signer = new Wallet(config.privateKey, this.provider);
+    }
+
+    // Initialize contracts
+    this.adlvContract = new Contract(
+      adlvAddress,
+      ADLV_ABI,
+      this.signer || this.provider
+    );
+
+    this.idoContract = new Contract(
+      idoAddress,
+      IDO_ABI,
+      this.signer || this.provider
+    );
+
     this.abvApiKey = config.abv.apiKey;
 
-    // Initialize public client
-    this.publicClient = createPublicClient({
-      transport: http(config.rpcUrl),
-    });
+    console.log('✅ LicensingAgent initialized');
+    console.log(`   ADLV Contract: ${adlvAddress}`);
+    console.log(`   IDO Contract: ${idoAddress}`);
+  }
 
-    // Initialize wallet client if private key is provided
-    if (config.privateKey) {
-      const account = privateKeyToAccount(config.privateKey as `0x${string}`);
-      this.walletClient = createWalletClient({
-        account,
-        transport: http(config.rpcUrl),
-      });
+  /**
+   * Start monitoring LicenseSold events from ADLV contract
+   */
+  public startMonitoring(): void {
+    if (this.isMonitoring) {
+      console.log('⚠️  License monitoring already active');
+      return;
+    }
+
+    this.isMonitoring = true;
+    console.log('🔍 Starting license event monitoring...');
+
+    // Listen for LicenseSold events
+    this.adlvContract.on('LicenseSold', this.handleLicenseSaleEvent.bind(this));
+
+    // Also listen for CVS updates
+    this.idoContract.on('CVSUpdated', this.handleCVSUpdatedEvent.bind(this));
+
+    console.log('✅ License event monitoring active');
+  }
+
+  /**
+   * Stop monitoring events
+   */
+  public stopMonitoring(): void {
+    if (!this.isMonitoring) {
+      return;
+    }
+
+    this.isMonitoring = false;
+    this.adlvContract.removeAllListeners('LicenseSold');
+    this.idoContract.removeAllListeners('CVSUpdated');
+    console.log('🛑 License monitoring stopped');
+  }
+
+  /**
+   * Handle LicenseSold event - Main function for GenAI licensing
+   * This is called automatically when a license is sold
+   */
+  private async handleLicenseSaleEvent(
+    vaultAddress: string,
+    ipId: string,
+    licensee: string,
+    price: bigint,
+    licenseType: string,
+    event: EventLog
+  ): Promise<void> {
+    const priceEth = Number(price) / 1e18;
+    
+    console.log('\n🎫 LicenseSold Event Detected!');
+    console.log('═══════════════════════════════════════════');
+    console.log(`   Vault: ${vaultAddress}`);
+    console.log(`   IP ID: ${ipId}`);
+    console.log(`   Licensee: ${licensee}`);
+    console.log(`   Price: ${priceEth} tokens`);
+    console.log(`   License Type: ${licenseType}`);
+    console.log('═══════════════════════════════════════════\n');
+
+    try {
+      // Get vault details to calculate revenue distribution
+      const vault = await this.adlvContract.getVault(vaultAddress);
+      
+      // Calculate revenue amounts (protocol fee already deducted in contract)
+      const protocolFeeBps = await this.adlvContract.protocolFeeBps();
+      const creatorShareBps = await this.adlvContract.creatorShareBps();
+      
+      const protocolFee = (price * protocolFeeBps) / BigInt(10000);
+      const creatorShare = (price * creatorShareBps) / BigInt(10000);
+      const vaultShare = price - protocolFee - creatorShare;
+
+      // [Step 1: Update CVS via IDO contract]
+      const newCVSScore = await this.calculateNewCVS(ipId, price, licenseType);
+
+      try {
+        await this.updateCVSAfterLicenseSale(ipId, newCVSScore);
+        console.log(`✅ CVS for ${ipId} updated successfully to ${newCVSScore.toString()}`);
+      } catch (error) {
+        console.error(`❌ ERROR updating CVS for ${ipId}:`, error);
+      }
+
+      // [Step 2: Register license with abv.dev]
+      try {
+        const licenseId = await this.registerLicenseWithABV({
+          ipId,
+          vaultAddress,
+          licensee,
+          licenseType,
+          totalAmount: price.toString(),
+          vaultShare: vaultShare.toString(),
+          creatorShare: creatorShare.toString(),
+        });
+        console.log(`✅ License successfully registered with abv.dev. License ID: ${licenseId}`);
+      } catch (error) {
+        console.error(`❌ ERROR registering license with abv.dev:`, error);
+        // Continue even if abv.dev registration fails
+      }
+    } catch (error) {
+      console.error(`❌ ERROR processing license sale for IP ${ipId}:`, error);
     }
   }
 
   /**
-   * Sell a license for an IP asset
+   * Handle CVSUpdated event
+   */
+  private async handleCVSUpdatedEvent(
+    ipId: string,
+    newCVS: bigint,
+    oldCVS: bigint,
+    event: EventLog
+  ): Promise<void> {
+    console.log(`\n📈 CVS Updated for IP ${ipId}`);
+    console.log(`   Old CVS: ${oldCVS.toString()}`);
+    console.log(`   New CVS: ${newCVS.toString()}`);
+    console.log(`   Change: +${(newCVS - oldCVS).toString()}\n`);
+  }
+
+  /**
+   * Calculate new CVS based on license sale
+   * Uses the same logic as the IDO contract
+   */
+  private async calculateNewCVS(
+    ipId: string,
+    salePrice: bigint,
+    licenseType: string
+  ): Promise<bigint> {
+    // Get current CVS from IDO
+    const currentCVS = await this.idoContract.getCVS(ipId);
+
+    // Calculate CVS increment based on license type
+    const cvsIncrement = this.calculateCVSIncrement(licenseType, salePrice);
+
+    return currentCVS + cvsIncrement;
+  }
+
+  /**
+   * Calculate CVS increment from license sale
+   * This matches the logic in the IDO contract
+   */
+  private calculateCVSIncrement(licenseType: string, price: bigint): bigint {
+    switch (licenseType.toLowerCase()) {
+      case 'exclusive':
+        return price / BigInt(10); // 10% of price
+      case 'commercial':
+        return price / BigInt(20); // 5% of price
+      case 'derivative':
+        return price / BigInt(25); // 4% of price
+      case 'standard':
+      default:
+        return price / BigInt(50); // 2% of price
+    }
+  }
+
+  /**
+   * Update CVS after license sale
+   * Called automatically when LicenseSold event is detected
+   */
+  private async updateCVSAfterLicenseSale(
+    ipId: string,
+    newCVS: bigint
+  ): Promise<string> {
+    if (!this.signer) {
+      throw new Error('Signer not initialized. Provide PRIVATE_KEY in config.');
+    }
+
+    // Update CVS in IDO contract
+    // Note: IDO contract must be owned by this service (or ADLV contract)
+    const tx = await this.idoContract.updateCVS(ipId, newCVS);
+    const receipt = await tx.wait();
+
+    return receipt.hash;
+  }
+
+  /**
+   * Register license with abv.dev API
+   * This is called automatically when LicenseSold event is detected
+   */
+  private async registerLicenseWithABV(params: {
+    ipId: string;
+    vaultAddress: string;
+    licensee: string;
+    licenseType: string;
+    totalAmount: string;
+    vaultShare: string;
+    creatorShare: string;
+  }): Promise<string> {
+    if (!this.abvApiKey) {
+      throw new Error('ABV API key not configured');
+    }
+
+    try {
+      const response = await fetch(ABV_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.abvApiKey}`,
+          'X-ABV-API-Key': this.abvApiKey, // Alternative header format
+        },
+        body: JSON.stringify({
+          ipAssetId: params.ipId,
+          vaultAddress: params.vaultAddress,
+          licensee: params.licensee,
+          licenseType: params.licenseType,
+          price: params.totalAmount,
+          vaultShare: params.vaultShare,
+          creatorShare: params.creatorShare,
+          timestamp: new Date().toISOString(),
+          source: 'atlas-protocol',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`abv.dev API failed: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      return data.licenseId || data.id || 'registered';
+    } catch (error) {
+      console.error('abv.dev API Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Sell a license for an IP asset (manual call)
    */
   async sellLicense(request: LicenseRequest): Promise<LicenseResponse> {
-    if (!this.walletClient) {
-      throw new Error('Wallet client not initialized. Provide PRIVATE_KEY in config.');
+    if (!this.signer) {
+      throw new Error('Signer not initialized. Provide PRIVATE_KEY in config.');
     }
 
     try {
       // Get vault to verify it exists
-      const vault = await this.publicClient.readContract({
-        address: this.adlvAddress,
-        abi: ADLV_ABI,
-        functionName: 'getVault',
-        args: [request.vaultAddress],
-      }) as any;
-
+      const vault = await this.adlvContract.getVault(request.vaultAddress);
+      
       if (!vault.exists) {
         throw new Error(`Vault ${request.vaultAddress} does not exist`);
       }
 
       // Get protocol fee configuration
-      const protocolFeeBps = await this.publicClient.readContract({
-        address: this.adlvAddress,
-        abi: ADLV_ABI,
-        functionName: 'protocolFeeBps',
-      }) as bigint;
-
-      const creatorShareBps = await this.publicClient.readContract({
-        address: this.adlvAddress,
-        abi: ADLV_ABI,
-        functionName: 'creatorShareBps',
-      }) as bigint;
-
-      const vaultShareBps = await this.publicClient.readContract({
-        address: this.adlvAddress,
-        abi: ADLV_ABI,
-        functionName: 'vaultShareBps',
-      }) as bigint;
+      const protocolFeeBps = await this.adlvContract.protocolFeeBps();
+      const creatorShareBps = await this.adlvContract.creatorShareBps();
+      const vaultShareBps = await this.adlvContract.vaultShareBps();
 
       // Calculate revenue distribution
       const protocolFee = (request.price * protocolFeeBps) / BigInt(10000);
@@ -113,7 +330,16 @@ export class LicensingAgent {
       let licenseId: string | undefined;
       if (this.abvApiKey) {
         try {
-          licenseId = await this.registerLicenseWithABV(request);
+          const vault = await this.adlvContract.getVault(request.vaultAddress);
+          licenseId = await this.registerLicenseWithABV({
+            ipId: vault.ipId,
+            vaultAddress: request.vaultAddress,
+            licensee: this.signer.address,
+            licenseType: request.licenseType,
+            totalAmount: request.price.toString(),
+            vaultShare: vaultShare.toString(),
+            creatorShare: creatorShare.toString(),
+          });
         } catch (error) {
           console.warn('Failed to register license with abv.dev:', error);
           // Continue with on-chain transaction even if abv.dev fails
@@ -121,23 +347,18 @@ export class LicensingAgent {
       }
 
       // Execute license sale on-chain
-      const hash = await this.walletClient.writeContract({
-        address: this.adlvAddress,
-        abi: ADLV_ABI,
-        functionName: 'sellLicense',
-        args: [
-          request.vaultAddress,
-          request.licenseType,
-          BigInt(request.duration || 0),
-        ],
-        value: request.price,
-      });
+      const tx = await this.adlvContract.sellLicense(
+        request.vaultAddress,
+        request.licenseType,
+        BigInt(request.duration || 0),
+        { value: request.price }
+      );
 
       // Wait for transaction receipt
-      await this.publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await tx.wait();
 
       return {
-        transactionHash: hash,
+        transactionHash: receipt.hash,
         licenseId,
         revenueDistribution: {
           protocolFee,
@@ -152,170 +373,16 @@ export class LicensingAgent {
   }
 
   /**
-   * Register license with abv.dev API
-   */
-  private async registerLicenseWithABV(request: LicenseRequest): Promise<string> {
-    if (!this.abvApiKey) {
-      throw new Error('ABV API key not configured');
-    }
-
-    // Get IP asset info from vault
-    const vault = await this.publicClient.readContract({
-      address: this.adlvAddress,
-      abi: ADLV_ABI,
-      functionName: 'getVault',
-      args: [request.vaultAddress],
-    }) as any;
-
-    const ipId = vault.ipId;
-
-    // Call abv.dev API to register license
-    // Note: This is a placeholder - you'll need to implement the actual API call
-    // based on abv.dev's API documentation
-    const response = await fetch('https://api.abv.dev/v1/licenses', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.abvApiKey}`,
-      },
-      body: JSON.stringify({
-        ipAssetId: ipId,
-        licenseType: request.licenseType,
-        price: request.price.toString(),
-        duration: request.duration,
-        licenseeInfo: request.licenseeInfo,
-        vaultAddress: request.vaultAddress,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`abv.dev API error: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.licenseId;
-  }
-
-  /**
-   * Update CVS after license sale (called by Agent Service)
-   */
-  async updateCVSAfterLicenseSale(
-    ipId: `0x${string}`,
-    salePrice: bigint,
-    licenseType: string
-  ): Promise<Hash> {
-    if (!this.walletClient) {
-      throw new Error('Wallet client not initialized. Provide PRIVATE_KEY in config.');
-    }
-
-    // Calculate new CVS based on license sale
-    // This should match the logic in IDO contract
-    const cvsIncrement = this.calculateCVSIncrement(licenseType, salePrice);
-
-    // Get current CVS
-    const currentCVS = await this.publicClient.readContract({
-      address: this.idoAddress,
-      abi: IDO_ABI,
-      functionName: 'getCVS',
-      args: [ipId],
-    }) as bigint;
-
-    const newCVS = currentCVS + cvsIncrement;
-
-    // Update CVS in IDO contract
-    // Note: This requires IDO contract to be owned by this service
-    const hash = await this.walletClient.writeContract({
-      address: this.idoAddress,
-      abi: IDO_ABI,
-      functionName: 'updateCVS',
-      args: [ipId, newCVS],
-    });
-
-    return hash;
-  }
-
-  /**
-   * Calculate CVS increment from license sale
-   * This should match the logic in the original IDO contract
-   */
-  private calculateCVSIncrement(licenseType: string, price: bigint): bigint {
-    switch (licenseType) {
-      case 'exclusive':
-        return price / BigInt(10); // 10% of price
-      case 'commercial':
-        return price / BigInt(20); // 5% of price
-      case 'derivative':
-        return price / BigInt(25); // 4% of price
-      case 'standard':
-      default:
-        return price / BigInt(50); // 2% of price
-    }
-  }
-
-  /**
-   * Monitor license sale events
-   */
-  async watchLicenseEvents(
-    callback: (event: { type: string; data: any }) => void
-  ): Promise<() => void> {
-    const unwatch = this.publicClient.watchContractEvent({
-      address: this.adlvAddress,
-      abi: ADLV_ABI,
-      eventName: 'LicenseSold',
-      onLogs: (logs) => {
-        logs.forEach((log) => {
-          callback({
-            type: 'LicenseSold',
-            data: log,
-          });
-        });
-      },
-    });
-
-    // Also watch for CVS updates
-    const unwatchCVS = this.publicClient.watchContractEvent({
-      address: this.idoAddress,
-      abi: IDO_ABI,
-      eventName: 'CVSUpdated',
-      onLogs: (logs) => {
-        logs.forEach((log) => {
-          callback({
-            type: 'CVSUpdated',
-            data: log,
-          });
-        });
-      },
-    });
-
-    // Return cleanup function
-    return () => {
-      unwatch();
-      unwatchCVS();
-    };
-  }
-
-  /**
    * Get license revenue for an IP asset
    */
-  async getLicenseRevenue(ipId: `0x${string}`): Promise<bigint> {
-    return await this.publicClient.readContract({
-      address: this.idoAddress,
-      abi: IDO_ABI,
-      functionName: 'totalLicenseRevenue',
-      args: [ipId],
-    }) as bigint;
+  async getLicenseRevenue(ipId: string): Promise<bigint> {
+    return await this.idoContract.totalLicenseRevenue(ipId) as bigint;
   }
 
   /**
    * Get current CVS for an IP asset
    */
-  async getCVS(ipId: `0x${string}`): Promise<bigint> {
-    return await this.publicClient.readContract({
-      address: this.idoAddress,
-      abi: IDO_ABI,
-      functionName: 'getCVS',
-      args: [ipId],
-    }) as bigint;
+  async getCVS(ipId: string): Promise<bigint> {
+    return await this.idoContract.getCVS(ipId) as bigint;
   }
 }
-
