@@ -27,6 +27,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .cache
 *.tsbuildinfo
 
+# Next.js
+.next/
+.next-env.d.ts
+
 # IntelliJ based IDEs
 .idea
 
