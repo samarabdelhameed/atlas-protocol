@@ -6,34 +6,38 @@ import {IDO} from "../src/IDO.sol";
 import {ADLV} from "../src/ADLV.sol";
 
 /**
- * @title DeployScript
- * @notice Deployment script for Atlas Protocol contracts
- * @dev Deploys IDO and ADLV contracts and sets up ownership
+ * @title DeployToStoryScript
+ * @notice Deployment script specifically for Story Protocol testnet
+ * @dev Deploys IDO and ADLV contracts on Story Protocol network
  */
-contract DeployScript is Script {
+contract DeployToStoryScript is Script {
     function run() external returns (IDO ido, ADLV adlv) {
         // Get deployer private key from environment
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
         
+        // Story Protocol RPC URL (should be in .env as STORY_PROTOCOL_RPC)
+        string memory storyRpcUrl = vm.envString("STORY_PROTOCOL_RPC");
+        
         console.log("==========================================");
-        console.log("Atlas Protocol Contract Deployment");
+        console.log("Atlas Protocol - Story Protocol Deployment");
         console.log("==========================================");
         console.log("Deployer:", deployer);
-        console.log("Network:", block.chainid);
+        console.log("Network: Story Protocol Testnet");
+        console.log("RPC URL:", storyRpcUrl);
         console.log("==========================================\n");
 
         vm.startBroadcast(deployerPrivateKey);
 
         // Deploy IDO contract
-        console.log("Deploying IDO contract...");
+        console.log("Deploying IDO contract to Story Protocol...");
         ido = new IDO(deployer);
         console.log("✅ IDO deployed at:", address(ido));
         console.log("   Owner:", deployer);
         console.log("");
 
         // Deploy ADLV contract
-        console.log("Deploying ADLV contract...");
+        console.log("Deploying ADLV contract to Story Protocol...");
         adlv = new ADLV(address(ido));
         console.log("✅ ADLV deployed at:", address(adlv));
         console.log("   IDO Contract:", address(ido));
@@ -57,8 +61,9 @@ contract DeployScript is Script {
 
         // Display deployment summary
         console.log("==========================================");
-        console.log("Deployment Summary");
+        console.log("Story Protocol Deployment Summary");
         console.log("==========================================");
+        console.log("Network: Story Protocol Testnet");
         console.log("IDO Contract:", address(ido));
         console.log("ADLV Contract:", address(adlv));
         console.log("IDO Owner:", ido.owner());
@@ -66,6 +71,8 @@ contract DeployScript is Script {
         console.log("\n📝 Add these addresses to your .env file:");
         console.log("IDO_ADDRESS=", address(ido));
         console.log("ADLV_ADDRESS=", address(adlv));
+        console.log("STORY_PROTOCOL_RPC=", storyRpcUrl);
         console.log("==========================================\n");
     }
 }
+
