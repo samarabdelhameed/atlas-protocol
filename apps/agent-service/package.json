@@ -16,9 +16,10 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@atlas-protocol/types": "workspace:*",
     "@atlas-protocol/graphql-client": "workspace:*",
+    "@atlas-protocol/types": "workspace:*",
     "@types/node": "^24.10.1",
+    "@worldcoin/idkit": "^2.4.2",
     "ethers": "^6.15.0",
     "typescript": "^5.9.3",
     "viem": "^2.39.0"

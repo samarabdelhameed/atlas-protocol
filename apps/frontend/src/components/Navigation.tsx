@@ -1,20 +1,22 @@
-import { motion } from 'framer-motion';
-import { Globe, Vault, CreditCard, Brain, LayoutDashboard } from 'lucide-react';
+import { motion } from "framer-motion";
+import { Globe, Vault, CreditCard, Brain, LayoutDashboard } from "lucide-react";
+import { ConnectKitButton } from "connectkit";
 
 interface NavigationProps {
   currentPage: string;
   onNavigate: (page: string) => void;
-  walletConnected: boolean;
-  onConnectWallet: () => void;
 }
 
-export default function Navigation({ currentPage, onNavigate, walletConnected, onConnectWallet }: NavigationProps) {
+export default function Navigation({
+  currentPage,
+  onNavigate,
+}: NavigationProps) {
   const navItems = [
-    { id: 'landing', label: 'Home', icon: Globe },
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'vault', label: 'Vault', icon: Vault },
-    { id: 'loans', label: 'Loans', icon: CreditCard },
-    { id: 'licensing', label: 'Licensing', icon: Brain },
+    { id: "landing", label: "Home", icon: Globe },
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "vault", label: "Vault", icon: Vault },
+    { id: "loans", label: "Loans", icon: CreditCard },
+    { id: "licensing", label: "Licensing", icon: Brain },
   ];
 
   return (
@@ -48,9 +50,7 @@ export default function Navigation({ currentPage, onNavigate, walletConnected, o
                   key={item.id}
                   onClick={() => onNavigate(item.id)}
                   className={`relative px-4 py-2 rounded-lg flex items-center gap-2 transition-all ${
-                    isActive
-                      ? 'text-white'
-                      : 'text-gray-400 hover:text-white'
+                    isActive ? "text-white" : "text-gray-400 hover:text-white"
                   }`}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
@@ -59,7 +59,11 @@ export default function Navigation({ currentPage, onNavigate, walletConnected, o
                     <motion.div
                       layoutId="activeTab"
                       className="absolute inset-0 bg-gradient-to-r from-orange-500/20 to-amber-500/20 rounded-lg border border-orange-500/30"
-                      transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
+                      transition={{
+                        type: "spring",
+                        bounce: 0.2,
+                        duration: 0.6,
+                      }}
                     />
                   )}
                   <Icon className="w-4 h-4 relative z-10" />
@@ -71,14 +75,9 @@ export default function Navigation({ currentPage, onNavigate, walletConnected, o
             })}
           </div>
 
-          <motion.button
-            onClick={onConnectWallet}
-            className="px-6 py-2.5 bg-gradient-to-b from-orange-950/40 to-transparent border-2 border-orange-500 text-white rounded-xl font-medium shadow-[0_0_20px_rgba(249,115,22,0.3)] hover:shadow-[0_0_35px_rgba(249,115,22,0.5)] transition-all duration-300"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            {walletConnected ? '0x742d...5f3a' : 'Connect Wallet'}
-          </motion.button>
+          <div className="flex items-center">
+            <ConnectKitButton />
+          </div>
         </div>
       </div>
     </motion.nav>

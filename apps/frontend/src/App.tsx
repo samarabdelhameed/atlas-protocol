@@ -9,11 +9,7 @@ import Licensing from './pages/Licensing';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('landing');
-  const [walletConnected, setWalletConnected] = useState(false);
-
-  const handleConnectWallet = () => {
-    setWalletConnected(!walletConnected);
-  };
+  
 
   const renderPage = () => {
     switch (currentPage) {
@@ -37,8 +33,6 @@ function App() {
       <Navigation
         currentPage={currentPage}
         onNavigate={setCurrentPage}
-        walletConnected={walletConnected}
-        onConnectWallet={handleConnectWallet}
       />
 
       <AnimatePresence mode="wait">
