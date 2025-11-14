@@ -16,24 +16,17 @@ if ! command -v goldsky &> /dev/null; then
     exit 1
 fi
 
-# Check if .env exists
-if [ ! -f .env ]; then
-    echo "❌ .env file not found!"
-    echo "Create .env with:"
-    echo "  GOLDSKY_API_KEY=your_api_key"
-    echo "  GOLDSKY_PROJECT_ID=your_project_id"
+# Check if user is logged in
+echo "Checking Goldsky authentication..."
+if ! goldsky subgraph list &> /dev/null; then
+    echo "⚠️  Not logged in to Goldsky"
+    echo "Please run: goldsky login"
+    echo ""
+    echo "Or set GOLDSKY_TOKEN environment variable"
     exit 1
 fi
 
-source .env
-
-if [ -z "$GOLDSKY_API_KEY" ] || [ -z "$GOLDSKY_PROJECT_ID" ]; then
-    echo "❌ GOLDSKY_API_KEY or GOLDSKY_PROJECT_ID not set in .env"
-    exit 1
-fi
-
-echo "✅ Environment loaded"
-echo "   Project ID: $GOLDSKY_PROJECT_ID"
+echo "✅ Authenticated with Goldsky"
 echo ""
 
 # Build subgraph
@@ -51,11 +44,13 @@ echo ""
 
 # Deploy to Goldsky
 echo "Deploying to Goldsky..."
-goldsky subgraph deploy \
-  --project-id "$GOLDSKY_PROJECT_ID" \
-  --subgraph-name atlas-protocol \
-  --schema ./schema.graphql \
-  --subgraph-yaml ./subgraph.yaml
+echo "   Project ID: $GOLDSKY_PROJECT_ID"
+echo "   Subgraph Name: atlas-protocol"
+echo ""
+
+# Deploy using the correct Goldsky CLI format
+# Format: goldsky subgraph deploy <name>/<version> --path .
+goldsky subgraph deploy atlas-protocol/1.0.0 --path .
 
 if [ $? -eq 0 ]; then
     echo ""
@@ -63,8 +58,14 @@ if [ $? -eq 0 ]; then
     echo ""
     echo "📝 Next steps:"
     echo "1. Get GraphQL endpoint from Goldsky dashboard"
-    echo "2. Update NEXT_PUBLIC_SUBGRAPH_URL in apps/web/.env"
-    echo "3. Update SUBGRAPH_URL in apps/agent-service/.env"
+    echo "   Usually: https://api.goldsky.com/api/public/atlas-protocol/subgraphs/atlas-protocol"
+    echo ""
+    echo "2. Update SUBGRAPH_URL:"
+    echo "   cd .. && ./subgraph/update-env-after-deploy.sh <subgraph_url>"
+    echo ""
+    echo "   Or manually update:"
+    echo "   - apps/agent-service/.env: SUBGRAPH_URL=<url>"
+    echo "   - apps/web/.env: NEXT_PUBLIC_SUBGRAPH_URL=<url>"
 else
     echo "❌ Deployment failed"
     exit 1
