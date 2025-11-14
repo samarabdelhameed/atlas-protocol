@@ -41,6 +41,19 @@ forge script script/Deploy.s.sol:DeployScript \
   --broadcast \
   --verify \
   -vvvv
+
+# Deploy to Story Protocol Testnet (using Deploy.s.sol)
+forge script script/Deploy.s.sol:DeployScript \
+  --rpc-url $STORY_PROTOCOL_RPC \
+  --broadcast \
+  --private-key $PRIVATE_KEY \
+  -vvvv
+```
+
+**Or use the deployment script:**
+```bash
+chmod +x scripts/deploy-to-story.sh
+./scripts/deploy-to-story.sh
 ```
 
 ### 2. Story Protocol Deployment (DeployToStory.s.sol)
@@ -77,7 +90,18 @@ forge build
 ### Step 3: Run Deployment Script
 
 ```bash
-# For Story Protocol
+# For Story Protocol using Deploy.s.sol (Recommended)
+forge script script/Deploy.s.sol:DeployScript \
+  --rpc-url $STORY_PROTOCOL_RPC \
+  --broadcast \
+  --private-key $PRIVATE_KEY \
+  -vvvv
+
+# Or use the deployment script
+chmod +x scripts/deploy-to-story.sh
+./scripts/deploy-to-story.sh
+
+# Alternative: For Story Protocol using DeployToStory.s.sol
 forge script script/DeployToStory.s.sol:DeployToStoryScript \
   --rpc-url $STORY_PROTOCOL_RPC \
   --broadcast \

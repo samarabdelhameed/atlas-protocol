@@ -27,14 +27,31 @@ cp .env.example .env
 
 ### Deploy
 
-**Option A: Using the deployment script (Recommended)**
+**Option A: Using Deploy.s.sol with Story Protocol (Recommended)**
+
+This uses the standard `Deploy.s.sol` script with Story Protocol RPC:
 
 ```bash
-chmod +x scripts/deploy-story.sh
-./scripts/deploy-story.sh
+# Using the deployment script
+chmod +x scripts/deploy-to-story.sh
+./scripts/deploy-to-story.sh
 ```
 
-**Option B: Manual deployment**
+Or manually:
+
+```bash
+# Load environment
+source .env
+
+# Deploy using Deploy.s.sol
+forge script script/Deploy.s.sol:DeployScript \
+  --rpc-url "$STORY_PROTOCOL_RPC" \
+  --broadcast \
+  --private-key "$PRIVATE_KEY" \
+  -vvvv
+```
+
+**Option B: Using DeployToStory.s.sol**
 
 ```bash
 # Load environment
