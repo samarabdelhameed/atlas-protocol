@@ -4,6 +4,7 @@ import { cvsEngine } from './src/services/cvs-engine.js';
 import { LoanManager } from './src/services/loan-manager.js';
 import { LicensingAgent } from './src/services/licensing-agent.js';
 import { ContractMonitor } from './src/services/contract-monitor.js';
+import { VerificationServer } from './src/api/verification-server.js';
 import { config } from './src/config/index.js';
 
 /**
@@ -25,6 +26,7 @@ class AgentService {
   private loanManager: LoanManager | null = null;
   private licensingAgent: LicensingAgent | null = null;
   private contractMonitor: ContractMonitor | null = null;
+  private verificationServer: VerificationServer | null = null;
 
   constructor() {
     console.log('🚀 Initializing Atlas Agent Service...');
@@ -53,6 +55,9 @@ class AgentService {
         config.contracts.adlv,
         config.contracts.ido
       );
+
+      // Initialize World ID Verification Server
+      this.verificationServer = new VerificationServer(this.loanManager);
     }
   }
 
@@ -77,6 +82,10 @@ class AgentService {
       console.log('   ✓ Contract Monitor - Event monitoring ready');
     }
     
+    if (this.verificationServer) {
+      console.log('   ✓ World ID Verification Server - Ready');
+    }
+    
     console.log('═══════════════════════════════════════════\n');
 
     // Start CVS monitoring
@@ -95,6 +104,11 @@ class AgentService {
     // Start contract event monitoring
     if (this.contractMonitor) {
       this.contractMonitor.startMonitoring();
+    }
+
+    // Start World ID verification server
+    if (this.verificationServer) {
+      this.verificationServer.start();
     }
 
     // Display initial stats
@@ -192,6 +206,10 @@ class AgentService {
     
     if (this.contractMonitor) {
       this.contractMonitor.stopMonitoring();
+    }
+    
+    if (this.verificationServer) {
+      this.verificationServer.stop();
     }
     
     console.log('✅ Agent Service stopped');

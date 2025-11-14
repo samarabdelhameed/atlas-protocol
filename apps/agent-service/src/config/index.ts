@@ -29,6 +29,7 @@ export const config = {
   worldId: {
     appId: process.env.WORLD_ID_APP_ID || '',
     action: process.env.WORLD_ID_ACTION || 'atlas-verification',
+    actionId: process.env.WORLD_ID_ACTION_ID || process.env.WORLD_ID_ACTION || 'atlas-verification',
   },
   
   // Private Key (for testing)
