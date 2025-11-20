@@ -4,10 +4,12 @@
  * Handles GenAI licensing through abv.dev
  * Integrates with ADLV contract for revenue distribution
  * Automatically updates CVS after license sales
+ * Integrates with Story Protocol for IP Asset licensing
  */
 
 import { Contract, Wallet, JsonRpcProvider, type EventLog } from 'ethers';
 import { config } from '../config/index.js';
+import { StoryProtocolService } from './story-protocol-service.js';
 import ADLV_JSON from '../../contracts/ADLV.json' assert { type: 'json' };
 import IDO_JSON from '../../contracts/IDO.json' assert { type: 'json' };
 
@@ -45,6 +47,7 @@ export class LicensingAgent {
   private adlvContract: Contract;
   private idoContract: Contract;
   private abvApiKey: string;
+  private storyProtocolService: StoryProtocolService | null = null;
   private isMonitoring: boolean = false;
 
   constructor(
@@ -74,6 +77,20 @@ export class LicensingAgent {
     );
 
     this.abvApiKey = config.abv.apiKey;
+
+    // Initialize Story Protocol service if available
+    try {
+      this.storyProtocolService = new StoryProtocolService(providerUrl);
+      if (this.storyProtocolService.isAvailable()) {
+        console.log('✅ Story Protocol integration enabled');
+      } else {
+        console.log('⚠️  Story Protocol integration disabled (API key not set)');
+        this.storyProtocolService = null;
+      }
+    } catch (error) {
+      console.warn('⚠️  Story Protocol service initialization failed:', error);
+      this.storyProtocolService = null;
+    }
 
     console.log('✅ LicensingAgent initialized');
     console.log(`   ADLV Contract: ${adlvAddress}`);
@@ -175,6 +192,27 @@ export class LicensingAgent {
       } catch (error) {
         console.error(`❌ ERROR registering license with abv.dev:`, error);
         // Continue even if abv.dev registration fails
+      }
+
+      // [Step 3: Register license with Story Protocol]
+      if (this.storyProtocolService && this.storyProtocolService.isAvailable()) {
+        try {
+          // Convert bytes32 IP ID to Story Protocol IP ID format
+          const storyIPId = this.storyProtocolService.convertBytes32ToStoryIPId(ipId);
+          
+          const storyLicense = await this.storyProtocolService.registerLicense({
+            ipId: storyIPId,
+            licensee: licensee,
+            licenseType: licenseType,
+            price: price.toString(),
+            transactionHash: event.transactionHash,
+            duration: 0, // Can be extracted from event if available
+          });
+          console.log(`✅ License successfully registered with Story Protocol. License ID: ${storyLicense.licenseId}`);
+        } catch (error) {
+          console.error(`❌ ERROR registering license with Story Protocol:`, error);
+          // Continue even if Story Protocol registration fails
+        }
       }
     } catch (error) {
       console.error(`❌ ERROR processing license sale for IP ${ipId}:`, error);

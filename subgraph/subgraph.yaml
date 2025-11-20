@@ -9,7 +9,7 @@ dataSources:
     name: AtlasADLV
     network: story-testnet
     source:
-      address: "0x76d81731e26889Be3718BEB4d43e12C3692753b8" # Atlas ADLV Contract address (deployed)
+      address: "0xf2116eE783Be82ba51a6Eda9453dFD6A1723d205" # Atlas ADLV Contract address (deployed)
       abi: AtlasADLV
       startBlock: 0
     mapping:

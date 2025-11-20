@@ -43,26 +43,43 @@ Atlas Protocol combines:
 atlas-protocol/
 ├── contracts/          # Smart contracts (Foundry)
 │   ├── src/
-│   │   ├── IDO.sol    # IP Data Oracle
-│   │   └── ADLV.sol   # Automated Data Licensing Vault
-│   ├── test/          # Foundry tests (26 tests)
-│   ├── script/        # Deployment scripts
-│   └── DEPLOYMENT.md  # Deployment guide
+│   │   ├── IDO.sol              # IP Data Oracle
+│   │   └── ADLVWithStory.sol    # ADLV with Story Protocol integration
+│   ├── test/                    # Foundry tests
+│   ├── script/                  # Deployment scripts
+│   ├── FRONTEND_CONTRACTS_INFO.md  # Integration guide
+│   ├── VERIFICATION_GUIDE.md       # Verification instructions
+│   └── LIVE_DATA_SUMMARY.md        # Real-time data
 │
 ├── apps/
-│   ├── agent-service/ # Backend service
-│   │   ├── src/services/
-│   │   │   ├── loan-manager.ts      # Loan operations + Owlto
-│   │   │   ├── licensing-agent.ts   # GenAI licensing + abv.dev
-│   │   │   ├── contract-monitor.ts  # Event monitoring
-│   │   │   └── cvs-engine.ts        # CVS calculation
+│   ├── agent-service/           # Backend service
+│   │   ├── services/
+│   │   │   ├── storyProtocol.ts    # Story Protocol SDK service
+│   │   │   ├── loan-manager.ts     # Loan operations
+│   │   │   ├── licensing-agent.ts  # GenAI licensing
+│   │   │   └── cvs-engine.ts       # CVS calculation
+│   │   ├── examples/
+│   │   │   ├── storyProtocolExample.ts  # SDK examples
+│   │   │   └── integrateWithADLV.ts     # Integration examples
 │   │   └── README.md
 │   │
-│   ├── frontend/      # React frontend
-│   └── web/           # Next.js web app
+│   └── frontend/                # React frontend
+│       ├── src/
+│       │   ├── services/
+│       │   │   └── storyProtocol.ts    # Story Protocol SDK service
+│       │   └── hooks/
+│       │       └── useStoryProtocol.ts # React hooks for SDK
+│       └── README.md
 │
-├── subgraph/          # The Graph subgraph
-└── DEPLOYMENT_GUIDE.md # Complete deployment guide
+├── subgraph/                    # The Graph subgraph (Goldsky)
+│   ├── schema.graphql           # GraphQL schema
+│   ├── src/mapping.ts           # Event handlers
+│   ├── DEPLOYMENT_GUIDE.md      # Deployment guide
+│   └── README.md
+│
+├── STORY_PROTOCOL_SDK_GUIDE.md  # Story Protocol SDK guide
+├── INTEGRATION_STATUS.md        # Complete integration status
+└── DEPLOYMENT_GUIDE.md          # Complete deployment guide
 ```
 
 ## 🚀 Quick Start
@@ -109,11 +126,26 @@ bun run dev
 
 ## 📚 Documentation
 
+### Smart Contracts
+- **[Frontend Integration Guide](./contracts/FRONTEND_CONTRACTS_INFO.md)** - Complete integration guide
+- **[Verification Guide](./contracts/VERIFICATION_GUIDE.md)** - Contract verification instructions
+- **[Live Data Summary](./contracts/LIVE_DATA_SUMMARY.md)** - Real-time on-chain data
+- **[How to Verify](./contracts/HOW_TO_VERIFY.md)** - RPC-based verification
+
+### Story Protocol SDK
+- **[SDK Guide](./STORY_PROTOCOL_SDK_GUIDE.md)** - Complete SDK integration guide
+- **[Installation Summary](./STORY_SDK_INSTALLATION_SUMMARY.md)** - SDK installation summary
+- **[Examples](./apps/agent-service/examples/)** - SDK usage examples
+
+### Subgraph
+- **[Subgraph README](./subgraph/README.md)** - Subgraph overview
+- **[Deployment Guide](./subgraph/DEPLOYMENT_GUIDE.md)** - Goldsky deployment guide
+- **[CVS Calculation](./subgraph/CVS_CALCULATION.md)** - CVS calculation logic
+
+### General
+- **[Integration Status](./INTEGRATION_STATUS.md)** - Complete integration status
+- **[Hackathon Submission](./contracts/HACKATHON_SUBMISSION.md)** - Hackathon summary
 - **[Deployment Guide](./DEPLOYMENT_GUIDE.md)** - Complete deployment instructions
-- **[Contracts Documentation](./contracts/DEPLOYMENT.md)** - Smart contract details
-- **[Agent Service README](./apps/agent-service/README.md)** - Backend service guide
-- **[Subgraph Deployment](./subgraph/DEPLOYMENT_GUIDE.md)** - Goldsky subgraph deployment guide
-- **[Subgraph Quick Deploy](./SUBGRAPH_DEPLOY.md)** - Quick subgraph deployment steps
 
 ## 🔗 Quick Links
 
