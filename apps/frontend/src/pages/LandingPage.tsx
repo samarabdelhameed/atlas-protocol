@@ -9,6 +9,12 @@ import {
   Shield,
 } from "lucide-react";
 import ParticleField from "../components/ParticleField";
+// Read-only chain and data utilities
+import { useEffect, useMemo, useState } from "react";
+import { parseAbiItem, createPublicClient, http, formatUnits } from "viem";
+import { storyTestnet } from "../wagmi";
+// Import subgraph hooks from the workspace package export
+import { useLicenseSales, useGlobalStats } from "@atlas-protocol/graphql-client";
 
 interface LandingPageProps {
   onNavigate: (page: string) => void;
@@ -19,26 +25,127 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
     typeof window !== "undefined" &&
     window.matchMedia &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const metrics = [
-    {
-      label: "Total CVS Valued (TVV)",
-      value: "$2.4M",
-      icon: Lock,
-      color: "from-orange-500 to-amber-600",
-    },
-    {
-      label: "Data-Backed Loans (X-Chain)",
-      value: "1,234",
-      icon: DollarSign,
-      color: "from-amber-500 to-orange-600",
-    },
-    {
-      label: "GenAI Data Licenses Issued",
-      value: "5,678",
-      icon: Database,
-      color: "from-orange-600 to-red-600",
-    },
-  ];
+
+  // Env-driven chain setup for read-only event logs
+  const RPC_URL = import.meta.env.VITE_RPC_URL as string | undefined;
+  const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || storyTestnet.id);
+  const ADLV_ADDRESS = (import.meta.env.VITE_ADLV_CONTRACT_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`;
+
+  // Create a public client to query logs from your configured chain
+  const publicClient = useMemo(() => {
+    if (!RPC_URL) return null;
+    return createPublicClient({
+      chain: { ...storyTestnet, id: CHAIN_ID },
+      transport: http(RPC_URL),
+    });
+  }, [RPC_URL, CHAIN_ID]);
+
+  // Minimal event ABIs for parsing ADLV logs
+  const evLicenseSold = useMemo(
+    () =>
+      parseAbiItem(
+        "event LicenseSold(address indexed vaultAddress, bytes32 indexed ipId, address indexed licensee, uint256 price, string licenseType)"
+      ),
+    []
+  );
+  const evVaultCreated = useMemo(
+    () =>
+      parseAbiItem(
+        "event VaultCreated(address indexed vaultAddress, bytes32 indexed ipId, address indexed creator, uint256 initialCVS)"
+      ),
+    []
+  );
+  const evLoanIssued = useMemo(
+    () =>
+      parseAbiItem(
+        "event LoanIssued(address indexed vaultAddress, address indexed borrower, uint256 indexed loanId, uint256 amount, uint256 collateral, uint256 interestRate, uint256 duration)"
+      ),
+    []
+  );
+
+  // Chain-derived items to feed the ticker when available
+  const [chainSales, setChainSales] = useState<
+    { company: string; tier: string; amount: string; cvs?: string }[]
+  >([]);
+
+  const [platformActivity, setPlatformActivity] = useState<
+    { type: 'VaultCreated' | 'LoanIssued'; actor: string; amount?: string }[]
+  >([]);
+
+  // Poll chain logs periodically and map LicenseSold events to ticker items
+  useEffect(() => {
+    let timer: any;
+    const run = async () => {
+      try {
+        if (!publicClient || !ADLV_ADDRESS || ADLV_ADDRESS === "0x0000000000000000000000000000000000000000") return;
+        const latest = await publicClient.getBlockNumber();
+        const window = 10_000n;
+        const fromBlock = latest > window ? latest - window : 0n;
+        const soldLogs = await publicClient.getLogs({ address: ADLV_ADDRESS, event: evLicenseSold, fromBlock, toBlock: latest });
+        const items = soldLogs.map((log) => {
+          const licensee = (log.args.licensee as string) || "0x";
+          const short = `${licensee.slice(0, 6)}...${licensee.slice(-4)}`;
+          const price = log.args.price as bigint;
+          const amount = `${formatUnits(price, 18)} STORY`;
+          const tier = (log.args.licenseType as string) || "Standard";
+          return { company: short, tier, amount, cvs: "" };
+        });
+        setChainSales(items.slice(-20));
+
+        const createdLogs = await publicClient.getLogs({ address: ADLV_ADDRESS, event: evVaultCreated, fromBlock, toBlock: latest });
+        const loanLogs = await publicClient.getLogs({ address: ADLV_ADDRESS, event: evLoanIssued, fromBlock, toBlock: latest });
+
+        const createdItems = createdLogs.map((log) => {
+          const creator = (log.args.creator as string) || "0x";
+          const actor = `${creator.slice(0, 6)}...${creator.slice(-4)}`;
+          return { type: 'VaultCreated' as const, actor };
+        });
+
+        const loanItems = loanLogs.map((log) => {
+          const borrower = (log.args.borrower as string) || "0x";
+          const actor = `${borrower.slice(0, 6)}...${borrower.slice(-4)}`;
+          const amountWei = log.args.amount as bigint;
+          const amount = `${formatUnits(amountWei, 18)} STORY`;
+          return { type: 'LoanIssued' as const, actor, amount };
+        });
+
+        setPlatformActivity([...createdItems, ...loanItems].slice(-20));
+      } catch {}
+    };
+    run();
+    timer = setInterval(run, prefersReducedMotion ? 120_000 : 60_000);
+    return () => clearInterval(timer);
+  }, [publicClient, ADLV_ADDRESS, prefersReducedMotion, evLicenseSold]);
+
+  const { data: salesData } = useLicenseSales({ first: 20 });
+  const { data: globalStats } = useGlobalStats();
+  const metrics = useMemo(() => {
+    if (!globalStats) return [];
+    try {
+      return [
+        {
+          label: "Total CVS Valued (TVV)",
+          value: Number(globalStats.totalCVS || 0).toLocaleString(),
+          icon: Lock,
+          color: "from-orange-500 to-amber-600",
+        },
+        {
+          label: "Data-Backed Loans (X-Chain)",
+          value: Number(globalStats.totalLoans || 0).toLocaleString(),
+          icon: DollarSign,
+          color: "from-amber-500 to-orange-600",
+        },
+        {
+          label: "GenAI Data Licenses Issued",
+          value: Number(globalStats.totalLicenses || 0).toLocaleString(),
+          icon: Database,
+          color: "from-orange-600 to-red-600",
+        },
+      ];
+    } catch {
+      return [];
+    }
+  }, [globalStats]);
 
   const features = [
     {
@@ -64,27 +171,20 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
     },
   ];
 
-  const tickerItems = [
-    {
-      company: "OpenAI Labs",
-      tier: "Enterprise",
-      amount: "$5,000",
-      cvs: "+200",
-    },
-    {
-      company: "AI Research Co",
-      tier: "Commercial",
-      amount: "$1,500",
-      cvs: "+80",
-    },
-    {
-      company: "DataTech AI",
-      tier: "Commercial",
-      amount: "$1,500",
-      cvs: "+80",
-    },
-    { company: "Neural Systems", tier: "Basic", amount: "$500", cvs: "+25" },
-  ];
+  const tickerItems = useMemo(() => {
+    if (chainSales.length > 0) return chainSales;
+    if (salesData && Array.isArray(salesData) && salesData.length > 0) {
+      return salesData.map((sale: any) => {
+        const amountUsd = sale.salePrice
+          ? `$${Number(sale.salePrice).toLocaleString()}`
+          : sale.amount || "$";
+        const company = sale.ipAsset?.name || sale.licensee || "License Buyer";
+        const cvs = sale.cvsIncrement ? `+${sale.cvsIncrement}` : sale.cvsImpact || "+";
+        return { company, tier: sale.licenseType || "Standard", amount: amountUsd, cvs };
+      });
+    }
+    return [];
+  }, [chainSales, salesData]);
 
   return (
     <div className="relative min-h-screen bg-black overflow-hidden">
@@ -195,58 +295,84 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                 {/* <div className="text-xs text-gray-500">Mock data</div> */}
               </div>
               <div className="overflow-hidden">
-                {prefersReducedMotion ? (
-                  <div className="flex items-center gap-4 flex-wrap justify-center">
-                    {tickerItems.map((item, idx) => (
-                      <div
-                        key={item.company + idx}
-                        className="px-4 py-2 rounded-full border border-gray-700/60 bg-gray-800/40 text-gray-200 text-sm flex items-center gap-3"
-                      >
-                        <span className="text-white font-semibold">
-                          {item.company}
-                        </span>
-                        <span className="text-gray-400">{item.tier}</span>
-                        <span className="text-orange-400 font-bold">
-                          {item.amount}
-                        </span>
-                        <span className="text-green-400 font-bold">
-                          {item.cvs} CVS
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                {tickerItems.length > 0 ? (
+                  prefersReducedMotion ? (
+                    <div className="flex items-center gap-4 flex-wrap justify-center">
+                      {tickerItems.map((item, idx) => (
+                        <div
+                          key={item.company + idx}
+                          className="px-4 py-2 rounded-full border border-gray-700/60 bg-gray-800/40 text-gray-200 text-sm flex items-center gap-3"
+                        >
+                          <span className="text-white font-semibold">{item.company}</span>
+                          <span className="text-gray-400">{item.tier}</span>
+                          <span className="text-orange-400 font-bold">{item.amount}</span>
+                          {item.cvs && (
+                            <span className="text-green-400 font-bold">{item.cvs} CVS</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <motion.div
+                      initial={{ x: 0 }}
+                      animate={{ x: ["0%", "-100%"] }}
+                      transition={{ duration: 28, repeat: Infinity, ease: "linear" }}
+                      className="flex items-center gap-6 whitespace-nowrap"
+                      style={{ willChange: "transform" }}
+                    >
+                      {[...tickerItems, ...tickerItems].map((item, idx) => (
+                        <div
+                          key={item.company + idx}
+                          className="px-4 py-2 rounded-full border border-gray-700/60 bg-gray-800/40 text-gray-200 text-sm flex items-center gap-3"
+                        >
+                          <span className="text-white font-semibold">{item.company}</span>
+                          <span className="text-gray-400">{item.tier}</span>
+                          <span className="text-orange-400 font-bold">{item.amount}</span>
+                          {item.cvs && (
+                            <span className="text-green-400 font-bold">{item.cvs} CVS</span>
+                          )}
+                        </div>
+                      ))}
+                    </motion.div>
+                  )
                 ) : (
-                  <motion.div
-                    initial={{ x: 0 }}
-                    animate={{ x: ["0%", "-100%"] }}
-                    transition={{ duration: 28, repeat: Infinity, ease: "linear" }}
-                    className="flex items-center gap-6 whitespace-nowrap"
-                    style={{ willChange: "transform" }}
-                  >
-                    {[...tickerItems, ...tickerItems].map((item, idx) => (
-                      <div
-                        key={item.company + idx}
-                        className="px-4 py-2 rounded-full border border-gray-700/60 bg-gray-800/40 text-gray-200 text-sm flex items-center gap-3"
-                      >
-                        <span className="text-white font-semibold">
-                          {item.company}
-                        </span>
-                        <span className="text-gray-400">{item.tier}</span>
-                        <span className="text-orange-400 font-bold">
-                          {item.amount}
-                        </span>
-                        <span className="text-green-400 font-bold">
-                          {item.cvs} CVS
-                        </span>
-                      </div>
-                    ))}
-                  </motion.div>
+                  <div className="text-gray-500 text-sm">No recent license sales</div>
                 )}
               </div>
             </div>
           </div>
 
-          <motion.div
+          <div className="mb-12">
+            <div className="max-w-5xl mx-auto bg-gray-900/40 border border-gray-800/60 rounded-2xl p-4">
+              <div className="flex items-center gap-2 text-sm text-gray-300 mb-3">
+                <TrendingUp className="w-4 h-4 text-amber-400" />
+                Platform Activity
+              </div>
+              {platformActivity.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {platformActivity.map((ev, idx) => (
+                    <div
+                      key={ev.type + idx}
+                      className="flex items-center justify-between px-4 py-2 rounded-xl border border-gray-700/60 bg-gray-800/40 text-sm"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-semibold">{ev.type}</span>
+                        <span className="text-gray-400">{ev.actor}</span>
+                      </div>
+                      {ev.amount && (
+                        <span className="text-orange-400 font-bold">{ev.amount}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-gray-500 text-sm">No recent platform activity</div>
+              )}
+            </div>
+          </div>
+
+          {metrics.length > 0 && (
+            <motion.div
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 1, duration: 0.8 }}
@@ -282,7 +408,8 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                 </motion.div>
               );
             })}
-          </motion.div>
+            </motion.div>
+          )}
 
           <div className="mb-20">
             <motion.div

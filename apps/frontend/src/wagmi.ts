@@ -8,7 +8,7 @@ export const storyTestnet = defineChain({
   rpcUrls: {
     default: {
       http: [
-        import.meta.env.VITE_STORY_RPC ||
+        import.meta.env.VITE_RPC_URL ||
           "https://rpc-storyevm-testnet.aldebaranode.xyz",
       ],
     },
@@ -26,7 +26,7 @@ export const config = createConfig({
   connectors: [injected()],
   transports: {
     [storyTestnet.id]: http(
-      import.meta.env.VITE_STORY_RPC ||
+      import.meta.env.VITE_RPC_URL ||
         "https://rpc-storyevm-testnet.aldebaranode.xyz"
     ),
   },
