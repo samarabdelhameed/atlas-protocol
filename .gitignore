@@ -33,6 +33,10 @@ deployed_addresses.env
 *.env
 !*.env.example
 
+# Mercurial
+.hg/
+.hgignore
+
 # Cache
 .cache/
 .turbo/
