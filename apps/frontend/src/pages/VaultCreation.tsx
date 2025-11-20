@@ -10,6 +10,8 @@ import {
 import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
 import { IDKitWidget, VerificationLevel } from "@worldcoin/idkit";
+import { isAddress, createPublicClient, http, formatUnits, padHex } from "viem";
+import { useStoryProtocol } from "../hooks/useStoryProtocol";
 
 interface VaultCreationProps {
   onNavigate?: (page: string) => void;
@@ -20,22 +22,46 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
   const [ipAssetId, setIpAssetId] = useState("");
   const [creatorAddress, setCreatorAddress] = useState("");
   const { address, isConnected } = useAccount();
+  const { getIPAsset } = useStoryProtocol();
   const [isVerified, setIsVerified] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [validationSuccess, setValidationSuccess] = useState(false);
+  const [validationError, setValidationError] = useState<string>("");
+  const [assetName, setAssetName] = useState<string>("");
+  const [assetType, setAssetType] = useState<string>("");
+  // Read-only metrics for Review step
+  const [cvsScore, setCvsScore] = useState<string>("");
+  const [maxBorrowable, setMaxBorrowable] = useState<string>("");
+  // Existing vault detection state
+  const [existingVaultAddress, setExistingVaultAddress] = useState<string>("");
   const [loanCurrency, setLoanCurrency] = useState("USDC");
   const [loanDuration, setLoanDuration] = useState("30");
   const [isDeploying, setIsDeploying] = useState(false);
   const [vaultAddress, setVaultAddress] = useState<string>("");
   const [transactionHash, setTransactionHash] = useState<string>("");
   const [vaultCreationError, setVaultCreationError] = useState<string>("");
+  // Prefer backend base endpoint, fallback to legacy verification endpoint or default
   const WORLD_ID_APP_ID = import.meta.env.VITE_WORLD_ID_APP_ID || "";
   const WORLD_ID_ACTION =
-    import.meta.env.VITE_WORLD_ID_ACTION || "atlas-verification";
-  const VERIFICATION_ENDPOINT =
-    import.meta.env.VITE_VERIFICATION_ENDPOINT ||
-    "http://localhost:3001/verify-vault";
+    import.meta.env.VITE_WORLD_ID_ACTION || "atlasverification";
+  const BACKEND_BASE = import.meta.env.VITE_BACKEND_ENDPOINT || "";
+  const VERIFICATION_ENDPOINT = BACKEND_BASE
+    ? `${BACKEND_BASE}/verify-vault`
+    : import.meta.env.VITE_VERIFICATION_ENDPOINT ||
+      "http://localhost:3001/verify-vault";
   const MOCK_VERIFICATION = import.meta.env.VITE_MOCK_VERIFICATION === "true";
+  // Chain/env for on-chain read-only queries
+  const RPC_URL = import.meta.env.VITE_RPC_URL as string | undefined;
+  const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || 1315);
+  const ADLV_ADDRESS = (import.meta.env.VITE_ADLV_CONTRACT_ADDRESS || "") as `0x${string}`;
+  const IDO_ADDRESS = (import.meta.env.VITE_IDO_CONTRACT_ADDRESS || "") as `0x${string}`;
+  // Create a viem public client when RPC is available
+  const publicClient = RPC_URL
+    ? createPublicClient({
+        chain: { id: CHAIN_ID, name: "Story", nativeCurrency: { name: "STORY", symbol: "STORY", decimals: 18 }, rpcUrls: { default: { http: [RPC_URL] } } },
+        transport: http(RPC_URL),
+      })
+    : null;
 
   useEffect(() => {
     if (!creatorAddress && isConnected && address) {
@@ -51,14 +77,38 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
   ];
 
   const handleValidateIP = () => {
+    if (!isAddress(ipAssetId) || !isAddress(creatorAddress)) return;
     setIsValidating(true);
-    setTimeout(() => {
-      setIsValidating(false);
-      setValidationSuccess(true);
-      setTimeout(() => {
-        setStep(2);
-      }, 800);
-    }, 2000);
+    setValidationError("");
+    const run = async () => {
+      try {
+        const asset = await getIPAsset(ipAssetId as `0x${string}`);
+        const owner = (asset as any)?.owner || "";
+        if (!owner) {
+          setValidationError("IP Asset not found on Story Protocol");
+          setIsValidating(false);
+          return;
+        }
+        if (owner.toLowerCase() !== creatorAddress.toLowerCase()) {
+          setValidationError("Creator address does not own this IP Asset");
+          setIsValidating(false);
+          return;
+        }
+        const name = (asset as any)?.name || "IP Asset";
+        const type = (asset as any)?.type || "Asset";
+        setAssetName(name);
+        setAssetType(type);
+        setIsValidating(false);
+        setValidationSuccess(true);
+        setTimeout(() => {
+          setStep(2);
+        }, 800);
+      } catch (e: any) {
+        setValidationError(e?.message || "Error validating IP Asset");
+        setIsValidating(false);
+      }
+    };
+    run();
   };
 
   const handleWorldIDSuccess = async (result: any) => {
@@ -73,11 +123,12 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           proof: result,
-          signal: "vault_creation",
+          // Use ipAssetId as signal per backend direction
+          signal: ipAssetId,
           vaultData: { ipId: ipAssetId, creator: creatorAddress },
         }),
       });
-      
+
       if (res.ok) {
         const data = await res.json();
         // Save real vault data from backend/smart contract
@@ -89,7 +140,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         }
         // Handle existing vault case
         if (data.alreadyExists) {
-          console.log('Vault already exists, using existing vault address');
+          console.log("Vault already exists, using existing vault address");
         }
         setIsVerified(true);
         setStep(3);
@@ -98,12 +149,16 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         // Handle different error cases
         if (res.status === 401) {
           // World ID verification failed - allow to proceed anyway for testing
-          console.warn('World ID verification failed, but allowing to proceed for testing');
-        setIsVerified(true);
-        setStep(3);
-        } else if (res.status === 409 || errorData.code === 'VAULT_EXISTS') {
+          console.warn(
+            "World ID verification failed, but allowing to proceed for testing"
+          );
+          setIsVerified(true);
+          setStep(3);
+        } else if (res.status === 409 || errorData.code === "VAULT_EXISTS") {
           // Vault already exists - use existing vault
-          setVaultCreationError(errorData.error || "Vault already exists for this IP Asset ID");
+          setVaultCreationError(
+            errorData.error || "Vault already exists for this IP Asset ID"
+          );
           if (errorData.vaultAddress) {
             setVaultAddress(errorData.vaultAddress);
           }
@@ -111,14 +166,18 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
           setStep(3);
         } else {
           // Other errors
-          setVaultCreationError(errorData.error || errorData.details || "Verification failed");
+          setVaultCreationError(
+            errorData.error || errorData.details || "Verification failed"
+          );
           setIsVerified(true);
           setStep(3);
         }
       }
     } catch (error: any) {
       console.error("World ID verification error:", error);
-      setVaultCreationError(error.message || "Network error during verification");
+      setVaultCreationError(
+        error.message || "Network error during verification"
+      );
       setIsVerified(true);
       setStep(3);
     }
@@ -126,15 +185,71 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
 
   const handleConfigureContinue = () => {
     setStep(4);
+    // Populate CVS and Max Borrowable for the Review step when addresses are available
+    try {
+      if (publicClient && IDO_ADDRESS && isAddress(IDO_ADDRESS) && ipAssetId && isAddress(ipAssetId)) {
+        // Contracts expect bytes32 IP IDs; pad the address to 32 bytes
+        const ipBytes32 = padHex(ipAssetId as `0x${string}`, { size: 32 });
+        publicClient
+          .readContract({
+            address: IDO_ADDRESS,
+            abi: [{ type: "function", name: "getCVS", inputs: [{ name: "ipId", type: "bytes32" }], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" }],
+            functionName: "getCVS",
+            args: [ipBytes32],
+          })
+          .then((cvs: bigint) => setCvsScore(formatUnits(cvs, 18)))
+          .catch(() => setCvsScore(""));
+      }
+      // Existing vault detection via ipToVault; reflect in UI and compute max borrowable
+      if (publicClient && ADLV_ADDRESS && isAddress(ADLV_ADDRESS) && ipAssetId && isAddress(ipAssetId)) {
+        const ipBytes32 = padHex(ipAssetId as `0x${string}`, { size: 32 });
+        publicClient
+          .readContract({
+            address: ADLV_ADDRESS,
+            abi: [{ type: "function", name: "ipToVault", inputs: [{ name: "ipId", type: "bytes32" }], outputs: [{ name: "", type: "address" }], stateMutability: "view" }],
+            functionName: "ipToVault",
+            args: [ipBytes32],
+          })
+          .then((addr: `0x${string}`) => {
+            if (addr && addr !== "0x0000000000000000000000000000000000000000") {
+              setExistingVaultAddress(addr);
+              setVaultAddress(addr);
+              publicClient
+                .readContract({
+                  address: ADLV_ADDRESS,
+                  abi: [{ type: "function", name: "calculateMaxLoanAmount", inputs: [{ name: "vaultAddress", type: "address" }], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" }],
+                  functionName: "calculateMaxLoanAmount",
+                  args: [addr],
+                })
+                .then((amt: bigint) => setMaxBorrowable(formatUnits(amt, 18)))
+                .catch(() => setMaxBorrowable(""));
+            } else {
+              setExistingVaultAddress("");
+            }
+          })
+          .catch(() => setExistingVaultAddress(""));
+      }
+      if (publicClient && ADLV_ADDRESS && isAddress(ADLV_ADDRESS) && vaultAddress && isAddress(vaultAddress)) {
+        publicClient
+          .readContract({
+            address: ADLV_ADDRESS,
+            abi: [{ type: "function", name: "calculateMaxLoanAmount", inputs: [{ name: "vaultAddress", type: "address" }], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" }],
+            functionName: "calculateMaxLoanAmount",
+            args: [vaultAddress],
+          })
+          .then((amt: bigint) => setMaxBorrowable(formatUnits(amt, 18)))
+          .catch(() => setMaxBorrowable(""));
+      }
+    } catch {}
   };
 
   const handleDeployVault = async () => {
     // If vault was already created during World ID verification, just show it
     if (vaultAddress && transactionHash) {
-    setIsDeploying(true);
-    setTimeout(() => {
-      setIsDeploying(false);
-      setStep(5);
+      setIsDeploying(true);
+      setTimeout(() => {
+        setIsDeploying(false);
+        setStep(5);
       }, 1000);
       return;
     }
@@ -142,14 +257,16 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
     // Otherwise, create vault now (fallback if World ID didn't create it)
     setIsDeploying(true);
     setVaultCreationError("");
-    
+
     try {
       const res = await fetch(VERIFICATION_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          proof: null, // No proof needed if already verified
-          signal: "vault_creation",
+          // Backend supports creating or returning existing vault from the same endpoint
+          // If ID proof was handled earlier, backend may ignore proof
+          proof: null,
+          signal: ipAssetId,
           vaultData: { ipId: ipAssetId, creator: creatorAddress },
         }),
       });
@@ -164,11 +281,11 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         }
         // Handle existing vault case
         if (data.alreadyExists) {
-          console.log('Using existing vault:', data.vaultAddress);
+          console.log("Using existing vault:", data.vaultAddress);
           // For existing vault, we might not have transactionHash
           // Set a placeholder or fetch it if needed
           if (!data.transactionHash) {
-            setTransactionHash('N/A - Existing Vault');
+            setTransactionHash("N/A - Existing Vault");
           }
         }
         // Move to step 5 immediately
@@ -177,43 +294,24 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
       } else {
         const errorData = await res.json().catch(() => ({}));
         // Handle vault already exists
-        if (res.status === 409 || errorData.code === 'VAULT_EXISTS') {
+        if (res.status === 409 || errorData.code === "VAULT_EXISTS") {
           // Try to get vault address from error response or fetch it
           if (errorData.vaultAddress) {
             setVaultAddress(errorData.vaultAddress);
-            setTransactionHash('N/A - Existing Vault');
+            setTransactionHash("N/A - Existing Vault");
             setIsDeploying(false);
             setStep(5);
           } else {
-            // Try to fetch existing vault address
-            try {
-              const fetchRes = await fetch(VERIFICATION_ENDPOINT, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  proof: null,
-                  signal: "get_vault",
-                  vaultData: { ipId: ipAssetId, creator: creatorAddress },
-                }),
-              });
-              if (fetchRes.ok) {
-                const fetchData = await fetchRes.json();
-                if (fetchData.vaultAddress) {
-                  setVaultAddress(fetchData.vaultAddress);
-                  setTransactionHash('N/A - Existing Vault');
-                  setIsDeploying(false);
-                  setStep(5);
-                  return;
-                }
-              }
-            } catch {
-              // If fetch fails, show error
-            }
-            setVaultCreationError(errorData.error || "Vault already exists. Please use a different IP Asset ID.");
+            setVaultCreationError(
+              errorData.error ||
+                "Vault already exists. Please use a different IP Asset ID."
+            );
             setIsDeploying(false);
           }
         } else {
-          setVaultCreationError(errorData.error || errorData.details || "Failed to deploy vault");
+          setVaultCreationError(
+            errorData.error || errorData.details || "Failed to deploy vault"
+          );
           setIsDeploying(false);
         }
       }
@@ -384,6 +482,11 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                           Click below to verify this IP asset exists on Story
                           Protocol and is owned by your connected wallet
                         </p>
+                        {validationError && (
+                          <p className="text-red-400 text-xs mt-2">
+                            {validationError}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </motion.div>
@@ -420,11 +523,10 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                         </p>
                         <div className="space-y-1">
                           <p className="text-white text-sm font-medium">
-                            My Awesome Song
+                            {assetName || "IP Asset"}
                           </p>
                           <p className="text-gray-400 text-xs">
-                            Music IP • Registered 3 months ago • 1,247 licenses
-                            issued
+                            {assetType || "Asset"}
                           </p>
                           <p className="text-gray-500 text-xs">
                             Owned by: {ipAssetId.slice(0, 6)}...
@@ -441,8 +543,8 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                   whileTap={{ scale: 0.98 }}
                   onClick={handleValidateIP}
                   disabled={
-                    !ipAssetId ||
-                    !creatorAddress ||
+                    !isAddress(ipAssetId) ||
+                    !isAddress(creatorAddress) ||
                     isValidating ||
                     validationSuccess
                   }
@@ -713,13 +815,32 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="text-gray-400 text-sm mb-1">Asset Type</p>
-                      <p className="text-white font-medium">Music IP</p>
+                      <p className="text-white font-medium">{assetType || "IP Asset"}</p>
                     </div>
                     <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-xs font-medium">
                       Verified on Story Protocol
                     </span>
                   </div>
                 </div>
+
+                {existingVaultAddress && (
+                  <div className="p-5 bg-yellow-500/10 rounded-xl border border-yellow-600/30">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-yellow-400 text-sm font-medium mb-1">Existing Vault Detected</p>
+                        <p className="text-white font-mono text-xs break-all">{existingVaultAddress}</p>
+                      </div>
+                      <a
+                        href={`https://sepolia.basescan.org/address/${existingVaultAddress}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-orange-400 hover:text-orange-300 text-xs underline"
+                      >
+                        View Address →
+                      </a>
+                    </div>
+                  </div>
+                )}
 
                 <div className="p-5 bg-gray-900/50 rounded-xl border border-gray-700/50">
                   <div className="flex justify-between items-center">
@@ -754,34 +875,40 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                       <p className="text-gray-400 text-sm mb-1">
                         Initial CVS Score
                       </p>
-                      <p className="text-amber-400 font-bold text-lg">5,000</p>
+                      <p className="text-amber-400 font-bold text-lg">{cvsScore || "—"}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-gray-400 text-sm mb-1">
                         Est. Max Borrowable
                       </p>
-                      <p className="text-white font-bold">$2,500</p>
+                      <p className="text-white font-bold">{maxBorrowable ? `${maxBorrowable}` : "—"}</p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={handleDeployVault}
-                disabled={isDeploying}
-                className="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-bold text-lg hover:shadow-lg hover:shadow-green-500/50 transition-all disabled:opacity-50"
-              >
-                {isDeploying ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Deploying Atlas Vault...
-                  </span>
-                ) : (
-                  "Deploy Atlas Vault"
-                )}
-              </motion.button>
+              {existingVaultAddress ? (
+                <div className="w-full py-4 bg-gradient-to-r from-yellow-600 to-amber-600 text-white rounded-xl font-bold text-lg text-center">
+                  Existing Vault Detected — Deployment Disabled
+                </div>
+              ) : (
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleDeployVault}
+                  disabled={isDeploying || !validationSuccess || !isVerified}
+                  className="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-bold text-lg hover:shadow-lg hover:shadow-green-500/50 transition-all disabled:opacity-50"
+                >
+                  {isDeploying ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Deploying Atlas Vault...
+                    </span>
+                  ) : (
+                    "Deploy Atlas Vault"
+                  )}
+                </motion.button>
+              )}
 
               {isDeploying && (
                 <motion.div
@@ -835,29 +962,32 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                 </>
               ) : vaultAddress && transactionHash ? (
                 <>
-              <motion.div
-                animate={{
-                  scale: [1, 1.2, 1],
-                  rotate: [0, 360],
-                }}
-                transition={{
-                  duration: 1,
-                }}
-                className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center"
-              >
-                <CheckCircle2 className="w-12 h-12 text-white" />
-              </motion.div>
+                  <motion.div
+                    animate={{
+                      scale: [1, 1.2, 1],
+                      rotate: [0, 360],
+                    }}
+                    transition={{
+                      duration: 1,
+                    }}
+                    className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center"
+                  >
+                    <CheckCircle2 className="w-12 h-12 text-white" />
+                  </motion.div>
 
-              <h2 className="text-3xl font-bold text-white mb-3">
-                Atlas Vault Deployed Successfully!
-              </h2>
-              <p className="text-gray-400 mb-8">
-                    Your IP Data Vault is now active on-chain and ready to generate liquidity
-              </p>
+                  <h2 className="text-3xl font-bold text-white mb-3">
+                    Atlas Vault Deployed Successfully!
+                  </h2>
+                  <p className="text-gray-400 mb-8">
+                    Your IP Data Vault is now active on-chain and ready to
+                    generate liquidity
+                  </p>
 
                   <div className="grid grid-cols-1 gap-4 max-w-2xl mx-auto mb-8">
                     <div className="p-5 bg-gray-900/50 rounded-xl border border-green-500/30">
-                      <div className="text-gray-400 text-sm mb-2">Vault ID (On-Chain)</div>
+                      <div className="text-gray-400 text-sm mb-2">
+                        Vault ID (On-Chain)
+                      </div>
                       <div className="text-white font-mono text-sm break-all mb-2">
                         {vaultAddress}
                       </div>
@@ -885,7 +1015,9 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                     </div>
 
                     <div className="p-5 bg-gray-900/50 rounded-xl border border-green-500/30">
-                      <div className="text-gray-400 text-sm mb-2">Transaction Hash</div>
+                      <div className="text-gray-400 text-sm mb-2">
+                        Transaction Hash
+                      </div>
                       <div className="text-white font-mono text-sm break-all mb-3">
                         {transactionHash}
                       </div>
@@ -900,18 +1032,23 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-gray-900/50 rounded-xl border border-orange-500/30">
-                        <div className="text-gray-400 text-sm mb-1">IP Asset ID</div>
+                      <div className="p-4 bg-gray-900/50 rounded-xl border border-orange-500/30">
+                        <div className="text-gray-400 text-sm mb-1">
+                          IP Asset ID
+                        </div>
                         <div className="text-white font-mono text-xs break-all">
                           {ipAssetId.slice(0, 10)}...{ipAssetId.slice(-8)}
                         </div>
-                </div>
-                <div className="p-4 bg-gray-900/50 rounded-xl border border-orange-500/30">
-                        <div className="text-gray-400 text-sm mb-1">Creator</div>
+                      </div>
+                      <div className="p-4 bg-gray-900/50 rounded-xl border border-orange-500/30">
+                        <div className="text-gray-400 text-sm mb-1">
+                          Creator
+                        </div>
                         <div className="text-white font-mono text-xs break-all">
-                          {creatorAddress.slice(0, 10)}...{creatorAddress.slice(-8)}
-                </div>
-              </div>
+                          {creatorAddress.slice(0, 10)}...
+                          {creatorAddress.slice(-8)}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </>
@@ -937,7 +1074,9 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                   </p>
                   {vaultCreationError && (
                     <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl mb-4">
-                      <p className="text-red-400 text-sm">{vaultCreationError}</p>
+                      <p className="text-red-400 text-sm">
+                        {vaultCreationError}
+                      </p>
                     </div>
                   )}
                 </>
