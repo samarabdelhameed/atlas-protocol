@@ -28,8 +28,6 @@ Atlas Protocol is a complete IP-backed lending platform with full Story Protocol
 **Documentation**:
 - `contracts/FRONTEND_CONTRACTS_INFO.md` - Integration guide
 - `contracts/VERIFICATION_GUIDE.md` - Verification instructions
-- `contracts/LIVE_DATA_SUMMARY.md` - Real-time data
-- `contracts/HOW_TO_VERIFY.md` - RPC verification
 
 ---
 
