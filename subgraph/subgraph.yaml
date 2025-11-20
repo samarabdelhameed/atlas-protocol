@@ -11,7 +11,7 @@ dataSources:
     source:
       address: "0xf2116eE783Be82ba51a6Eda9453dFD6A1723d205" # Atlas ADLV Contract address (deployed)
       abi: AtlasADLV
-      startBlock: 0
+      startBlock: 11122612  # IDO deployment block (earliest) - 0xa9b7b4
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
