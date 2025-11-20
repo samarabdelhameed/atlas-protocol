@@ -2,14 +2,18 @@ import { GraphQLClient } from 'graphql-request';
 
 /**
  * Goldsky Subgraph Endpoint Configuration
- * Update this after deploying your subgraph to Goldsky
+ * 
+ * NOTE: Subgraph is built and ready but not deployed yet.
+ * For now, we use direct RPC calls to contracts.
+ * After Goldsky deployment, update SUBGRAPH_URL in .env
  */
 export const SUBGRAPH_ENDPOINTS = {
   // Production - Update after Goldsky deployment
   production: process.env.SUBGRAPH_URL || 'https://api.goldsky.com/api/public/atlas-protocol/subgraphs/atlas-v1',
   
-  // Development/Testing
-  development: process.env.SUBGRAPH_URL || 'http://localhost:8000/subgraphs/name/atlas-protocol',
+  // Development/Testing - Use placeholder until deployed
+  // To deploy: cd subgraph && goldsky subgraph deploy atlas-protocol/1.0.0 --path .
+  development: process.env.SUBGRAPH_URL || 'https://api.goldsky.com/api/public/atlas-protocol/subgraphs/atlas-v1',
   
   // Story Testnet
   storyTestnet: process.env.SUBGRAPH_URL || 'https://api.goldsky.com/api/public/atlas-protocol/testnet/subgraphs/atlas-v1',
