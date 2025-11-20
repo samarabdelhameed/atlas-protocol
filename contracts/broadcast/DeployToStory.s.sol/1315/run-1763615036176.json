@@ -66,16 +66,16 @@
   "libraries": [],
   "pending": [],
   "returns": {
-    "ido": {
-      "internal_type": "contract IDO",
-      "value": "0x75B0EF811CB728aFdaF395a0b17341fb426c26dD"
-    },
     "adlv": {
       "internal_type": "contract ADLV",
       "value": "0xf2116eE783Be82ba51a6Eda9453dFD6A1723d205"
+    },
+    "ido": {
+      "internal_type": "contract IDO",
+      "value": "0x75B0EF811CB728aFdaF395a0b17341fb426c26dD"
     }
   },
-  "timestamp": 1763616720513,
+  "timestamp": 1763615036176,
   "chain": 1315,
   "commit": "eed6b4e"
 }

@@ -9,7 +9,14 @@ export const config = {
   // Story Protocol
   storyProtocol: {
     apiKey: process.env.STORY_PROTOCOL_API_KEY || '',
-    rpcUrl: process.env.STORY_PROTOCOL_RPC || '',
+    rpcUrl: process.env.STORY_PROTOCOL_RPC || 'https://rpc-storyevm-testnet.aldebaranode.xyz',
+    apiUrl: process.env.STORY_PROTOCOL_API_URL || 'https://api.story.foundation/v1',
+    chainId: parseInt(process.env.STORY_PROTOCOL_CHAIN_ID || '1315'),
+    contracts: {
+      ipAssetRegistry: process.env.STORY_PROTOCOL_IP_ASSET_REGISTRY || '',
+      licensingModule: process.env.STORY_PROTOCOL_LICENSING_MODULE || '',
+      registry: process.env.STORY_PROTOCOL_REGISTRY || '',
+    },
   },
   
   // ABV.dev Integration

@@ -117,17 +117,17 @@ export class VerificationServer {
       // Verify World ID proof if provided
       let isVerified = false;
       if (proof && signal) {
-        console.log(`🔍 Verifying World ID proof for creator: ${vaultData.creator}`);
+      console.log(`🔍 Verifying World ID proof for creator: ${vaultData.creator}`);
         isVerified = await this.verifyWorldIdProof(proof, signal);
 
-        if (!isVerified) {
-          console.log(`❌ World ID proof verification failed for creator: ${vaultData.creator}`);
-          return this.jsonResponse(
-            { error: 'World ID proof failed validation.' },
-            401
-          );
-        }
-        console.log(`✅ World ID Verified. Proceeding with Vault deployment for Creator: ${vaultData.creator}`);
+      if (!isVerified) {
+        console.log(`❌ World ID proof verification failed for creator: ${vaultData.creator}`);
+        return this.jsonResponse(
+          { error: 'World ID proof failed validation.' },
+          401
+        );
+      }
+      console.log(`✅ World ID Verified. Proceeding with Vault deployment for Creator: ${vaultData.creator}`);
       } else {
         // If no proof provided, allow vault creation for development/testing
         // In production, this should require proof

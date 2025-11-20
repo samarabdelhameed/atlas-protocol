@@ -18,6 +18,7 @@
   "dependencies": {
     "@atlas-protocol/graphql-client": "workspace:*",
     "@atlas-protocol/types": "workspace:*",
+    "@story-protocol/core-sdk": "^1.4.1",
     "@types/node": "^24.10.1",
     "@worldcoin/idkit": "^2.4.2",
     "ethers": "^6.15.0",

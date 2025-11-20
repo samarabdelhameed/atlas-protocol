@@ -99,8 +99,8 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         if (res.status === 401) {
           // World ID verification failed - allow to proceed anyway for testing
           console.warn('World ID verification failed, but allowing to proceed for testing');
-          setIsVerified(true);
-          setStep(3);
+        setIsVerified(true);
+        setStep(3);
         } else if (res.status === 409 || errorData.code === 'VAULT_EXISTS') {
           // Vault already exists - use existing vault
           setVaultCreationError(errorData.error || "Vault already exists for this IP Asset ID");
@@ -131,10 +131,10 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
   const handleDeployVault = async () => {
     // If vault was already created during World ID verification, just show it
     if (vaultAddress && transactionHash) {
-      setIsDeploying(true);
-      setTimeout(() => {
-        setIsDeploying(false);
-        setStep(5);
+    setIsDeploying(true);
+    setTimeout(() => {
+      setIsDeploying(false);
+      setStep(5);
       }, 1000);
       return;
     }
@@ -835,25 +835,25 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                 </>
               ) : vaultAddress && transactionHash ? (
                 <>
-                  <motion.div
-                    animate={{
-                      scale: [1, 1.2, 1],
-                      rotate: [0, 360],
-                    }}
-                    transition={{
-                      duration: 1,
-                    }}
-                    className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center"
-                  >
-                    <CheckCircle2 className="w-12 h-12 text-white" />
-                  </motion.div>
+              <motion.div
+                animate={{
+                  scale: [1, 1.2, 1],
+                  rotate: [0, 360],
+                }}
+                transition={{
+                  duration: 1,
+                }}
+                className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center"
+              >
+                <CheckCircle2 className="w-12 h-12 text-white" />
+              </motion.div>
 
-                  <h2 className="text-3xl font-bold text-white mb-3">
-                    Atlas Vault Deployed Successfully!
-                  </h2>
-                  <p className="text-gray-400 mb-8">
+              <h2 className="text-3xl font-bold text-white mb-3">
+                Atlas Vault Deployed Successfully!
+              </h2>
+              <p className="text-gray-400 mb-8">
                     Your IP Data Vault is now active on-chain and ready to generate liquidity
-                  </p>
+              </p>
 
                   <div className="grid grid-cols-1 gap-4 max-w-2xl mx-auto mb-8">
                     <div className="p-5 bg-gray-900/50 rounded-xl border border-green-500/30">
@@ -900,18 +900,18 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="p-4 bg-gray-900/50 rounded-xl border border-orange-500/30">
+                <div className="p-4 bg-gray-900/50 rounded-xl border border-orange-500/30">
                         <div className="text-gray-400 text-sm mb-1">IP Asset ID</div>
                         <div className="text-white font-mono text-xs break-all">
                           {ipAssetId.slice(0, 10)}...{ipAssetId.slice(-8)}
                         </div>
-                      </div>
-                      <div className="p-4 bg-gray-900/50 rounded-xl border border-orange-500/30">
+                </div>
+                <div className="p-4 bg-gray-900/50 rounded-xl border border-orange-500/30">
                         <div className="text-gray-400 text-sm mb-1">Creator</div>
                         <div className="text-white font-mono text-xs break-all">
                           {creatorAddress.slice(0, 10)}...{creatorAddress.slice(-8)}
-                        </div>
-                      </div>
+                </div>
+              </div>
                     </div>
                   </div>
                 </>

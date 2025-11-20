@@ -15,7 +15,8 @@
     "dev:agent": "cd apps/agent-service && bun run dev",
     "build:frontend": "cd apps/frontend && bun run build",
     "test:contracts": "cd contracts && forge test",
-    "deploy:contracts": "cd contracts && forge script"
+    "deploy:contracts": "cd contracts && forge script",
+    "fetch:live-data": "bun run contracts/scripts/fetch-live-data.ts"
   },
   "devDependencies": {
     "turbo": "latest",
