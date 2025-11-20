@@ -1,5 +1,16 @@
 import { GraphQLClient } from 'graphql-request';
 
+// Resolve subgraph URL from Vite (browser) or Node environments
+function resolveSubgraphUrl(): string | undefined {
+  const viteUrl = (typeof import.meta !== 'undefined' && (import.meta as any).env)
+    ? (import.meta as any).env.VITE_SUBGRAPH_URL
+    : undefined;
+  const nodeUrl = (typeof process !== 'undefined' && process.env)
+    ? process.env.SUBGRAPH_URL
+    : undefined;
+  return viteUrl || nodeUrl;
+}
+
 /**
  * Goldsky Subgraph Endpoint Configuration
  * 
@@ -9,25 +20,28 @@ import { GraphQLClient } from 'graphql-request';
  */
 export const SUBGRAPH_ENDPOINTS = {
   // Production - Update after Goldsky deployment
-  production: process.env.SUBGRAPH_URL || 'https://api.goldsky.com/api/public/atlas-protocol/subgraphs/atlas-v1',
+  production: resolveSubgraphUrl() || 'https://api.goldsky.com/api/public/atlas-protocol/subgraphs/atlas-v1',
   
   // Development/Testing - Use placeholder until deployed
   // To deploy: cd subgraph && goldsky subgraph deploy atlas-protocol/1.0.0 --path .
-  development: process.env.SUBGRAPH_URL || 'https://api.goldsky.com/api/public/atlas-protocol/subgraphs/atlas-v1',
+  development: resolveSubgraphUrl() || 'https://api.goldsky.com/api/public/atlas-protocol/subgraphs/atlas-v1',
   
   // Story Testnet
-  storyTestnet: process.env.SUBGRAPH_URL || 'https://api.goldsky.com/api/public/atlas-protocol/testnet/subgraphs/atlas-v1',
+  storyTestnet: resolveSubgraphUrl() || 'https://api.goldsky.com/api/public/atlas-protocol/testnet/subgraphs/atlas-v1',
 };
 
 /**
  * Get the appropriate subgraph endpoint based on environment
  */
 export function getSubgraphEndpoint(): string {
-  const env = process.env.NODE_ENV || 'development';
+  // Avoid direct window references for Node build compatibility
+  const viteMode = (typeof import.meta !== 'undefined' && (import.meta as any).env?.MODE) || undefined;
+  const nodeMode = (typeof process !== 'undefined' && process.env?.NODE_ENV) || undefined;
+  const mode = viteMode || nodeMode || 'development';
   
-  if (env === 'production') {
+  if (mode === 'production') {
     return SUBGRAPH_ENDPOINTS.production;
-  } else if (env === 'test') {
+  } else if (mode === 'test') {
     return SUBGRAPH_ENDPOINTS.storyTestnet;
   }
   
