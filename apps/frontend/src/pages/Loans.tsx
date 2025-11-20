@@ -1,23 +1,138 @@
 import { motion } from 'framer-motion';
 import { DollarSign, TrendingDown, Clock, CheckCircle2, AlertTriangle, Network, Shield, Zap } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useAccount, useWalletClient } from 'wagmi';
+import { createPublicClient, http, isAddress, formatUnits, parseUnits } from 'viem';
+import ADLV_JSON from '../../../agent-service/contracts/ADLV.json';
+import IDO_JSON from '../../../agent-service/contracts/IDO.json';
 
 interface LoansProps {
   onNavigate?: (page: string) => void;
 }
 
 export default function Loans({ onNavigate }: LoansProps = {}) {
+  const { address, isConnected } = useAccount();
+  const { data: walletClient } = useWalletClient();
   const [loanAmount, setLoanAmount] = useState('');
   const [selectedChain, setSelectedChain] = useState('');
   const [duration, setDuration] = useState('30');
   const [loanExecuted, setLoanExecuted] = useState(false);
+  const [vaultAddress, setVaultAddress] = useState('');
+  const [issueTxHash, setIssueTxHash] = useState('');
+  const [issuing, setIssuing] = useState(false);
+  const [error, setError] = useState<string>('');
 
-  const handleExecuteLoan = () => {
-    if (loanAmount && selectedChain) {
+  // Env-driven chain and contract addresses
+  const RPC_URL = import.meta.env.VITE_RPC_URL as string | undefined;
+  const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || 1315);
+  const ADLV_ADDRESS = (import.meta.env.VITE_ADLV_CONTRACT_ADDRESS || '') as `0x${string}`;
+  const IDO_ADDRESS = (import.meta.env.VITE_IDO_CONTRACT_ADDRESS || '') as `0x${string}`;
+
+  const publicClient = useMemo(() => {
+    if (!RPC_URL) return null;
+    return createPublicClient({
+      chain: { id: CHAIN_ID, name: 'Story', nativeCurrency: { name: 'STORY', symbol: 'STORY', decimals: 18 }, rpcUrls: { default: { http: [RPC_URL] } } },
+      transport: http(RPC_URL),
+    });
+  }, [RPC_URL, CHAIN_ID]);
+
+  const [currentCVS, setCurrentCVS] = useState<number>(0);
+  const [maxBorrowable, setMaxBorrowable] = useState<number>(0);
+  const [collateralBps, setCollateralBps] = useState<number>(15000);
+  const [aprBps, setAprBps] = useState<number>(350);
+
+  // Fetch live metrics when vault changes
+  useEffect(() => {
+    const run = async () => {
+      setError('');
+      if (!publicClient || !ADLV_ADDRESS || !IDO_ADDRESS) return;
+      if (!vaultAddress || !isAddress(vaultAddress)) return;
+      try {
+        // getVault to obtain ipId
+        const vault: any = await publicClient.readContract({
+          address: ADLV_ADDRESS,
+          abi: ADLV_JSON.abi,
+          functionName: 'getVault',
+          args: [vaultAddress],
+        });
+        const ipId: `0x${string}` = vault?.ipId as `0x${string}`;
+        // CVS
+        const cvs = (await publicClient.readContract({
+          address: IDO_ADDRESS,
+          abi: IDO_JSON.abi,
+          functionName: 'getCVS',
+          args: [ipId],
+        })) as bigint;
+        setCurrentCVS(Number(formatUnits(cvs, 18)));
+        // Max loan
+        const maxLoan = (await publicClient.readContract({
+          address: ADLV_ADDRESS,
+          abi: ADLV_JSON.abi,
+          functionName: 'calculateMaxLoanAmount',
+          args: [vaultAddress],
+        })) as bigint;
+        setMaxBorrowable(Number(formatUnits(maxLoan, 18)));
+        // Collateral ratio (bps)
+        const cr = (await publicClient.readContract({
+          address: ADLV_ADDRESS,
+          abi: ADLV_JSON.abi,
+          functionName: 'defaultCollateralRatio',
+        })) as bigint;
+        setCollateralBps(Number(cr));
+        // APR from CVS (bps)
+        const apr = (await publicClient.readContract({
+          address: ADLV_ADDRESS,
+          abi: ADLV_JSON.abi,
+          functionName: 'calculateInterestRate',
+          args: [cvs],
+        })) as bigint;
+        setAprBps(Number(apr));
+      } catch (e: any) {
+        setError(e?.message || 'Failed to load vault metrics');
+      }
+    };
+    run();
+  }, [publicClient, ADLV_ADDRESS, IDO_ADDRESS, vaultAddress]);
+
+  const handleExecuteLoan = async () => {
+    try {
+      setError('');
+      if (!walletClient || !isConnected) {
+        setError('Wallet not connected');
+        return;
+      }
+      if (!vaultAddress || !isAddress(vaultAddress)) {
+        setError('Enter a valid vault address');
+        return;
+      }
+      if (!loanAmount || Number(loanAmount) <= 0) {
+        setError('Enter a valid loan amount');
+        return;
+      }
+      if (maxBorrowable && Number(loanAmount) > maxBorrowable) {
+        setError('Requested amount exceeds max borrowable');
+        return;
+      }
+      const durationDays = parseInt(duration);
+      const durationSeconds = BigInt(durationDays * 24 * 60 * 60);
+      const loanAmountWei = parseUnits(loanAmount, 18);
+      const collateralWei = (loanAmountWei * BigInt(collateralBps)) / BigInt(10000);
+      setIssuing(true);
+      const txHash = await walletClient.writeContract({
+        address: ADLV_ADDRESS,
+        abi: ADLV_JSON.abi,
+        functionName: 'issueLoan',
+        args: [vaultAddress, loanAmountWei, durationSeconds],
+        value: collateralWei,
+        chain: { id: CHAIN_ID } as any,
+      });
+      setIssueTxHash(txHash);
       setLoanExecuted(true);
-      setTimeout(() => {
-        setLoanExecuted(false);
-      }, 3000);
+      setTimeout(() => setLoanExecuted(false), 3000);
+    } catch (e: any) {
+      setError(e?.shortMessage || e?.message || 'Failed to issue loan');
+    } finally {
+      setIssuing(false);
     }
   };
 
@@ -29,46 +144,10 @@ export default function Loans({ onNavigate }: LoansProps = {}) {
     { id: 'base', name: 'Base', color: 'from-blue-500 to-indigo-600' },
   ];
 
-  const activeLoans = [
-    {
-      id: 'LOAN-001',
-      amount: '$2,500',
-      chain: 'Ethereum',
-      apr: '3.5%',
-      dueDate: '15 days',
-      status: 'healthy',
-      cvsHealth: 85,
-      collateralRatio: 220,
-      currentCVS: 5500,
-    },
-    {
-      id: 'LOAN-002',
-      amount: '$1,800',
-      chain: 'Polygon',
-      apr: '3.2%',
-      dueDate: '22 days',
-      status: 'healthy',
-      cvsHealth: 75,
-      collateralRatio: 200,
-      currentCVS: 3600,
-    },
-    {
-      id: 'LOAN-003',
-      amount: '$3,200',
-      chain: 'Arbitrum',
-      apr: '3.8%',
-      dueDate: '7 days',
-      status: 'critical',
-      cvsHealth: 25,
-      collateralRatio: 155,
-      currentCVS: 4960,
-    },
-  ];
+  const activeLoans: Array<{ id: string; amount: string; chain: string; apr: string; dueDate: string; status: 'healthy' | 'warning' | 'critical'; cvsHealth: number; collateralRatio: number; currentCVS: number; }> = [];
 
-  const maxBorrowable = 4271;
-  const currentCVS = 8542;
-  const collateralRatio = 200;
-  const estimatedAPR = loanAmount ? (3.5 + (parseFloat(loanAmount) / maxBorrowable) * 1.5).toFixed(2) : '3.50';
+  const collateralRatio = collateralBps / 100;
+  const estimatedAPR = loanAmount && aprBps ? (Number(aprBps) / 100).toFixed(2) : '—';
 
   const getHealthColor = (health: number) => {
     if (health >= 70) return 'from-green-500 to-emerald-600';
@@ -100,41 +179,50 @@ export default function Loans({ onNavigate }: LoansProps = {}) {
             animate={{ opacity: 1, x: 0 }}
             className="lg:col-span-2 bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8"
           >
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-amber-600 rounded-xl flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-white" />
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-amber-600 rounded-xl flex items-center justify-center">
+              <DollarSign className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-white">Execute Liquidity Drawdown</h2>
+              <p className="text-gray-400 text-sm">Collateralized by your Dynamic CVS Score</p>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div>
+              <label className="block text-gray-300 text-sm font-medium mb-2">Vault Address</label>
+              <input
+                value={vaultAddress}
+                onChange={(e) => setVaultAddress(e.target.value)}
+                placeholder="0x..."
+                className="w-full px-4 py-3 bg-gray-900/50 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none transition-colors font-mono text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-gray-300 text-sm font-medium mb-2">
+                Drawdown Amount (USDC)
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={loanAmount}
+                  onChange={(e) => setLoanAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full px-4 py-4 bg-gray-900/50 border border-gray-700 rounded-xl text-white text-2xl font-bold placeholder-gray-500 focus:border-orange-500 focus:outline-none transition-colors"
+                />
+                <button
+                  onClick={() => setLoanAmount(maxBorrowable ? maxBorrowable.toString() : '')}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 px-4 py-2 bg-gradient-to-b from-orange-950/40 to-transparent border border-orange-500 text-white rounded-xl text-sm font-medium shadow-[0_0_15px_rgba(249,115,22,0.3)] hover:shadow-[0_0_25px_rgba(249,115,22,0.5)] transition-all duration-300"
+                >
+                  MAX
+                </button>
               </div>
-              <div>
-                <h2 className="text-2xl font-bold text-white">Execute Liquidity Drawdown</h2>
-                <p className="text-gray-400 text-sm">Collateralized by your Dynamic CVS Score</p>
+              <div className="mt-2 flex justify-between items-center text-sm">
+                <span className="text-gray-400">Max Drawdown Limit (200% Collateral)</span>
+                <span className="text-amber-400 font-bold">{maxBorrowable ? `$${maxBorrowable.toLocaleString()}` : '—'}</span>
               </div>
             </div>
-
-            <div className="space-y-6">
-              <div>
-                <label className="block text-gray-300 text-sm font-medium mb-2">
-                  Drawdown Amount (USDC)
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    value={loanAmount}
-                    onChange={(e) => setLoanAmount(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full px-4 py-4 bg-gray-900/50 border border-gray-700 rounded-xl text-white text-2xl font-bold placeholder-gray-500 focus:border-orange-500 focus:outline-none transition-colors"
-                  />
-                  <button
-                    onClick={() => setLoanAmount(maxBorrowable.toString())}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 px-4 py-2 bg-gradient-to-b from-orange-950/40 to-transparent border border-orange-500 text-white rounded-xl text-sm font-medium shadow-[0_0_15px_rgba(249,115,22,0.3)] hover:shadow-[0_0_25px_rgba(249,115,22,0.5)] transition-all duration-300"
-                  >
-                    MAX
-                  </button>
-                </div>
-                <div className="mt-2 flex justify-between items-center text-sm">
-                  <span className="text-gray-400">Max Drawdown Limit (200% Collateral)</span>
-                  <span className="text-amber-400 font-bold">${maxBorrowable.toLocaleString()}</span>
-                </div>
-              </div>
 
               <div>
                 <label className="block text-gray-300 text-sm font-medium mb-3">
@@ -204,27 +292,35 @@ export default function Loans({ onNavigate }: LoansProps = {}) {
                   <div className="flex justify-between items-center">
                     <span className="text-gray-300">Required CVS Collateral</span>
                     <span className="text-amber-400 font-bold">
-                      {(parseFloat(loanAmount) * collateralRatio / 100).toFixed(0)} CVS
+                      {currentCVS && loanAmount ? (parseFloat(loanAmount) * collateralRatio / 100).toFixed(0) : '—'} CVS
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-gray-300">Total Repayment</span>
                     <span className="text-white font-bold">
-                      ${(parseFloat(loanAmount) * (1 + parseFloat(estimatedAPR) / 100 * parseInt(duration) / 365)).toFixed(2)}
+                      {estimatedAPR !== '—' ? (parseFloat(loanAmount) * (1 + parseFloat(estimatedAPR) / 100 * parseInt(duration) / 365)).toFixed(2) : '—'}
                     </span>
                   </div>
                 </motion.div>
               )}
 
+              {error && (
+                <div className="text-red-400 text-sm mb-2">{error}</div>
+              )}
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                disabled={!loanAmount || !selectedChain}
+                disabled={!loanAmount || !selectedChain || !isAddress(vaultAddress) || issuing}
                 onClick={handleExecuteLoan}
                 className="w-full py-4 bg-gradient-to-b from-orange-950/40 to-transparent border-2 border-orange-500 text-white rounded-2xl font-bold text-lg shadow-[0_0_30px_rgba(249,115,22,0.4)] hover:shadow-[0_0_50px_rgba(249,115,22,0.6)] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loanExecuted ? '✓ Loan Executed Successfully!' : 'Execute Liquidity Drawdown'}
+                {issuing ? 'Processing...' : loanExecuted ? '✓ Loan Executed Successfully!' : 'Execute Liquidity Drawdown'}
               </motion.button>
+              {issueTxHash && (
+                <div className="mt-2 text-xs text-amber-400">
+                  Tx: <a href={`https://sepolia.basescan.org/tx/${issueTxHash}`} target="_blank" rel="noreferrer" className="underline">{issueTxHash.slice(0, 10)}...{issueTxHash.slice(-8)}</a>
+                </div>
+              )}
             </div>
           </motion.div>
 
