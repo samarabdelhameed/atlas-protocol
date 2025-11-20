@@ -29,12 +29,13 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
   const [vaultAddress, setVaultAddress] = useState<string>("");
   const [transactionHash, setTransactionHash] = useState<string>("");
   const [vaultCreationError, setVaultCreationError] = useState<string>("");
+  // Prefer backend base endpoint, fallback to legacy verification endpoint or default
   const WORLD_ID_APP_ID = import.meta.env.VITE_WORLD_ID_APP_ID || "";
-  const WORLD_ID_ACTION =
-    import.meta.env.VITE_WORLD_ID_ACTION || "atlas-verification";
-  const VERIFICATION_ENDPOINT =
-    import.meta.env.VITE_VERIFICATION_ENDPOINT ||
-    "http://localhost:3001/verify-vault";
+  const WORLD_ID_ACTION = import.meta.env.VITE_WORLD_ID_ACTION || "atlas-verification";
+  const BACKEND_BASE = import.meta.env.VITE_BACKEND_ENDPOINT || "";
+  const VERIFICATION_ENDPOINT = BACKEND_BASE
+    ? `${BACKEND_BASE}/verify-vault`
+    : (import.meta.env.VITE_VERIFICATION_ENDPOINT || "http://localhost:3001/verify-vault");
   const MOCK_VERIFICATION = import.meta.env.VITE_MOCK_VERIFICATION === "true";
 
   useEffect(() => {
@@ -73,7 +74,8 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           proof: result,
-          signal: "vault_creation",
+          // Use ipAssetId as signal per backend direction
+          signal: ipAssetId,
           vaultData: { ipId: ipAssetId, creator: creatorAddress },
         }),
       });
@@ -99,8 +101,8 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         if (res.status === 401) {
           // World ID verification failed - allow to proceed anyway for testing
           console.warn('World ID verification failed, but allowing to proceed for testing');
-        setIsVerified(true);
-        setStep(3);
+          setIsVerified(true);
+          setStep(3);
         } else if (res.status === 409 || errorData.code === 'VAULT_EXISTS') {
           // Vault already exists - use existing vault
           setVaultCreationError(errorData.error || "Vault already exists for this IP Asset ID");
@@ -148,8 +150,10 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          proof: null, // No proof needed if already verified
-          signal: "vault_creation",
+          // Backend supports creating or returning existing vault from the same endpoint
+          // If ID proof was handled earlier, backend may ignore proof
+          proof: null,
+          signal: ipAssetId,
           vaultData: { ipId: ipAssetId, creator: creatorAddress },
         }),
       });
@@ -185,30 +189,6 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
             setIsDeploying(false);
             setStep(5);
           } else {
-            // Try to fetch existing vault address
-            try {
-              const fetchRes = await fetch(VERIFICATION_ENDPOINT, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  proof: null,
-                  signal: "get_vault",
-                  vaultData: { ipId: ipAssetId, creator: creatorAddress },
-                }),
-              });
-              if (fetchRes.ok) {
-                const fetchData = await fetchRes.json();
-                if (fetchData.vaultAddress) {
-                  setVaultAddress(fetchData.vaultAddress);
-                  setTransactionHash('N/A - Existing Vault');
-                  setIsDeploying(false);
-                  setStep(5);
-                  return;
-                }
-              }
-            } catch {
-              // If fetch fails, show error
-            }
             setVaultCreationError(errorData.error || "Vault already exists. Please use a different IP Asset ID.");
             setIsDeploying(false);
           }
