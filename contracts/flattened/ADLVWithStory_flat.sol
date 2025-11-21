@@ -92,6 +92,74 @@ interface IStoryProtocolIPAssetRegistry {
     function transfer(string calldata ipId, address to) external;
 }
 
+// src/interfaces/IStoryProtocolLicenseRegistry.sol
+
+/**
+ * @title IStoryProtocolLicenseRegistry
+ * @notice Interface for Story Protocol License Registry
+ * @dev Manages licensing of IP Assets on Story Protocol
+ */
+interface IStoryProtocolLicenseRegistry {
+    /**
+     * @notice Register a license for an IP Asset
+     * @param ipId The IP Asset ID
+     * @param licenseType Type of license (e.g., "exclusive", "commercial", "derivative")
+     * @param licensee Address of the licensee
+     * @param terms License terms (encoded as bytes)
+     * @param price License price
+     * @return licenseId The registered license ID
+     */
+    function registerLicense(
+        string calldata ipId,
+        string calldata licenseType,
+        address licensee,
+        bytes calldata terms,
+        uint256 price
+    ) external returns (string memory licenseId);
+
+    /**
+     * @notice Get license information
+     * @param licenseId The license ID
+     * @return ipId The IP Asset ID
+     * @return licenseType The license type
+     * @return licensee The licensee address
+     * @return licensor The licensor address
+     * @return price The license price
+     * @return registeredAt Timestamp of registration
+     */
+    function getLicense(string calldata licenseId)
+        external
+        view
+        returns (
+            string memory ipId,
+            string memory licenseType,
+            address licensee,
+            address licensor,
+            uint256 price,
+            uint256 registeredAt
+        );
+
+    /**
+     * @notice Check if a license exists
+     * @param licenseId The license ID
+     * @return exists True if the license exists
+     */
+    function licenseExists(string calldata licenseId) external view returns (bool exists);
+
+    /**
+     * @notice Get all licenses for an IP Asset
+     * @param ipId The IP Asset ID
+     * @return licenseIds Array of license IDs
+     */
+    function getLicensesForIP(string calldata ipId) external view returns (string[] memory licenseIds);
+
+    /**
+     * @notice Revoke a license
+     * @param licenseId The license ID to revoke
+     */
+    function revokeLicense(string calldata licenseId) external;
+}
+
 // src/interfaces/IStoryProtocolSPG.sol
 
 /**
@@ -319,6 +387,9 @@ contract ADLVWithStory {
     /// @notice Story Protocol IP Asset Registry address
     IStoryProtocolIPAssetRegistry public storyIPAssetRegistry;
     
+    /// @notice Story Protocol License Registry address
+    IStoryProtocolLicenseRegistry public storyLicenseRegistry;
+    
     /// @notice Protocol owner
     address public owner;
     
@@ -399,6 +470,7 @@ contract ADLVWithStory {
     mapping(address => mapping(address => uint256)) public depositorShares;
     mapping(address => uint256) public totalShares;
     mapping(string => address) public storyIPIdToVault; // Story IP ID to vault
+    mapping(address => string[]) public vaultLicenses; // Vault address to license IDs
     
     // ========================================
     // Events
@@ -416,6 +488,15 @@ contract ADLVWithStory {
         address indexed vaultAddress,
         bytes32 indexed ipId,
         string storyIPId
+    );
+    
+    event LicenseRegistered(
+        address indexed vaultAddress,
+        bytes32 indexed ipId,
+        string indexed licenseId,
+        address licensee,
+        string licenseType,
+        uint256 price
     );
     
     event LicenseSold(
@@ -484,21 +565,35 @@ contract ADLVWithStory {
     constructor(
         address _idoContract,
         address _storySPG,
-        address _storyIPAssetRegistry
+        address _storyIPAssetRegistry,
+        address _storyLicenseRegistry
     ) {
         require(_idoContract != address(0), "ADLV: Invalid IDO address");
         require(_storySPG != address(0), "ADLV: Invalid SPG address");
         require(_storyIPAssetRegistry != address(0), "ADLV: Invalid registry address");
+        // License Registry is optional - can be address(0) if not available
         
         idoContract = IDO(_idoContract);
         storySPG = IStoryProtocolSPG(_storySPG);
         storyIPAssetRegistry = IStoryProtocolIPAssetRegistry(_storyIPAssetRegistry);
+        if (_storyLicenseRegistry != address(0)) {
+            storyLicenseRegistry = IStoryProtocolLicenseRegistry(_storyLicenseRegistry);
+        }
         owner = msg.sender;
     }
     
     // ========================================
     // Owner Functions
     // ========================================
+    
+    /**
+     * @notice Update CVS for an IP Asset (called by Agent Service)
+     * @param ipId The IP Asset ID
+     * @param newCVS The new CVS score
+     */
+    function updateCVS(bytes32 ipId, uint256 newCVS) external onlyOwner {
+        idoContract.updateCVS(ipId, newCVS);
+    }
     
     function setProtocolFee(uint256 _protocolFeeBps) external onlyOwner {
         require(_protocolFeeBps <= 1000, "ADLV: Fee too high");
@@ -518,14 +613,56 @@ contract ADLVWithStory {
         storySPG = IStoryProtocolSPG(_storySPG);
     }
     
+    function setStoryLicenseRegistry(address _storyLicenseRegistry) external onlyOwner {
+        // Allow setting to address(0) to disable license registry
+        if (_storyLicenseRegistry != address(0)) {
+            storyLicenseRegistry = IStoryProtocolLicenseRegistry(_storyLicenseRegistry);
+        } else {
+            // Reset to zero address (disable)
+            storyLicenseRegistry = IStoryProtocolLicenseRegistry(address(0));
+        }
+    }
+    
     // ========================================
     // Vault Management with Story Protocol
     // ========================================
     
     /**
-     * @notice Create vault with Story Protocol metadata
+     * @notice Register IP Asset on Story Protocol and create vault
      * @param ipId Internal IP identifier
-     * @param storyIPId Story Protocol IP ID (from off-chain registration)
+     * @param ipAssetType Story Protocol IP Asset type (typically 1)
+     * @param name Name of the IP Asset
+     * @param hash Content hash of the IP Asset
+     * @param registrationData Additional registration data
+     * @return vaultAddress The created vault address
+     * @return storyIPId The registered Story Protocol IP ID
+     */
+    function registerIPAndCreateVault(
+        bytes32 ipId,
+        uint8 ipAssetType,
+        string calldata name,
+        bytes32 hash,
+        bytes calldata registrationData
+    ) external returns (address vaultAddress, string memory storyIPId) {
+        require(ipToVault[ipId] == address(0), "ADLV: Vault already exists");
+        
+        // Register IP Asset on Story Protocol via SPG
+        storyIPId = storySPG.register(ipAssetType, name, hash, registrationData);
+        require(bytes(storyIPId).length > 0, "ADLV: Registration failed");
+        
+        // Verify registration
+        require(storyIPAssetRegistry.exists(storyIPId), "ADLV: IP not registered");
+        
+        // Create vault with registered IP
+        vaultAddress = _createVaultInternal(ipId, storyIPId);
+        
+        return (vaultAddress, storyIPId);
+    }
+    
+    /**
+     * @notice Create vault with existing Story Protocol IP ID
+     * @param ipId Internal IP identifier
+     * @param storyIPId Story Protocol IP ID (must be registered)
      * @return vaultAddress The created vault address
      */
     function createVault(
@@ -534,6 +671,23 @@ contract ADLVWithStory {
     ) external returns (address vaultAddress) {
         require(ipToVault[ipId] == address(0), "ADLV: Vault already exists");
         
+        // Verify IP exists on Story Protocol if provided
+        if (bytes(storyIPId).length > 0) {
+            require(storyIPAssetRegistry.exists(storyIPId), "ADLV: IP not registered");
+        }
+        
+        vaultAddress = _createVaultInternal(ipId, storyIPId);
+        
+        return vaultAddress;
+    }
+    
+    /**
+     * @notice Internal function to create vault
+     */
+    function _createVaultInternal(
+        bytes32 ipId,
+        string memory storyIPId
+    ) internal returns (address vaultAddress) {
         uint256 initialCVS = idoContract.getCVS(ipId);
         
         vaultAddress = address(
@@ -638,15 +792,73 @@ contract ADLVWithStory {
         address vaultAddress,
         string calldata licenseType,
         uint256 /* duration */
-    ) external payable vaultExists(vaultAddress) {
+    ) external payable vaultExists(vaultAddress) returns (string memory licenseId) {
         require(msg.value > 0, "ADLV: Invalid price");
         
         Vault storage vault = vaults[vaultAddress];
         bytes32 ipId = vault.ipId;
         
+        // Register license on Story Protocol if IP is registered and License Registry is available
+        if (vault.registeredOnStory && bytes(vault.storyIPId).length > 0 && address(storyLicenseRegistry) != address(0)) {
+            bytes memory terms = abi.encode(
+                vaultAddress,
+                block.timestamp,
+                licenseType
+            );
+            
+            licenseId = storyLicenseRegistry.registerLicense(
+                vault.storyIPId,
+                licenseType,
+                msg.sender,
+                terms,
+                msg.value
+            );
+            
+            require(bytes(licenseId).length > 0, "ADLV: License registration failed");
+            
+            vaultLicenses[vaultAddress].push(licenseId);
+            
+            emit LicenseRegistered(
+                vaultAddress,
+                ipId,
+                licenseId,
+                msg.sender,
+                licenseType,
+                msg.value
+            );
+        } else {
+            // إنشاء license ID محلي إذا لم يكن مسجل على Story
+            licenseId = string(abi.encodePacked("local-", uint2str(block.timestamp), "-", uint2str(msg.value)));
+        }
+        
         _distributeLicenseRevenue(vaultAddress, ipId, msg.value);
         
         emit LicenseSold(vaultAddress, ipId, msg.sender, msg.value, licenseType);
+        
+        return licenseId;
+    }
+    
+    // Helper function to convert uint to string
+    function uint2str(uint256 _i) internal pure returns (string memory) {
+        if (_i == 0) {
+            return "0";
+        }
+        uint256 j = _i;
+        uint256 len;
+        while (j != 0) {
+            len++;
+            j /= 10;
+        }
+        bytes memory bstr = new bytes(len);
+        uint256 k = len;
+        while (_i != 0) {
+            k = k-1;
+            uint8 temp = (48 + uint8(_i - _i / 10 * 10));
+            bytes1 b1 = bytes1(temp);
+            bstr[k] = b1;
+            _i /= 10;
+        }
+        return string(bstr);
     }
     
     function _distributeLicenseRevenue(
@@ -914,6 +1126,50 @@ contract ADLVWithStory {
     
     function getVaultByStoryIPId(string calldata storyIPId) external view returns (address) {
         return storyIPIdToVault[storyIPId];
+    }
+    
+    /**
+     * @notice Verify IP Asset exists on Story Protocol
+     * @param storyIPId Story Protocol IP ID
+     * @return exists True if IP exists
+     * @return ipOwner The owner of the IP Asset
+     */
+    function verifyIPAsset(string calldata storyIPId) external view returns (bool exists, address ipOwner) {
+        exists = storyIPAssetRegistry.exists(storyIPId);
+        if (exists) {
+            ipOwner = storyIPAssetRegistry.ownerOf(storyIPId);
+        }
+    }
+    
+    /**
+     * @notice Get all licenses for a vault
+     * @param vaultAddress The vault address
+     * @return Array of license IDs
+     */
+    function getVaultLicenses(address vaultAddress) external view returns (string[] memory) {
+        return vaultLicenses[vaultAddress];
+    }
+    
+    /**
+     * @notice Get license information from Story Protocol
+     * @param licenseId The license ID
+     * @return ipId The IP Asset ID
+     * @return licenseType The license type
+     * @return licensee The licensee address
+     * @return licensor The licensor address
+     * @return price The license price
+     * @return registeredAt Timestamp of registration
+     */
+    function getLicenseInfo(string calldata licenseId) external view returns (
+        string memory ipId,
+        string memory licenseType,
+        address licensee,
+        address licensor,
+        uint256 price,
+        uint256 registeredAt
+    ) {
+        require(address(storyLicenseRegistry) != address(0), "ADLV: License Registry not configured");
+        return storyLicenseRegistry.getLicense(licenseId);
     }
 }
 

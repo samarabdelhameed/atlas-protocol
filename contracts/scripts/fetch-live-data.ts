@@ -344,7 +344,7 @@ function generateMarkdown(data: LiveData): string {
   data.transactions.forEach((tx, index) => {
     if (tx.exists && tx.success) {
       markdown += `${index + 1}. **${tx.description}** (Block ${tx.blockNumber?.toString() || tx.block.toString()})
-   - [View on Explorer](https://www.storyscan.io/tx/${tx.hash})
+   - [View on Explorer](https://www.storyscan.io/tx/${tx.hash}) ✅
    - TX: \`${tx.hash}\`
 `;
       if (tx.description.includes('Vault Creation')) {
@@ -374,9 +374,9 @@ function generateMarkdown(data: LiveData): string {
 
 ### On Explorer
 
-- **ADLV Contract**: https://www.storyscan.io/address/${ADLV_ADDRESS}
+- **ADLV Contract**: https://www.storyscan.io/address/${ADLV_ADDRESS} ✅
 
-- **IDO Contract**: https://www.storyscan.io/address/${IDO_ADDRESS}
+- **IDO Contract**: https://www.storyscan.io/address/${IDO_ADDRESS} ✅
 
 - **Network**: Story Protocol Testnet (Chain ID: 1315)
 

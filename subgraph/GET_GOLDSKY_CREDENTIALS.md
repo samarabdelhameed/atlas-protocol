@@ -1,128 +1,128 @@
-# كيفية الحصول على GOLDSKY_API_KEY و GOLDSKY_PROJECT_ID
+# How to Get GOLDSKY_API_KEY and GOLDSKY_PROJECT_ID
 
-## خطوات الحصول على Credentials من Goldsky
+## Steps to Get Credentials from Goldsky
 
-### الخطوة 1: إنشاء حساب Goldsky
+### Step 1: Create Goldsky Account
 
-1. **اذهب إلى موقع Goldsky:**
-   - الموقع: https://goldsky.com
-   - أو مباشرة: https://app.goldsky.com/signup
+1. **Go to Goldsky website:**
+   - Website: https://goldsky.com
+   - Or directly: https://app.goldsky.com/signup
 
-2. **سجل حساب جديد:**
-   - استخدم GitHub, Google, أو Email للـ Sign Up
-   - Goldsky يوفر Free tier للبداية
+2. **Sign up for a new account:**
+   - Use GitHub, Google, or Email to Sign Up
+   - Goldsky provides a Free tier to start
 
-### الخطوة 2: إنشاء Project جديد
+### Step 2: Create New Project
 
-1. **بعد تسجيل الدخول، اذهب إلى Dashboard**
-2. **أنشئ Project جديد:**
-   - اضغط على "New Project" أو "Create Project"
-   - أدخل اسم المشروع: `atlas-protocol` (أو أي اسم تفضله)
-   - اختر Network: Story Protocol Testnet (أو Network المناسب)
+1. **After logging in, go to Dashboard**
+2. **Create a new Project:**
+   - Click "New Project" or "Create Project"
+   - Enter project name: `atlas-protocol` (or any name you prefer)
+   - Select Network: Story Protocol Testnet (or appropriate Network)
 
-### الخطوة 3: الحصول على PROJECT_ID
+### Step 3: Get PROJECT_ID
 
-1. **بعد إنشاء المشروع:**
-   - ستجد `PROJECT_ID` في صفحة إعدادات المشروع
-   - أو في URL: `https://app.goldsky.com/projects/{PROJECT_ID}`
-   - أو في Dashboard → Project Settings → Project Details
+1. **After creating the project:**
+   - You'll find `PROJECT_ID` in the project settings page
+   - Or in the URL: `https://app.goldsky.com/projects/{PROJECT_ID}`
+   - Or in Dashboard → Project Settings → Project Details
    
-2. **انسخ PROJECT_ID:**
+2. **Copy PROJECT_ID:**
    ```
-   مثال: proj_xxxxxxxxxxxxxxxxxxxx
+   Example: proj_xxxxxxxxxxxxxxxxxxxx
    ```
 
-### الخطوة 4: إنشاء API Key
+### Step 4: Create API Key
 
-1. **اذهب إلى Project Settings:**
-   - في Dashboard → اختر المشروع
-   - Settings → API Keys (أو Credentials)
+1. **Go to Project Settings:**
+   - In Dashboard → Select the project
+   - Settings → API Keys (or Credentials)
 
-2. **أنشئ API Key جديد:**
-   - اضغط "Create API Key" أو "Generate New Key"
-   - أدخل اسم للـ Key (مثل: `atlas-subgraph-deployment`)
-   - اختر Permissions: `Deploy Subgraph` أو `Full Access`
+2. **Create a new API Key:**
+   - Click "Create API Key" or "Generate New Key"
+   - Enter a name for the Key (e.g., `atlas-subgraph-deployment`)
+   - Select Permissions: `Deploy Subgraph` or `Full Access`
 
-3. **انسخ API Key فوراً:**
-   - ⚠️ **مهم جداً**: API Key يظهر مرة واحدة فقط!
-   - انسخه واحفظه في مكان آمن
-   - لا تشاركه علناً أو ترفعه على GitHub
+3. **Copy API Key immediately:**
+   - ⚠️ **Very important**: API Key is shown only once!
+   - Copy it and save it in a safe place
+   - Don't share it publicly or upload it to GitHub
 
-### الخطوة 5: إضافة Credentials للمشروع
+### Step 5: Add Credentials to Project
 
-1. **أنشئ ملف `.env` في مجلد `subgraph/`:**
+1. **Create `.env` file in `subgraph/` folder:**
 
 ```bash
 cd subgraph
 touch .env
 ```
 
-2. **أضف الـ credentials:**
+2. **Add the credentials:**
 
 ```env
 GOLDSKY_API_KEY=gsky_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 GOLDSKY_PROJECT_ID=proj_xxxxxxxxxxxxxxxxxxxx
 ```
 
-3. **تأكد أن `.env` في `.gitignore`:**
-   - `.env` يجب أن يكون في `.gitignore` لحماية المفاتيح
-   - لا ترفع `.env` على GitHub!
+3. **Make sure `.env` is in `.gitignore`:**
+   - `.env` should be in `.gitignore` to protect keys
+   - Don't upload `.env` to GitHub!
 
-### الخطوة 6: التحقق من الـ Credentials
+### Step 6: Verify Credentials
 
-1. **ثبت Goldsky CLI:**
+1. **Install Goldsky CLI:**
    ```bash
    npm install -g @goldskycom/cli
    ```
 
-2. **سجل الدخول:**
+2. **Login:**
    ```bash
    goldsky login
    ```
    
-   أو استخدم الـ API Key مباشرة:
+   Or use API Key directly:
    ```bash
    export GOLDSKY_TOKEN=your_api_key_here
    ```
 
-3. **اختبر الاتصال:**
+3. **Test connection:**
    ```bash
    goldsky subgraph list
    ```
 
-إذا عمل الأمر بنجاح، يعني الـ credentials صحيحة! ✅
+If the command succeeds, the credentials are correct! ✅
 
 ---
 
-## 📝 ملخص سريع
+## 📝 Quick Summary
 
 ```bash
-# 1. أنشئ حساب على https://goldsky.com
-# 2. أنشئ Project جديد
-# 3. انسخ PROJECT_ID من Project Settings
-# 4. أنشئ API Key من Project Settings → API Keys
-# 5. أضف الـ credentials في subgraph/.env:
+# 1. Create account on https://goldsky.com
+# 2. Create a new Project
+# 3. Copy PROJECT_ID from Project Settings
+# 4. Create API Key from Project Settings → API Keys
+# 5. Add credentials in subgraph/.env:
 
 GOLDSKY_API_KEY=your_api_key_here
 GOLDSKY_PROJECT_ID=your_project_id_here
 
-# 6. اختبر:
+# 6. Test:
 goldsky login
 goldsky subgraph list
 ```
 
 ---
 
-## 🔒 أمان
+## 🔒 Security
 
-- ⚠️ **لا ترفع `.env` على GitHub**
-- ⚠️ **لا تشارك API Keys علناً**
-- ⚠️ **استخدم Environment Variables في Production**
-- ✅ **احفظ المفاتيح في مكان آمن**
+- ⚠️ **Don't upload `.env` to GitHub**
+- ⚠️ **Don't share API Keys publicly**
+- ⚠️ **Use Environment Variables in Production**
+- ✅ **Save keys in a safe place**
 
 ---
 
-## 📚 مصادر مفيدة
+## 📚 Useful Resources
 
 - [Goldsky Documentation](https://docs.goldsky.com/)
 - [Goldsky Dashboard](https://app.goldsky.com/)
@@ -130,9 +130,9 @@ goldsky subgraph list
 
 ---
 
-## ⚡ بعد الحصول على Credentials
+## ⚡ After Getting Credentials
 
-بعد إضافة الـ credentials في `subgraph/.env`:
+After adding credentials in `subgraph/.env`:
 
 1. **Build Subgraph:**
    ```bash
@@ -146,13 +146,12 @@ goldsky subgraph list
    ./deploy-goldsky.sh
    ```
 
-3. **احصل على GraphQL Endpoint من Dashboard**
+3. **Get GraphQL Endpoint from Dashboard**
 
-4. **حدث Environment Variables في:**
+4. **Update Environment Variables in:**
    - `apps/agent-service/.env`
    - `apps/frontend/.env`
 
 ---
 
-**ملاحظة:** إذا واجهت أي مشاكل في إنشاء الحساب أو الحصول على المفاتيح، راجع [Goldsky Support](https://docs.goldsky.com/support) أو تواصل مع Goldsky مباشرة.
-
+**Note:** If you encounter any issues creating an account or getting keys, check [Goldsky Support](https://docs.goldsky.com/support) or contact Goldsky directly.

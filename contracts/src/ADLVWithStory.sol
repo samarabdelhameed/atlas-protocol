@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import "./IDO.sol";
 import "./interfaces/IStoryProtocolSPG.sol";
 import "./interfaces/IStoryProtocolIPAssetRegistry.sol";
+import "./interfaces/IStoryProtocolLicenseRegistry.sol";
 
 /**
  * @title ADLVWithStory - ADLV with Story Protocol Integration
@@ -23,6 +24,9 @@ contract ADLVWithStory {
     
     /// @notice Story Protocol IP Asset Registry address
     IStoryProtocolIPAssetRegistry public storyIPAssetRegistry;
+    
+    /// @notice Story Protocol License Registry address
+    IStoryProtocolLicenseRegistry public storyLicenseRegistry;
     
     /// @notice Protocol owner
     address public owner;
@@ -104,6 +108,9 @@ contract ADLVWithStory {
     mapping(address => mapping(address => uint256)) public depositorShares;
     mapping(address => uint256) public totalShares;
     mapping(string => address) public storyIPIdToVault; // Story IP ID to vault
+    mapping(address => string[]) public vaultLicenses; // Vault address to license IDs
+    mapping(address => address) public derivativeToParentVault; // Derivative vault => Parent vault
+    mapping(address => address[]) public vaultDerivatives; // Parent vault => Derivative vaults[]
     
     // ========================================
     // Events
@@ -121,6 +128,15 @@ contract ADLVWithStory {
         address indexed vaultAddress,
         bytes32 indexed ipId,
         string storyIPId
+    );
+    
+    event LicenseRegistered(
+        address indexed vaultAddress,
+        bytes32 indexed ipId,
+        string indexed licenseId,
+        address licensee,
+        string licenseType,
+        uint256 price
     );
     
     event LicenseSold(
@@ -168,6 +184,19 @@ contract ADLVWithStory {
         uint256 shares
     );
     
+    event RoyaltiesClaimed(
+        address indexed vaultAddress,
+        address indexed claimer,
+        uint256 amount
+    );
+    
+    event DerivativeVaultCreated(
+        address indexed derivativeVaultAddress,
+        address indexed parentVaultAddress,
+        address indexed derivativeIpId,
+        address creator
+    );
+    
     // ========================================
     // Modifiers
     // ========================================
@@ -189,21 +218,35 @@ contract ADLVWithStory {
     constructor(
         address _idoContract,
         address _storySPG,
-        address _storyIPAssetRegistry
+        address _storyIPAssetRegistry,
+        address _storyLicenseRegistry
     ) {
         require(_idoContract != address(0), "ADLV: Invalid IDO address");
         require(_storySPG != address(0), "ADLV: Invalid SPG address");
         require(_storyIPAssetRegistry != address(0), "ADLV: Invalid registry address");
+        // License Registry is optional - can be address(0) if not available
         
         idoContract = IDO(_idoContract);
         storySPG = IStoryProtocolSPG(_storySPG);
         storyIPAssetRegistry = IStoryProtocolIPAssetRegistry(_storyIPAssetRegistry);
+        if (_storyLicenseRegistry != address(0)) {
+            storyLicenseRegistry = IStoryProtocolLicenseRegistry(_storyLicenseRegistry);
+        }
         owner = msg.sender;
     }
     
     // ========================================
     // Owner Functions
     // ========================================
+    
+    /**
+     * @notice Update CVS for an IP Asset (called by Agent Service)
+     * @param ipId The IP Asset ID
+     * @param newCVS The new CVS score
+     */
+    function updateCVS(bytes32 ipId, uint256 newCVS) external onlyOwner {
+        idoContract.updateCVS(ipId, newCVS);
+    }
     
     function setProtocolFee(uint256 _protocolFeeBps) external onlyOwner {
         require(_protocolFeeBps <= 1000, "ADLV: Fee too high");
@@ -223,14 +266,76 @@ contract ADLVWithStory {
         storySPG = IStoryProtocolSPG(_storySPG);
     }
     
+    function setStoryIPAssetRegistry(address _storyIPAssetRegistry) external onlyOwner {
+        require(_storyIPAssetRegistry != address(0), "ADLV: Invalid registry address");
+        storyIPAssetRegistry = IStoryProtocolIPAssetRegistry(_storyIPAssetRegistry);
+    }
+    
+    function setStoryLicenseRegistry(address _storyLicenseRegistry) external onlyOwner {
+        // Allow setting to address(0) to disable license registry
+        if (_storyLicenseRegistry != address(0)) {
+            storyLicenseRegistry = IStoryProtocolLicenseRegistry(_storyLicenseRegistry);
+        } else {
+            // Reset to zero address (disable)
+            storyLicenseRegistry = IStoryProtocolLicenseRegistry(address(0));
+        }
+    }
+    
     // ========================================
     // Vault Management with Story Protocol
     // ========================================
     
     /**
-     * @notice Create vault with Story Protocol metadata
+     * @notice Register IP Asset on Story Protocol and create vault
      * @param ipId Internal IP identifier
-     * @param storyIPId Story Protocol IP ID (from off-chain registration)
+     * @param ipAssetType Story Protocol IP Asset type (typically 1)
+     * @param name Name of the IP Asset
+     * @param hash Content hash of the IP Asset
+     * @param registrationData Additional registration data
+     * @return vaultAddress The created vault address
+     * @return storyIPId The registered Story Protocol IP ID
+     */
+    function registerIPAndCreateVault(
+        bytes32 ipId,
+        uint8 ipAssetType,
+        string calldata name,
+        bytes32 hash,
+        bytes calldata registrationData
+    ) external returns (address vaultAddress, string memory storyIPId) {
+        require(ipToVault[ipId] == address(0), "ADLV: Vault already exists");
+        
+        // Try to register IP Asset on Story Protocol via SPG
+        // If Story Protocol is not available, create vault without Story IP ID
+        if (address(storySPG) != address(0)) {
+            try storySPG.register(ipAssetType, name, hash, registrationData) returns (string memory _storyIPId) {
+                storyIPId = _storyIPId;
+                
+                // Verify registration if successful
+                if (bytes(storyIPId).length > 0 && address(storyIPAssetRegistry) != address(0)) {
+                    try storyIPAssetRegistry.exists(storyIPId) returns (bool exists) {
+                        if (!exists) {
+                            storyIPId = ""; // Clear if not verified
+                        }
+                    } catch {
+                        storyIPId = ""; // Clear on error
+                    }
+                }
+            } catch {
+                // Story Protocol not available, continue without it
+                storyIPId = "";
+            }
+        }
+        
+        // Create vault (with or without Story IP ID)
+        vaultAddress = _createVaultInternal(ipId, storyIPId);
+        
+        return (vaultAddress, storyIPId);
+    }
+    
+    /**
+     * @notice Create vault with existing Story Protocol IP ID
+     * @param ipId Internal IP identifier
+     * @param storyIPId Story Protocol IP ID (must be registered)
      * @return vaultAddress The created vault address
      */
     function createVault(
@@ -239,6 +344,23 @@ contract ADLVWithStory {
     ) external returns (address vaultAddress) {
         require(ipToVault[ipId] == address(0), "ADLV: Vault already exists");
         
+        // Verify IP exists on Story Protocol if provided
+        if (bytes(storyIPId).length > 0) {
+            require(storyIPAssetRegistry.exists(storyIPId), "ADLV: IP not registered");
+        }
+        
+        vaultAddress = _createVaultInternal(ipId, storyIPId);
+        
+        return vaultAddress;
+    }
+    
+    /**
+     * @notice Internal function to create vault
+     */
+    function _createVaultInternal(
+        bytes32 ipId,
+        string memory storyIPId
+    ) internal returns (address vaultAddress) {
         uint256 initialCVS = idoContract.getCVS(ipId);
         
         vaultAddress = address(
@@ -343,15 +465,102 @@ contract ADLVWithStory {
         address vaultAddress,
         string calldata licenseType,
         uint256 /* duration */
-    ) external payable vaultExists(vaultAddress) {
+    ) external payable vaultExists(vaultAddress) returns (string memory licenseId) {
         require(msg.value > 0, "ADLV: Invalid price");
         
         Vault storage vault = vaults[vaultAddress];
         bytes32 ipId = vault.ipId;
         
+        // Try to register license on Story Protocol if available
+        bool storyRegistered = false;
+        if (vault.registeredOnStory && bytes(vault.storyIPId).length > 0 && address(storyLicenseRegistry) != address(0)) {
+            bytes memory terms = abi.encode(
+                vaultAddress,
+                block.timestamp,
+                licenseType
+            );
+            
+            try storyLicenseRegistry.registerLicense(
+                vault.storyIPId,
+                licenseType,
+                msg.sender,
+                terms,
+                msg.value
+            ) returns (string memory _licenseId) {
+                if (bytes(_licenseId).length > 0) {
+                    licenseId = _licenseId;
+                    vaultLicenses[vaultAddress].push(licenseId);
+                    storyRegistered = true;
+                    
+                    emit LicenseRegistered(
+                        vaultAddress,
+                        ipId,
+                        licenseId,
+                        msg.sender,
+                        licenseType,
+                        msg.value
+                    );
+                }
+            } catch {
+                // Story Protocol not available, continue with local license
+            }
+        }
+        
+        // Create local license ID if Story registration failed or not available
+        if (!storyRegistered) {
+            licenseId = string(abi.encodePacked(
+                "license-",
+                uint2str(block.timestamp),
+                "-",
+                addressToString(msg.sender),
+                "-",
+                uint2str(msg.value)
+            ));
+            vaultLicenses[vaultAddress].push(licenseId);
+        }
+        
         _distributeLicenseRevenue(vaultAddress, ipId, msg.value);
         
         emit LicenseSold(vaultAddress, ipId, msg.sender, msg.value, licenseType);
+        
+        return licenseId;
+    }
+    
+    // Helper function to convert address to string
+    function addressToString(address _addr) internal pure returns (string memory) {
+        bytes32 value = bytes32(uint256(uint160(_addr)));
+        bytes memory alphabet = "0123456789abcdef";
+        bytes memory str = new bytes(42);
+        str[0] = '0';
+        str[1] = 'x';
+        for (uint256 i = 0; i < 20; i++) {
+            str[2+i*2] = alphabet[uint8(value[i + 12] >> 4)];
+            str[3+i*2] = alphabet[uint8(value[i + 12] & 0x0f)];
+        }
+        return string(str);
+    }
+    
+    // Helper function to convert uint to string
+    function uint2str(uint256 _i) internal pure returns (string memory) {
+        if (_i == 0) {
+            return "0";
+        }
+        uint256 j = _i;
+        uint256 len;
+        while (j != 0) {
+            len++;
+            j /= 10;
+        }
+        bytes memory bstr = new bytes(len);
+        uint256 k = len;
+        while (_i != 0) {
+            k = k-1;
+            uint8 temp = (48 + uint8(_i - _i / 10 * 10));
+            bytes1 b1 = bytes1(temp);
+            bstr[k] = b1;
+            _i /= 10;
+        }
+        return string(bstr);
     }
     
     function _distributeLicenseRevenue(
@@ -619,5 +828,312 @@ contract ADLVWithStory {
     
     function getVaultByStoryIPId(string calldata storyIPId) external view returns (address) {
         return storyIPIdToVault[storyIPId];
+    }
+    
+    /**
+     * @notice Verify IP Asset exists on Story Protocol
+     * @param storyIPId Story Protocol IP ID
+     * @return exists True if IP exists
+     * @return ipOwner The owner of the IP Asset
+     */
+    function verifyIPAsset(string calldata storyIPId) external view returns (bool exists, address ipOwner) {
+        exists = storyIPAssetRegistry.exists(storyIPId);
+        if (exists) {
+            ipOwner = storyIPAssetRegistry.ownerOf(storyIPId);
+        }
+    }
+    
+    /**
+     * @notice Get all licenses for a vault
+     * @param vaultAddress The vault address
+     * @return Array of license IDs
+     */
+    function getVaultLicenses(address vaultAddress) external view returns (string[] memory) {
+        return vaultLicenses[vaultAddress];
+    }
+    
+    /**
+     * @notice Get license information from Story Protocol
+     * @param licenseId The license ID
+     * @return ipId The IP Asset ID
+     * @return licenseType The license type
+     * @return licensee The licensee address
+     * @return licensor The licensor address
+     * @return price The license price
+     * @return registeredAt Timestamp of registration
+     */
+    function getLicenseInfo(string calldata licenseId) external view returns (
+        string memory ipId,
+        string memory licenseType,
+        address licensee,
+        address licensor,
+        uint256 price,
+        uint256 registeredAt
+    ) {
+        require(address(storyLicenseRegistry) != address(0), "ADLV: License Registry not configured");
+        return storyLicenseRegistry.getLicense(licenseId);
+    }
+    
+    // ========================================
+    // Royalty & Revenue Functions
+    // ========================================
+    
+    /**
+     * @notice Set royalty policy for vault's IP
+     * @param vaultAddress The vault address
+     * @param beneficiary The royalty beneficiary
+     * @param royaltyPercentage Royalty percentage (basis points)
+     */
+    function setRoyaltyPolicy(
+        address vaultAddress,
+        address beneficiary,
+        uint256 royaltyPercentage
+    ) external vaultExists(vaultAddress) {
+        Vault storage vault = vaults[vaultAddress];
+        require(vault.creator == msg.sender, "ADLV: Only creator");
+        
+        // Parse Story IP ID to address
+        address ipId = _parseStoryIPId(vault.storyIPId);
+        
+        // Set royalty policy on Story Protocol
+        IStoryProtocolSPG(address(storySPG)).setRoyaltyPolicy(ipId, beneficiary, royaltyPercentage);
+    }
+    
+    /**
+     * @notice Claim accumulated royalties for vault
+     * @param vaultAddress The vault address
+     * @return claimedAmount Amount claimed
+     */
+    function claimRoyalties(
+        address vaultAddress
+    ) external vaultExists(vaultAddress) returns (uint256 claimedAmount) {
+        Vault storage vault = vaults[vaultAddress];
+        require(vault.creator == msg.sender, "ADLV: Only creator");
+        
+        // Parse Story IP ID to address
+        address ipId = _parseStoryIPId(vault.storyIPId);
+        
+        // Claim revenue from Story Protocol
+        claimedAmount = IStoryProtocolSPG(address(storySPG)).claimRevenue(ipId, msg.sender);
+        
+        emit RoyaltiesClaimed(vaultAddress, msg.sender, claimedAmount);
+        
+        return claimedAmount;
+    }
+    
+    /**
+     * @notice Get pending revenue for vault creator
+     * @param vaultAddress The vault address
+     * @return pendingAmount Pending revenue amount
+     */
+    function getPendingRevenue(
+        address vaultAddress
+    ) external view vaultExists(vaultAddress) returns (uint256 pendingAmount) {
+        Vault memory vault = vaults[vaultAddress];
+        
+        // Get pending revenue from Story Protocol
+        try IStoryProtocolSPG(address(storySPG)).getPendingRevenue(vault.creator) returns (uint256 amount) {
+            return amount;
+        } catch {
+            return 0;
+        }
+    }
+    
+    // ========================================
+    // Derivative IP Functions
+    // ========================================
+    
+    /**
+     * @notice Register derivative IP and create vault
+     * @param parentVaultAddress Parent vault address
+     * @param licenseId License ID from parent
+     * @param name Derivative IP name
+     * @param contentHash Derivative content hash
+     * @return derivativeVaultAddress The created derivative vault
+     * @return derivativeIpId The derivative IP ID
+     */
+    function registerDerivativeIP(
+        address parentVaultAddress,
+        uint256 licenseId,
+        string calldata name,
+        bytes32 contentHash
+    ) external vaultExists(parentVaultAddress) returns (
+        address derivativeVaultAddress,
+        address derivativeIpId
+    ) {
+        Vault storage parentVault = vaults[parentVaultAddress];
+        require(parentVault.registeredOnStory, "ADLV: Parent not on Story");
+        
+        // Parse parent Story IP ID to address
+        address parentIpId = _parseStoryIPId(parentVault.storyIPId);
+        
+        // Register derivative on Story Protocol
+        (uint256 tokenId, address _derivativeIpId) = IStoryProtocolSPG(address(storySPG))
+            .registerDerivative(
+                parentIpId,
+                licenseId,
+                msg.sender,
+                name,
+                contentHash
+            );
+        
+        derivativeIpId = _derivativeIpId;
+        
+        // Create internal IP ID for derivative
+        bytes32 derivativeInternalId = keccak256(abi.encodePacked(
+            "derivative",
+            parentVault.ipId,
+            tokenId,
+            block.timestamp
+        ));
+        
+        // Create vault for derivative
+        string memory derivativeStoryIPId = _addressToString(derivativeIpId);
+        derivativeVaultAddress = _createVaultInternal(derivativeInternalId, derivativeStoryIPId);
+        
+        // Link derivative to parent
+        derivativeToParentVault[derivativeVaultAddress] = parentVaultAddress;
+        vaultDerivatives[parentVaultAddress].push(derivativeVaultAddress);
+        
+        emit DerivativeVaultCreated(
+            derivativeVaultAddress,
+            parentVaultAddress,
+            derivativeIpId,
+            msg.sender
+        );
+        
+        return (derivativeVaultAddress, derivativeIpId);
+    }
+    
+    /**
+     * @notice Check if vault is derivative
+     * @param vaultAddress The vault address
+     * @return isDerivative True if derivative
+     */
+    function isDerivativeVault(
+        address vaultAddress
+    ) external view vaultExists(vaultAddress) returns (bool isDerivative) {
+        return derivativeToParentVault[vaultAddress] != address(0);
+    }
+    
+    /**
+     * @notice Get parent vault
+     * @param derivativeVaultAddress Derivative vault address
+     * @return parentVaultAddress Parent vault address
+     */
+    function getParentVault(
+        address derivativeVaultAddress
+    ) external view vaultExists(derivativeVaultAddress) returns (address parentVaultAddress) {
+        parentVaultAddress = derivativeToParentVault[derivativeVaultAddress];
+        require(parentVaultAddress != address(0), "ADLV: Not a derivative");
+        return parentVaultAddress;
+    }
+    
+    /**
+     * @notice Get all derivative vaults
+     * @param parentVaultAddress Parent vault address
+     * @return derivatives Array of derivative vault addresses
+     */
+    function getDerivativeVaults(
+        address parentVaultAddress
+    ) external view vaultExists(parentVaultAddress) returns (address[] memory derivatives) {
+        return vaultDerivatives[parentVaultAddress];
+    }
+    
+    /**
+     * @notice Sell license with automatic royalty sharing for derivatives
+     * @param vaultAddress The vault address
+     * @param licenseType License type
+     * @param duration License duration
+     * @return licenseId The created license ID
+     */
+    function sellLicenseWithSharing(
+        address vaultAddress,
+        string calldata licenseType,
+        uint256 duration
+    ) external payable vaultExists(vaultAddress) returns (string memory licenseId) {
+        require(msg.value > 0, "ADLV: Invalid price");
+        
+        Vault storage vault = vaults[vaultAddress];
+        
+        // Check if derivative
+        bool isDerivative = derivativeToParentVault[vaultAddress] != address(0);
+        
+        if (isDerivative && vault.registeredOnStory) {
+            // Use Story Protocol's revenue sharing
+            address ipId = _parseStoryIPId(vault.storyIPId);
+            
+            // Pay royalty with sharing
+            IStoryProtocolSPG(address(storySPG)).payRoyaltyWithSharing{value: msg.value}(
+                ipId,
+                msg.sender
+            );
+        } else {
+            // Regular license sale
+            return this.sellLicense{value: msg.value}(vaultAddress, licenseType, duration);
+        }
+        
+        // Create license ID
+        licenseId = string(abi.encodePacked(
+            "license-",
+            uint2str(block.timestamp),
+            "-",
+            addressToString(msg.sender)
+        ));
+        
+        vaultLicenses[vaultAddress].push(licenseId);
+        
+        emit LicenseSold(vaultAddress, vault.ipId, msg.sender, msg.value, licenseType);
+        
+        return licenseId;
+    }
+    
+    // ========================================
+    // Helper Functions
+    // ========================================
+    
+    /**
+     * @notice Parse Story IP ID string to address
+     */
+    function _parseStoryIPId(string memory storyIPId) internal pure returns (address) {
+        // If storyIPId is already an address string, parse it
+        bytes memory strBytes = bytes(storyIPId);
+        if (strBytes.length == 42 && strBytes[0] == '0' && strBytes[1] == 'x') {
+            return _parseAddress(storyIPId);
+        }
+        // Otherwise, hash it to get an address
+        return address(uint160(uint256(keccak256(abi.encodePacked(storyIPId)))));
+    }
+    
+    /**
+     * @notice Parse address from string
+     */
+    function _parseAddress(string memory str) internal pure returns (address) {
+        bytes memory strBytes = bytes(str);
+        require(strBytes.length == 42, "Invalid address length");
+        
+        uint160 result = 0;
+        for (uint256 i = 2; i < 42; i++) {
+            uint8 digit = uint8(strBytes[i]);
+            uint8 value;
+            if (digit >= 48 && digit <= 57) {
+                value = digit - 48;
+            } else if (digit >= 65 && digit <= 70) {
+                value = digit - 55;
+            } else if (digit >= 97 && digit <= 102) {
+                value = digit - 87;
+            } else {
+                revert("Invalid hex character");
+            }
+            result = result * 16 + value;
+        }
+        return address(result);
+    }
+    
+    /**
+     * @notice Convert address to string
+     */
+    function _addressToString(address _addr) internal pure returns (string memory) {
+        return addressToString(_addr);
     }
 }

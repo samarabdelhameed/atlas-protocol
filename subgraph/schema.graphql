@@ -34,7 +34,7 @@ type IPAsset @entity {
   vault: IDOVault @derivedFrom(field: "ipAsset")
 }
 
-# Core Entity: تتبع كل عملية استخدام أو ترخيص أو Remix للـ IP
+# Core Entity: Track every usage, license, or remix event of an IP
 type IPAssetUsage @entity {
   id: ID!
   ipAsset: IPAsset!
@@ -55,7 +55,7 @@ type IPAssetUsage @entity {
 # ADLV (Liquidity Vault) Entities - CVS Focus
 # ========================================
 
-# Core Entity: تتبع حالات خزائن ADLV مع CVS
+# Core Entity: Track ADLV vault states with CVS
 type IDOVault @entity {
   id: ID!
   vaultAddress: Bytes!
@@ -93,7 +93,7 @@ type IDOVault @entity {
   deposits: [Deposit!]! @derivedFrom(field: "vault")
 }
 
-# Core Entity: تتبع كل عملية بيع لترخيص بيانات عبر ADLV
+# Core Entity: Track every data license sale through ADLV
 type DataLicenseSale @entity {
   id: ID!
   vault: IDOVault!

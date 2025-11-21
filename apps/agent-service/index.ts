@@ -5,6 +5,8 @@ import { LoanManager } from './src/services/loan-manager.js';
 import { LicensingAgent } from './src/services/licensing-agent.js';
 import { ContractMonitor } from './src/services/contract-monitor.js';
 import { VerificationServer } from './src/api/verification-server.js';
+import { IndexerService } from './src/services/indexer.js';
+import { IndexerAPI } from './src/api/indexer-api.js';
 import { config } from './src/config/index.js';
 
 /**
@@ -27,6 +29,8 @@ class AgentService {
   private licensingAgent: LicensingAgent | null = null;
   private contractMonitor: ContractMonitor | null = null;
   private verificationServer: VerificationServer | null = null;
+  private indexer: IndexerService | null = null;
+  private indexerAPI: IndexerAPI | null = null;
 
   constructor() {
     console.log('🚀 Initializing Atlas Agent Service...');
@@ -58,6 +62,15 @@ class AgentService {
 
       // Initialize World ID Verification Server
       this.verificationServer = new VerificationServer(this.loanManager);
+
+      // Initialize Local Indexer Service (replaces Goldsky subgraph)
+      this.indexer = new IndexerService(
+        config.contracts.adlv,
+        config.contracts.ido
+      );
+      
+      // Initialize Indexer API
+      this.indexerAPI = new IndexerAPI(this.indexer.getDatabase());
     }
   }
 
@@ -86,6 +99,14 @@ class AgentService {
       console.log('   ✓ World ID Verification Server - Ready');
     }
     
+    if (this.indexer) {
+      console.log('   ✓ Local Indexer Service - Indexing events');
+    }
+    
+    if (this.indexerAPI) {
+      console.log('   ✓ Indexer API - GraphQL-like queries available');
+    }
+    
     console.log('═══════════════════════════════════════════\n');
 
     // Start CVS monitoring
@@ -109,6 +130,16 @@ class AgentService {
     // Start World ID verification server
     if (this.verificationServer) {
       this.verificationServer.start();
+    }
+
+    // Start Local Indexer Service
+    if (this.indexer) {
+      await this.indexer.start();
+    }
+
+    // Start Indexer API Server
+    if (this.indexerAPI) {
+      this.indexerAPI.start(3002);
     }
 
     // Display initial stats
@@ -210,6 +241,14 @@ class AgentService {
     
     if (this.verificationServer) {
       this.verificationServer.stop();
+    }
+    
+    if (this.indexer) {
+      this.indexer.stop();
+    }
+    
+    if (this.indexerAPI) {
+      this.indexerAPI.stop();
     }
     
     console.log('✅ Agent Service stopped');

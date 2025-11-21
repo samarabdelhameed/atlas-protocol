@@ -942,7 +942,7 @@ cast call 0xf2116eE783Be82ba51a6Eda9453dFD6A1723d205 "storyIPAssetRegistry()" \
 
 ### Contract-Level Integration (COMPLETE)
 
-العقد **ADLVWithStory** جاهز تماماً للتكامل مع Story Protocol:
+The **ADLVWithStory** contract is fully ready for Story Protocol integration:
 
 ✅ **Story Protocol References**:
 - SPG Address: `0x69415CE984A79a3Cfbe3F51024C63b6C107331e3`
@@ -950,9 +950,9 @@ cast call 0xf2116eE783Be82ba51a6Eda9453dFD6A1723d205 "storyIPAssetRegistry()" \
 - Both verified on-chain
 
 ✅ **Vault Structure**:
-- يخزن `storyIPId` (string) لكل vault
-- يتتبع `registeredOnStory` (bool) status
-- جاهز لربط IP Assets
+- Stores `storyIPId` (string) for each vault
+- Tracks `registeredOnStory` (bool) status
+- Ready to link IP Assets
 
 ✅ **SDK Integration**:
 - Frontend SDK installed and configured
@@ -970,11 +970,11 @@ const tx = await adlvContract.write.createVault([
 ]);
 ```
 
-الـ vault يُنشأ مع Story IP ID مخزن on-chain.
+The vault is created with Story IP ID stored on-chain.
 
 #### 2. IP Registration (Frontend Integration)
 
-عندما يريد المستخدم تسجيل IP على Story Protocol:
+When the user wants to register IP on Story Protocol:
 
 ```typescript
 import { useStoryProtocol } from './hooks/useStoryProtocol';
