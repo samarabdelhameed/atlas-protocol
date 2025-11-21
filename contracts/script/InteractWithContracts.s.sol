@@ -27,7 +27,7 @@ contract InteractWithContracts is Script {
         // 1. Create a test IP in IDO
         bytes32 testIpId = bytes32(uint256(1));
         console.log("\n1. Setting CVS for test IP...");
-        ido.setCVS(testIpId, 1000000 ether); // 1M CVS
+        adlv.updateCVS(testIpId, 1000000 ether); // 1M CVS (via ADLV since it's owner of IDO)
         console.log("CVS set to 1,000,000");
         
         // 2. Create a vault

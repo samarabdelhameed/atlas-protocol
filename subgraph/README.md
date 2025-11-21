@@ -78,7 +78,7 @@ npm run deploy
 ### 🎯 Primary Entities
 
 #### 1. IPAssetUsage
-**Purpose:** تتبع كل عملية استخدام أو ترخيص أو Remix للـ IP
+**Purpose:** Track every usage, license, or remix event of an IP
 
 Tracks every usage, license, or remix event of an IP asset. Each event contributes to the CVS calculation.
 
@@ -88,7 +88,7 @@ Tracks every usage, license, or remix event of an IP asset. Each event contribut
 - `cvsImpact`: How much this event increased CVS
 
 #### 2. IDOVault  
-**Purpose:** تتبع حالات خزائن ADLV مع CVS الحالية
+**Purpose:** Track ADLV vault states with current CVS
 
 Tracks ADLV vault state including CVS metrics that determine lending terms.
 
@@ -99,7 +99,7 @@ Tracks ADLV vault state including CVS metrics that determine lending terms.
 - `totalLicenseRevenue`: Revenue from all license sales
 
 #### 3. DataLicenseSale
-**Purpose:** تتبع كل عملية بيع لترخيص بيانات عبر ADLV
+**Purpose:** Track every data license sale through ADLV
 
 Tracks every data license sale through ADLV, which significantly impacts CVS.
 

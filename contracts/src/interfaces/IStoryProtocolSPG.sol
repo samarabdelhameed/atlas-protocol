@@ -53,5 +53,83 @@ interface IStoryProtocolSPG {
      * @return isRegistered True if the IP Asset is registered
      */
     function isRegistered(string calldata ipId) external view returns (bool isRegistered);
+    
+    // ========================================
+    // Royalty Module Functions
+    // ========================================
+    
+    /**
+     * @notice Set royalty policy for IP
+     * @param ipId The IP Asset ID
+     * @param beneficiary The royalty beneficiary
+     * @param royaltyPercentage Royalty percentage (basis points)
+     */
+    function setRoyaltyPolicy(
+        address ipId,
+        address beneficiary,
+        uint256 royaltyPercentage
+    ) external;
+    
+    /**
+     * @notice Pay royalty for IP usage
+     * @param ipId The IP Asset ID
+     * @param payer The payer address
+     */
+    function payRoyaltyOnBehalf(
+        address ipId,
+        address payer
+    ) external payable;
+    
+    /**
+     * @notice Claim accumulated revenue
+     * @param ipId The IP Asset ID
+     * @param claimer The claimer address
+     * @return claimableAmount Amount claimed
+     */
+    function claimRevenue(
+        address ipId,
+        address claimer
+    ) external returns (uint256 claimableAmount);
+    
+    /**
+     * @notice Get pending revenue for address
+     * @param account The account address
+     * @return pendingAmount Pending revenue amount
+     */
+    function getPendingRevenue(
+        address account
+    ) external view returns (uint256 pendingAmount);
+    
+    // ========================================
+    // Derivative IP Functions
+    // ========================================
+    
+    /**
+     * @notice Register derivative IP
+     * @param parentIpId Parent IP Asset ID
+     * @param licenseTokenId License token ID
+     * @param owner Owner of derivative
+     * @param name Derivative IP name
+     * @param contentHash Derivative content hash
+     * @return tokenId Token ID
+     * @return derivativeIpId Derivative IP ID
+     */
+    function registerDerivative(
+        address parentIpId,
+        uint256 licenseTokenId,
+        address owner,
+        string memory name,
+        bytes32 contentHash
+    ) external returns (uint256 tokenId, address derivativeIpId);
+    
+    /**
+     * @notice Pay royalty with parent revenue sharing
+     * @param ipId The IP Asset ID
+     * @param payer The payer address
+     */
+    function payRoyaltyWithSharing(
+        address ipId,
+        address payer
+    ) external payable;
 }
 

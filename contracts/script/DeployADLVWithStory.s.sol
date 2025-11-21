@@ -10,9 +10,14 @@ import {ADLVWithStory} from "../src/ADLVWithStory.sol";
  * @notice Deployment script for ADLV with Story Protocol integration
  */
 contract DeployADLVWithStoryScript is Script {
-    // Story Protocol Testnet addresses (official from docs)
+    // Story Protocol Aeneid Testnet addresses (official from docs)
+    // Network: Story Aeneid Testnet
+    // Chain ID: 1315
+    // RPC: https://rpc.odyssey.storyrpc.io
+    // Explorer: https://odyssey.storyscan.xyz
     address constant STORY_SPG = 0x69415CE984A79a3Cfbe3F51024C63b6C107331e3;
     address constant STORY_IP_ASSET_REGISTRY = 0x292639452A975630802C17c9267169D93BD5a793;
+    address constant STORY_LICENSE_REGISTRY = address(0); // Optional - set if available
     
     function run() external returns (IDO ido, ADLVWithStory adlv) {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
@@ -44,12 +49,14 @@ contract DeployADLVWithStoryScript is Script {
         adlv = new ADLVWithStory(
             address(ido),
             STORY_SPG,
-            STORY_IP_ASSET_REGISTRY
+            STORY_IP_ASSET_REGISTRY,
+            STORY_LICENSE_REGISTRY
         );
         console.log("[OK] ADLVWithStory deployed at:", address(adlv));
         console.log("   IDO Contract:", address(ido));
         console.log("   Story SPG:", STORY_SPG);
         console.log("   Story IP Registry:", STORY_IP_ASSET_REGISTRY);
+        console.log("   Story License Registry:", STORY_LICENSE_REGISTRY);
         console.log("");
 
         // Transfer IDO ownership to ADLV
@@ -86,6 +93,7 @@ contract DeployADLVWithStoryScript is Script {
         console.log("ADLV_WITH_STORY_ADDRESS=", address(adlv));
         console.log("STORY_SPG_ADDRESS=", STORY_SPG);
         console.log("STORY_IP_ASSET_REGISTRY=", STORY_IP_ASSET_REGISTRY);
+        console.log("STORY_LICENSE_REGISTRY=", STORY_LICENSE_REGISTRY);
         console.log("==========================================\n");
     }
 }

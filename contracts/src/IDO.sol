@@ -9,10 +9,10 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
  * The CVS is calculated off-chain by the Agent Service and updated by the ADLV contract.
  */
 contract IDO is Ownable {
-    // 1. تخزين CVS لكل IP Asset ID
+    // 1. Store CVS for each IP Asset ID
     mapping(bytes32 => uint256) public ipAssetCVS; // maps ipId to its current CVS score
 
-    // 2. تتبع إجمالي الإيرادات المجمعة من التراخيص
+    // 2. Track total revenue collected from licenses
     mapping(bytes32 => uint256) public totalLicenseRevenue; // maps ipId to total revenue collected
 
     event CVSUpdated(bytes32 indexed ipId, uint256 newCVS, uint256 oldCVS);

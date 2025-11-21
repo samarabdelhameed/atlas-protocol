@@ -1,99 +1,92 @@
 #!/bin/bash
 
-# Script to verify deployed contracts
+# Script to verify contracts on Story Aeneid Testnet
 
 set -e
 
-if [ $# -lt 3 ]; then
-    echo "Usage: ./verify-contracts.sh <IDO_ADDRESS> <ADLV_ADDRESS> <RPC_URL> [CHAIN_ID] [API_KEY]"
-    echo ""
-    echo "Example:"
-    echo "  ./verify-contracts.sh 0x1234... 0x5678... https://mainnet.base.org 8453 YOUR_API_KEY"
-    exit 1
-fi
+source .env
 
-IDO_ADDRESS=$1
-ADLV_ADDRESS=$2
-RPC_URL=$3
-CHAIN_ID=${4:-8453}
-API_KEY=${5:-""}
+echo "=============================================="
+echo "Verifying Contracts on Story Aeneid Testnet"
+echo "=============================================="
+echo ""
 
-echo "=========================================="
-echo "Contract Verification"
-echo "=========================================="
+# Contract addresses
+IDO_ADDRESS="0x21aD95c76B71f0adCdD37fB2217Dc9d554437e6F"
+ADLV_ADDRESS="0xdd0fF1a826FCAC7e3EBAE6E978A4BB043D27eC13"
+RPC_URL="https://rpc-storyevm-testnet.aldebaranode.xyz"
+
 echo "IDO Address: $IDO_ADDRESS"
 echo "ADLV Address: $ADLV_ADDRESS"
-echo "RPC URL: $RPC_URL"
-echo "Chain ID: $CHAIN_ID"
-echo "=========================================="
 echo ""
 
-# Check if contracts are accessible
-echo "1. Checking contract accessibility..."
-IDO_OWNER=$(cast call "$IDO_ADDRESS" "owner()" --rpc-url "$RPC_URL" 2>/dev/null || echo "ERROR")
-ADLV_IDO=$(cast call "$ADLV_ADDRESS" "idoContract()" --rpc-url "$RPC_URL" 2>/dev/null || echo "ERROR")
+# Explorer links
+echo "=============================================="
+echo "Explorer Links"
+echo "=============================================="
+echo ""
+echo "IDO Contract:"
+echo "https://www.storyscan.io/address/$IDO_ADDRESS"
+echo ""
+echo "ADLV Contract:"
+echo "https://www.storyscan.io/address/$ADLV_ADDRESS"
+echo ""
+echo "Test Vault:"
+echo "https://www.storyscan.io/address/0xcca596ff570d007f0f12b9c7155e4277ffa48876"
+echo ""
 
-if [ "$IDO_OWNER" != "ERROR" ]; then
-    echo "   ✅ IDO contract accessible"
-    echo "      Owner: $IDO_OWNER"
+# Verify contracts on network
+echo "=============================================="
+echo "Verifying Contracts on Network"
+echo "=============================================="
+echo ""
+
+echo "1. Checking IDO Contract..."
+IDO_CODE=$(cast code $IDO_ADDRESS --rpc-url $RPC_URL)
+if [ ${#IDO_CODE} -gt 10 ]; then
+    echo "✅ IDO Contract exists on network"
+    echo "   Code size: ${#IDO_CODE} bytes"
 else
-    echo "   ❌ IDO contract not accessible"
+    echo "❌ IDO Contract not found"
 fi
+echo ""
 
-if [ "$ADLV_IDO" != "ERROR" ]; then
-    echo "   ✅ ADLV contract accessible"
-    echo "      IDO Reference: $ADLV_IDO"
+echo "2. Checking ADLV Contract..."
+ADLV_CODE=$(cast code $ADLV_ADDRESS --rpc-url $RPC_URL)
+if [ ${#ADLV_CODE} -gt 10 ]; then
+    echo "✅ ADLV Contract exists on network"
+    echo "   Code size: ${#ADLV_CODE} bytes"
 else
-    echo "   ❌ ADLV contract not accessible"
+    echo "❌ ADLV Contract not found"
 fi
-
 echo ""
 
-# Verify setup
-if [ "$IDO_OWNER" != "ERROR" ] && [ "$ADLV_IDO" != "ERROR" ]; then
-    if [ "$IDO_OWNER" == "$ADLV_ADDRESS" ]; then
-        echo "✅ IDO ownership correctly set to ADLV"
-    else
-        echo "⚠️  Warning: IDO owner ($IDO_OWNER) does not match ADLV address"
-    fi
-    
-    if [ "$ADLV_IDO" == "$IDO_ADDRESS" ]; then
-        echo "✅ ADLV correctly references IDO contract"
-    else
-        echo "⚠️  Warning: ADLV IDO reference ($ADLV_IDO) does not match IDO address"
-    fi
-fi
+# Verify Owner
+echo "3. Checking Contract Owners..."
+IDO_OWNER=$(cast call $IDO_ADDRESS "owner()(address)" --rpc-url $RPC_URL)
+ADLV_OWNER=$(cast call $ADLV_ADDRESS "owner()(address)" --rpc-url $RPC_URL)
 
+echo "   IDO Owner: $IDO_OWNER"
+echo "   ADLV Owner: $ADLV_OWNER"
 echo ""
 
-# Generate verification commands if API key provided
-if [ -n "$API_KEY" ]; then
-    echo "2. Verification Commands:"
-    echo ""
-    echo "   # Verify IDO contract"
-    echo "   forge verify-contract \\"
-    echo "     $IDO_ADDRESS \\"
-    echo "     src/IDO.sol:IDO \\"
-    echo "     --chain-id $CHAIN_ID \\"
-    echo "     --rpc-url $RPC_URL \\"
-    echo "     --etherscan-api-key $API_KEY \\"
-    echo "     --constructor-args \$(cast abi-encode \"constructor(address)\" <DEPLOYER_ADDRESS>)"
-    echo ""
-    echo "   # Verify ADLV contract"
-    echo "   forge verify-contract \\"
-    echo "     $ADLV_ADDRESS \\"
-    echo "     src/ADLV.sol:ADLV \\"
-    echo "     --chain-id $CHAIN_ID \\"
-    echo "     --rpc-url $RPC_URL \\"
-    echo "     --etherscan-api-key $API_KEY \\"
-    echo "     --constructor-args \$(cast abi-encode \"constructor(address)\" $IDO_ADDRESS)"
-    echo ""
-else
-    echo "2. To verify contracts, provide API_KEY as 5th argument"
-fi
-
+# Verify Protocol Fee
+echo "4. Checking Protocol Configuration..."
+PROTOCOL_FEE=$(cast call $ADLV_ADDRESS "protocolFeeBps()(uint256)" --rpc-url $RPC_URL)
+echo "   Protocol Fee: $PROTOCOL_FEE bps (5%)"
 echo ""
-echo "=========================================="
-echo "Verification Complete"
-echo "=========================================="
 
+# Verify Vault Counter
+echo "5. Checking Vault Statistics..."
+VAULT_COUNTER=$(cast call $ADLV_ADDRESS "vaultCounter()(uint256)" --rpc-url $RPC_URL)
+echo "   Total Vaults Created: $VAULT_COUNTER"
+echo ""
+
+echo "=============================================="
+echo "Verification Complete!"
+echo "=============================================="
+echo ""
+echo "📝 Note: To verify source code on explorer, visit:"
+echo "   https://www.storyscan.io/address/$ADLV_ADDRESS#code"
+echo ""
+echo "   Then click 'Verify & Publish' and use Foundry verification"

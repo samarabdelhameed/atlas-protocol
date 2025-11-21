@@ -1,85 +1,85 @@
 # Story Protocol SDK Examples
 
-مجموعة من الأمثلة العملية لاستخدام Story Protocol SDK.
+A collection of practical examples for using Story Protocol SDK.
 
-## الملفات
+## Files
 
 ### 1. `storyProtocolExample.ts`
-أمثلة أساسية لجميع وظائف SDK:
-- تسجيل IP Asset
-- إضافة شروط الترخيص
-- إنشاء رموز الترخيص
-- الحصول على تفاصيل IP
-- تسجيل الأعمال المشتقة
+Basic examples for all SDK functions:
+- Register IP Asset
+- Attach License Terms
+- Mint License Tokens
+- Get IP Details
+- Register Derivatives
 
 ### 2. `integrateWithADLV.ts`
-أمثلة متقدمة للدمج مع عقد ADLVWithStory:
-- سير عمل كامل من إنشاء vault إلى تسجيل IP
-- تسجيل دفعات من IPs
-- إضافة IP liquidity إلى vaults
-- إنشاء أعمال مشتقة
+Advanced examples for integration with ADLVWithStory contract:
+- Complete workflow from creating vault to registering IP
+- Batch registration of IPs
+- Add IP liquidity to vaults
+- Create derivatives
 
-## كيفية الاستخدام
+## How to Use
 
-### 1. إعداد البيئة
+### 1. Environment Setup
 
-أضف المتغيرات التالية إلى `.env`:
+Add the following variables to `.env`:
 
 ```bash
 WALLET_PRIVATE_KEY=0x...
 STORY_RPC_URL=https://rpc.odyssey.storyrpc.io
 ```
 
-### 2. تشغيل الأمثلة
+### 2. Run Examples
 
 ```bash
-# مثال أساسي
+# Basic example
 bun run examples/storyProtocolExample.ts
 
-# مثال التكامل مع ADLV
+# ADLV integration example
 bun run examples/integrateWithADLV.ts
 ```
 
-### 3. تخصيص الأمثلة
+### 3. Customize Examples
 
-قم بتحديث عناوين العقود في الملفات:
+Update contract addresses in the files:
 
 ```typescript
 const ADLV_CONTRACT = '0xYourADLVAddress';
 const MOCK_NFT = '0xYourNFTAddress';
 ```
 
-## سير العمل الموصى به
+## Recommended Workflow
 
-### للـ Vaults الجديدة:
+### For New Vaults:
 
-1. إنشاء vault في ADLVWithStory
-2. تسجيل الـ vault كـ IP Asset
-3. إضافة شروط الترخيص
-4. إضافة IP liquidity
+1. Create vault in ADLVWithStory
+2. Register vault as IP Asset
+3. Attach License Terms
+4. Add IP liquidity
 
-### للـ IPs الموجودة:
+### For Existing IPs:
 
-1. تسجيل NFT كـ IP Asset
-2. إضافة شروط الترخيص
-3. إضافة إلى vault موجود
+1. Register NFT as IP Asset
+2. Attach License Terms
+3. Add to existing vault
 
-### للأعمال المشتقة:
+### For Derivatives:
 
-1. الحصول على ترخيص من IP الأصلي
-2. إنشاء NFT جديد
-3. تسجيله كعمل مشتق
-4. إضافته إلى vault
+1. Get license from original IP
+2. Create new NFT
+3. Register it as derivative
+4. Add to vault
 
 ## License Terms IDs
 
-| ID | الاسم | الوصف |
-|----|-------|-------|
-| 1 | PIL Non-Commercial Social Remixing | مجاني، غير تجاري |
-| 2 | PIL Commercial Use | استخدام تجاري |
-| 3 | PIL Commercial Remix | ريمكس تجاري |
+| ID | Name | Description |
+|----|------|-------------|
+| 1 | PIL Non-Commercial Social Remixing | Free, non-commercial |
+| 2 | PIL Commercial Use | Commercial use |
+| 3 | PIL Commercial Remix | Commercial remix |
 
-## الموارد
+## Resources
 
 - [Story Protocol Docs](https://docs.story.foundation/)
 - [SDK Documentation](https://docs.story.foundation/docs/sdk-documentation)
