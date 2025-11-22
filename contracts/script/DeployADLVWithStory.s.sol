@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {Script, console} from "forge-std/Script.sol";
 import {IDO} from "../src/IDO.sol";
 import {ADLVWithStory} from "../src/ADLVWithStory.sol";
+import {LoanNFT} from "../src/LoanNFT.sol";
 
 /**
  * @title DeployADLVWithStoryScript
@@ -44,15 +45,29 @@ contract DeployADLVWithStoryScript is Script {
         console.log("   Owner:", deployer);
         console.log("");
 
+        // Deploy Loan NFT
+        console.log("Deploying Loan NFT contract...");
+        LoanNFT loanNFT = new LoanNFT();
+        console.log("[OK] Loan NFT deployed at:", address(loanNFT));
+        console.log("");
+        
         // Deploy ADLV with Story Protocol integration
         console.log("Deploying ADLVWithStory contract...");
         adlv = new ADLVWithStory(
             address(ido),
             STORY_SPG,
             STORY_IP_ASSET_REGISTRY,
-            STORY_LICENSE_REGISTRY
+            STORY_LICENSE_REGISTRY,
+            address(loanNFT),
+            address(0) // lendingModule - optional
         );
         console.log("[OK] ADLVWithStory deployed at:", address(adlv));
+        console.log("");
+        
+        // Transfer Loan NFT ownership to ADLV
+        console.log("Transferring Loan NFT ownership to ADLV...");
+        loanNFT.transferOwnership(address(adlv));
+        console.log("[OK] Loan NFT owner:", loanNFT.owner());
         console.log("   IDO Contract:", address(ido));
         console.log("   Story SPG:", STORY_SPG);
         console.log("   Story IP Registry:", STORY_IP_ASSET_REGISTRY);

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "./IDO.sol";
 import "./interfaces/IStoryProtocolSPG.sol";
@@ -32,6 +32,9 @@ contract MultiAssetVault is ReentrancyGuard, Pausable, AccessControl {
     
     /// @notice Protocol fee percentage (basis points)
     uint256 public protocolFeeBps = 500; // 5%
+    
+    /// @notice Protocol owner (for fee collection)
+    address public protocolOwner;
     
     // ========================================
     // Multi-Asset Vault Structures
@@ -202,6 +205,7 @@ contract MultiAssetVault is ReentrancyGuard, Pausable, AccessControl {
         storySPG = IStoryProtocolSPG(_storySPG);
         storyIPAssetRegistry = IStoryProtocolIPAssetRegistry(_storyIPAssetRegistry);
         
+        protocolOwner = msg.sender;
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(ADMIN_ROLE, msg.sender);
         _grantRole(PAUSER_ROLE, msg.sender);
@@ -496,7 +500,7 @@ contract MultiAssetVault is ReentrancyGuard, Pausable, AccessControl {
         vault.availableLiquidity += remainingRevenue;
         
         if (protocolFee > 0) {
-            payable(getRoleMember(DEFAULT_ADMIN_ROLE, 0)).transfer(protocolFee);
+            payable(protocolOwner).transfer(protocolFee);
         }
         
         // Create license ID

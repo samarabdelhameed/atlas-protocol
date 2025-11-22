@@ -48,6 +48,9 @@ export class ContractMonitor {
     // Monitor IDO events
     this.watchIDOEvents();
 
+    // Monitor CVSOracle events
+    this.watchCVSOracleEvents();
+
     console.log('✅ Contract monitoring active');
   }
 
@@ -216,6 +219,77 @@ export class ContractMonitor {
     });
 
     this.unwatchFunctions.push(unwatchCVSUpdated, unwatchRevenueCollected);
+  }
+
+  /**
+   * Watch CVSOracle contract events
+   */
+  private watchCVSOracleEvents(): void {
+    const cvsOracleAddress = process.env.CVS_ORACLE_ADDRESS as `0x${string}`;
+    if (!cvsOracleAddress || cvsOracleAddress === '0x0000000000000000000000000000000000000000') {
+      console.log('⚠️  CVS Oracle address not set, skipping CVSOracle event monitoring');
+      return;
+    }
+
+    const CVS_ORACLE_ABI = [
+      {
+        type: 'event',
+        name: 'CVSUpdated',
+        inputs: [
+          { name: 'ipId', type: 'address', indexed: true },
+          { name: 'oldValue', type: 'uint256', indexed: false },
+          { name: 'newValue', type: 'uint256', indexed: false },
+          { name: 'confidence', type: 'uint256', indexed: false },
+          { name: 'timestamp', type: 'uint256', indexed: false },
+        ],
+      },
+      {
+        type: 'event',
+        name: 'CVSSyncedFromSPG',
+        inputs: [
+          { name: 'ipId', type: 'address', indexed: true },
+          { name: 'cvs', type: 'uint256', indexed: false },
+          { name: 'timestamp', type: 'uint256', indexed: false },
+        ],
+      },
+    ] as const;
+
+    // Watch CVSUpdated events from oracle
+    const unwatchOracleCVSUpdated = this.publicClient.watchContractEvent({
+      address: cvsOracleAddress,
+      abi: CVS_ORACLE_ABI,
+      eventName: 'CVSUpdated',
+      onLogs: (logs) => {
+        logs.forEach((log) => {
+          const decoded = log as any;
+          console.log('📊 Oracle CVS updated:', {
+            ipId: decoded.args.ipId,
+            oldValue: decoded.args.oldValue?.toString(),
+            newValue: decoded.args.newValue?.toString(),
+            confidence: decoded.args.confidence?.toString(),
+          });
+        });
+      },
+    });
+
+    // Watch CVSSyncedFromSPG events
+    const unwatchCVSSynced = this.publicClient.watchContractEvent({
+      address: cvsOracleAddress,
+      abi: CVS_ORACLE_ABI,
+      eventName: 'CVSSyncedFromSPG',
+      onLogs: (logs) => {
+        logs.forEach((log) => {
+          const decoded = log as any;
+          console.log('🔄 CVS synced from SPG:', {
+            ipId: decoded.args.ipId,
+            cvs: decoded.args.cvs?.toString(),
+            timestamp: decoded.args.timestamp?.toString(),
+          });
+        });
+      },
+    });
+
+    this.unwatchFunctions.push(unwatchOracleCVSUpdated, unwatchCVSSynced);
   }
 
   /**

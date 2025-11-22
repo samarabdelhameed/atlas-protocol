@@ -20,7 +20,6 @@ contract RealStoryTestScript is Script {
         address deployer = vm.addr(deployerPrivateKey);
         
         ADLVWithStory adlv = ADLVWithStory(payable(ADLV_ADDRESS));
-        IDO ido = IDO(IDO_ADDRESS);
         StoryProtocolCore storyCore = StoryProtocolCore(STORY_PROTOCOL_CORE);
         
         console.log("==============================================");

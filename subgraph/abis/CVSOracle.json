@@ -1,0 +1,48 @@
+[
+  {
+    "type": "event",
+    "name": "CVSUpdated",
+    "inputs": [
+      {"name": "ipId", "type": "address", "indexed": true},
+      {"name": "oldValue", "type": "uint256", "indexed": false},
+      {"name": "newValue", "type": "uint256", "indexed": false},
+      {"name": "confidence", "type": "uint256", "indexed": false},
+      {"name": "timestamp", "type": "uint256", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "CVSSyncedFromSPG",
+    "inputs": [
+      {"name": "ipId", "type": "address", "indexed": true},
+      {"name": "cvs", "type": "uint256", "indexed": false},
+      {"name": "timestamp", "type": "uint256", "indexed": false}
+    ]
+  },
+  {
+    "type": "function",
+    "name": "getCVS",
+    "inputs": [{"name": "ipId", "type": "address"}],
+    "outputs": [{"name": "cvs", "type": "uint256"}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getCVSWithMetadata",
+    "inputs": [{"name": "ipId", "type": "address"}],
+    "outputs": [
+      {"name": "cvs", "type": "uint256"},
+      {"name": "lastUpdated", "type": "uint256"},
+      {"name": "confidence", "type": "uint256"}
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "syncCVSFromSPG",
+    "inputs": [{"name": "ipId", "type": "address"}],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  }
+]
+

@@ -22,7 +22,6 @@ contract InteractWithContracts is Script {
         vm.startBroadcast(deployerPrivateKey);
         
         ADLVWithStory adlv = ADLVWithStory(payable(ADLV_ADDRESS));
-        IDO ido = IDO(IDO_ADDRESS);
         
         // 1. Create a test IP in IDO
         bytes32 testIpId = bytes32(uint256(1));

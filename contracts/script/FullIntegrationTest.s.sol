@@ -192,8 +192,6 @@ contract FullIntegrationTestScript is Script {
         console.log("TEST 10: Sell Derivative License (Revenue Sharing)");
         console.log("==============================================");
         
-        uint256 balanceBefore = deployer.balance;
-        
         // Pay royalty with sharing (30% to parent, 70% to derivative)
         storyCore.payRoyaltyWithSharing{value: 1 ether}(
             derivativeIpAddress,

@@ -15,7 +15,6 @@ contract QuickTestScript is Script {
         vm.startBroadcast(deployerPrivateKey);
         
         StoryProtocolCore storyCore = StoryProtocolCore(0xF3aeB434d099a78908659566E575a79278Ed8B45);
-        IDO ido = IDO(0xbec82cF27CFEEDD154bDc639f98715e203C2c41e);
         ADLVWithStory adlv = ADLVWithStory(0xD13218C0F39f1F862F11014F4C9C9d33EE92A5C1);
         
         console.log("=== QUICK TEST ===");

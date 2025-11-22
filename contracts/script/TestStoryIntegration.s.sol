@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {Script, console} from "forge-std/Script.sol";
 import {IDO} from "../src/IDO.sol";
 import {ADLVWithStory} from "../src/ADLVWithStory.sol";
+import {LoanNFT} from "../src/LoanNFT.sol";
 
 /**
  * @title TestStoryIntegrationScript
@@ -20,8 +21,6 @@ contract TestStoryIntegrationScript is Script {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
         
-        string memory storyRpcUrl = vm.envString("STORY_PROTOCOL_RPC");
-        
         console.log("==========================================");
         console.log("Atlas Protocol - Story Integration Test");
         console.log("==========================================");
@@ -34,14 +33,19 @@ contract TestStoryIntegrationScript is Script {
         // Step 1: Deploy contracts
         console.log("Step 1: Deploying contracts...");
         IDO ido = new IDO(deployer);
+        LoanNFT loanNFT = new LoanNFT();
         ADLVWithStory adlv = new ADLVWithStory(
             address(ido),
             STORY_SPG,
             STORY_IP_ASSET_REGISTRY,
-            STORY_LICENSE_REGISTRY
+            STORY_LICENSE_REGISTRY,
+            address(loanNFT),
+            address(0) // lendingModule - optional
         );
+        loanNFT.transferOwnership(address(adlv));
         ido.transferOwnership(address(adlv));
         console.log("[OK] IDO deployed at:", address(ido));
+        console.log("[OK] Loan NFT deployed at:", address(loanNFT));
         console.log("[OK] ADLV deployed at:", address(adlv));
         console.log("[OK] IDO ownership transferred to ADLV");
         console.log("");
