@@ -251,6 +251,82 @@ type WorldIDVerification @entity {
 }
 
 # ========================================
+# CVS Oracle Tracking
+# ========================================
+
+type CVSUpdate @entity {
+  id: ID!
+  ipId: Bytes!
+  oldValue: BigInt!
+  newValue: BigInt!
+  confidence: BigInt!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+  source: String! # "oracle", "spg-sync", "manual"
+}
+
+# ========================================
+# Multi-Asset Vault Entities
+# ========================================
+
+type MultiAssetVault @entity {
+  id: ID!
+  vaultAddress: Bytes!
+  creator: Bytes!
+  vaultType: VaultType!
+  
+  # Multi-Asset Metrics
+  totalCVS: BigInt!
+  ipAssetCount: BigInt!
+  
+  # Vault Status
+  totalLiquidity: BigInt!
+  availableLiquidity: BigInt!
+  totalLoansIssued: BigInt!
+  activeLoansCount: BigInt!
+  totalLicenseRevenue: BigInt!
+  
+  # Timestamps
+  createdAt: BigInt!
+  updatedAt: BigInt!
+  
+  # Relations
+  ipAssets: [VaultIPAsset!]! @derivedFrom(field: "vault")
+  licenseSales: [MultiAssetLicenseSale!]! @derivedFrom(field: "vault")
+}
+
+enum VaultType {
+  Single
+  Multi
+  Basket
+}
+
+type VaultIPAsset @entity {
+  id: ID!
+  vault: MultiAssetVault!
+  ipId: Bytes!
+  storyIPId: String!
+  weight: BigInt!
+  cvsValue: BigInt!
+  licenseRevenue: BigInt!
+  isActive: Boolean!
+  addedAt: BigInt!
+}
+
+type MultiAssetLicenseSale @entity {
+  id: ID!
+  vault: MultiAssetVault!
+  licensee: Bytes!
+  ipIds: [Bytes!]!
+  salePrice: BigInt!
+  licenseType: String!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}
+
+# ========================================
 # Global Statistics
 # ========================================
 
@@ -262,6 +338,7 @@ type GlobalStats @entity {
   totalIDOPools: BigInt!
   totalBridgeTransactions: BigInt!
   totalVerifiedUsers: BigInt!
+  totalMultiAssetVaults: BigInt!
   lastUpdated: BigInt!
 }
 
