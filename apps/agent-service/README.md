@@ -9,6 +9,7 @@ Backend service for Atlas Protocol that handles CVS monitoring, loan management,
 - ✅ **Licensing Agent**: Sell licenses for IP assets via abv.dev
 - ✅ **Contract Monitor**: Real-time event monitoring from ADLV and IDO contracts
 - ✅ **Subgraph Integration**: Query Goldsky subgraph for protocol data
+- ✅ **Goldsky Client**: Fetch real-time data from deployed subgraph
 
 ## Setup
 
@@ -47,6 +48,9 @@ ABV_API_KEY=your_abv_api_key
 # Story Protocol
 STORY_PROTOCOL_API_KEY=your_story_api_key
 STORY_PROTOCOL_RPC=your_story_rpc_url
+
+# Goldsky Subgraph (after deployment)
+SUBGRAPH_URL=https://api.goldsky.com/api/public/project_xxxxx/subgraphs/atlas-protocol/1.0.0/gn
 
 # World ID
 WORLD_ID_APP_ID=your_world_id_app_id
@@ -159,6 +163,61 @@ const events = await monitor.getRecentEvents(1000);
 - `CVSUpdated` - CVS updates
 - `RevenueCollected` - Revenue events
 
+#### Goldsky Client
+
+Fetches real-time data from the Goldsky subgraph.
+
+```typescript
+import {
+  fetchLatestIPAssets,
+  fetchLatestLicenseSales,
+  testGoldskyConnection,
+} from './src/clients/goldskyClient.js';
+
+// Test connection
+await testGoldskyConnection();
+
+// Fetch latest IP Assets
+const ipAssets = await fetchLatestIPAssets();
+console.log('IP Assets:', ipAssets);
+
+// Fetch latest License Sales
+const licenseSales = await fetchLatestLicenseSales();
+console.log('License Sales:', licenseSales);
+```
+
+**Available Functions**:
+- `fetchLatestIPAssets()` - Get latest 5 IP Assets
+- `fetchLatestLicenseSales()` - Get latest 5 License Sales (minted licenses)
+- `testGoldskyConnection()` - Test subgraph connection
+
+**Testing**:
+```bash
+bun run test-goldsky.ts
+```
+
+This will:
+1. Test connection to Goldsky subgraph
+2. Fetch latest IP Assets
+3. Fetch latest License Sales
+4. Display formatted results
+
+**Example Output**:
+```
+✅ Connection successful!
+📊 Current block: 11429754
+✅ Found 2 License Sales:
+
+1. License Sale #0xb771193656043536ad...
+   Licensee: 0xdafee25f98ff62504c1086eacbb406190f3110d5
+   License Type: commercial
+   Sale Price: 1.0000 ETH
+   CVS Increment: 0.0500 ETH
+   Creator Share: 0.7000 ETH (70%)
+   Vault Share: 0.2500 ETH (25%)
+   Protocol Fee: 0.0500 ETH (5%)
+```
+
 #### CVS Engine
 
 Calculates and monitors Collateral Value Scores.
@@ -242,7 +301,115 @@ try {
 }
 ```
 
+## Goldsky Subgraph Integration
+
+### Step 1: Deploy Subgraph to Goldsky
+
+1. **Install Goldsky CLI**:
+   ```bash
+   npm install -g @goldskycom/cli
+   ```
+
+2. **Login to Goldsky**:
+   ```bash
+   goldsky login
+   ```
+
+3. **Deploy Subgraph**:
+   ```bash
+   cd ../../subgraph
+   ./deploy-goldsky.sh
+   ```
+
+4. **Get Endpoint**:
+   After deployment, get the GraphQL endpoint from Goldsky dashboard:
+   ```
+   https://api.goldsky.com/api/public/project_xxxxx/subgraphs/atlas-protocol/1.0.0/gn
+   ```
+
+5. **Update Environment**:
+   Add to `apps/agent-service/.env`:
+   ```env
+   SUBGRAPH_URL=https://api.goldsky.com/api/public/project_xxxxx/subgraphs/atlas-protocol/1.0.0/gn
+   ```
+
+### Step 2: Test Goldsky Client
+
+```bash
+cd apps/agent-service
+bun run test-goldsky.ts
+```
+
+**Expected Output**:
+- ✅ Connection successful
+- ✅ Latest IP Assets (if available)
+- ✅ Latest License Sales with real data
+
+### Step 3: Verify Data
+
+The subgraph indexes:
+- **Vaults** (`idovaults`) - ADLV vaults with CVS metrics
+- **License Sales** (`dataLicenseSales`) - All license sales with revenue distribution
+- **Loans** (`loans`) - Active and completed loans
+- **Deposits** (`deposits`) - Vault liquidity deposits
+
+**Query Examples**:
+```graphql
+# Get latest license sales
+{
+  dataLicenseSales(
+    first: 5
+    orderBy: timestamp
+    orderDirection: desc
+  ) {
+    id
+    salePrice
+    licenseType
+    cvsIncrement
+    creatorShare
+    vaultShare
+    protocolFee
+    timestamp
+  }
+}
+
+# Get vaults
+{
+  idovaults(
+    first: 5
+    orderBy: createdAt
+    orderDirection: desc
+  ) {
+    id
+    vaultAddress
+    currentCVS
+    totalLicenseRevenue
+    totalLoansIssued
+  }
+}
+```
+
+### Current Status
+
+✅ **Subgraph Deployed**: `atlas-protocol/1.0.0`
+- **Endpoint**: `https://api.goldsky.com/api/public/project_cmi7kxx96f83a01ywgmfpdfs6/subgraphs/atlas-protocol/1.0.0/gn`
+- **Status**: Healthy (Active)
+- **Synced**: 100%
+- **Network**: Story Aeneid Testnet
+- **Blocks Indexed**: 11122611 → 11429754+
+
+✅ **Data Retrieved**:
+- Latest License Sales: 2 sales found
+  - Sale 1: 1.0 ETH (Commercial) - CVS Increment: 0.05 ETH
+  - Sale 2: 0.3 ETH (Commercial) - CVS Increment: 0.015 ETH
+
 ## Testing
+
+### Test Goldsky Client
+
+```bash
+bun run test-goldsky.ts
+```
 
 ### Test Loan Issuance
 
@@ -291,6 +458,8 @@ try {
 ```
 apps/agent-service/
 ├── src/
+│   ├── clients/
+│   │   └── goldskyClient.ts # Goldsky subgraph client
 │   ├── config/
 │   │   └── index.ts          # Configuration
 │   └── services/
@@ -301,6 +470,7 @@ apps/agent-service/
 ├── contracts/
 │   ├── ADLV.json            # ADLV ABI
 │   └── IDO.json             # IDO ABI
+├── test-goldsky.ts          # Goldsky client test script
 ├── index.ts                 # Main service entry
 └── README.md               # This file
 ```
@@ -312,6 +482,177 @@ apps/agent-service/
 3. Initialize in `AgentService` constructor
 4. Add to startup sequence
 5. Update this README
+
+## Goldsky Integration - Complete Guide
+
+### Overview
+
+The Goldsky client allows the agent service to fetch real-time data from the deployed subgraph, including:
+- Latest IP Assets
+- Latest License Sales (minted licenses)
+- Vault information
+- CVS metrics
+
+### Implementation Steps
+
+#### Step 1: Create Goldsky Client
+
+Created `src/clients/goldskyClient.ts` with the following functions:
+
+```typescript
+// Test connection to Goldsky
+export async function testGoldskyConnection(): Promise<void>
+
+// Fetch latest 5 IP Assets
+export async function fetchLatestIPAssets(): Promise<IPAsset[]>
+
+// Fetch latest 5 License Sales
+export async function fetchLatestLicenseSales(): Promise<LicenseSale[]>
+```
+
+#### Step 2: Deploy Subgraph
+
+1. **Navigate to subgraph directory**:
+   ```bash
+   cd ../../subgraph
+   ```
+
+2. **Check Goldsky CLI**:
+   ```bash
+   goldsky --version
+   # Should show: 13.0.2 or higher
+   ```
+
+3. **Login to Goldsky**:
+   ```bash
+   goldsky login
+   ```
+
+4. **Deploy subgraph**:
+   ```bash
+   ./deploy-goldsky.sh
+   ```
+
+5. **Verify deployment**:
+   ```bash
+   goldsky subgraph list
+   ```
+
+   Expected output:
+   ```
+   Subgraphs
+   * atlas-protocol/1.0.0
+       GraphQL API: https://api.goldsky.com/api/public/project_xxxxx/subgraphs/atlas-protocol/1.0.0/gn
+       Status: healthy (Active)
+       Synced: 100%
+   ```
+
+#### Step 3: Configure Environment
+
+1. **Get the GraphQL endpoint** from Goldsky dashboard or CLI output
+
+2. **Add to `.env`**:
+   ```env
+   SUBGRAPH_URL=https://api.goldsky.com/api/public/project_xxxxx/subgraphs/atlas-protocol/1.0.0/gn
+   ```
+
+#### Step 4: Test Integration
+
+1. **Run test script**:
+   ```bash
+   bun run test-goldsky.ts
+   ```
+
+2. **Expected output**:
+   ```
+   ✅ Connection successful!
+   📊 Current block: 11429754
+   ✅ Found 2 License Sales:
+   
+   1. License Sale #0xb771193656043536ad...
+      Licensee: 0xdafee25f98ff62504c1086eacbb406190f3110d5
+      License Type: commercial
+      Sale Price: 1.0000 ETH
+      CVS Increment: 0.0500 ETH
+      Creator Share: 0.7000 ETH (70%)
+      Vault Share: 0.2500 ETH (25%)
+      Protocol Fee: 0.0500 ETH (5%)
+   ```
+
+### Current Deployment Status
+
+✅ **Subgraph**: `atlas-protocol/1.0.0`
+- **Endpoint**: `https://api.goldsky.com/api/public/project_cmi7kxx96f83a01ywgmfpdfs6/subgraphs/atlas-protocol/1.0.0/gn`
+- **Network**: Story Aeneid Testnet (Chain ID: 1315)
+- **Status**: Healthy (Active)
+- **Sync Status**: 100%
+- **Blocks Indexed**: 11,122,611 → 11,429,754+
+
+### Data Retrieved
+
+✅ **License Sales**: 2 sales found
+- **Sale 1**: 
+  - Price: 1.0 ETH
+  - Type: Commercial
+  - CVS Increment: 0.05 ETH (5%)
+  - Revenue Split: 70% Creator, 25% Vault, 5% Protocol
+
+- **Sale 2**:
+  - Price: 0.3 ETH
+  - Type: Commercial
+  - CVS Increment: 0.015 ETH (5%)
+  - Revenue Split: 70% Creator, 25% Vault, 5% Protocol
+
+### GraphQL Schema
+
+The subgraph exposes the following entities:
+
+- `ipassets` - IP Assets with CVS metrics
+- `idovaults` - ADLV vaults with lending terms
+- `dataLicenseSales` - License sales with revenue distribution
+- `loans` - Active and completed loans
+- `deposits` - Vault liquidity deposits
+
+### Usage in Code
+
+```typescript
+import {
+  fetchLatestIPAssets,
+  fetchLatestLicenseSales,
+} from './src/clients/goldskyClient.js';
+
+// Fetch latest IP Assets
+const ipAssets = await fetchLatestIPAssets();
+console.log(`Found ${ipAssets.length} IP Assets`);
+
+// Fetch latest License Sales
+const licenseSales = await fetchLatestLicenseSales();
+console.log(`Found ${licenseSales.length} License Sales`);
+
+// Process license sales
+for (const sale of licenseSales) {
+  console.log(`Sale: ${sale.salePrice} ETH`);
+  console.log(`CVS Increment: ${sale.cvsIncrement} ETH`);
+  console.log(`Licensee: ${sale.licensee}`);
+}
+```
+
+### Troubleshooting
+
+**Connection Failed (404)**:
+- Verify subgraph is deployed: `goldsky subgraph list`
+- Check `SUBGRAPH_URL` in `.env` matches the endpoint from Goldsky dashboard
+- Ensure subgraph is fully synced (100%)
+
+**No Data Returned**:
+- Check if contracts have emitted events
+- Verify start block in `subgraph.yaml` is correct
+- Check subgraph sync status in Goldsky dashboard
+
+**Schema Mismatch**:
+- The subgraph uses lowercase field names (`ipassets`, `idovaults`)
+- Update queries to match the actual schema
+- Check `subgraph/schema.graphql` for correct field names
 
 ## License
 
