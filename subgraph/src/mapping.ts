@@ -6,6 +6,7 @@ import {
   Deposit,
   LoanPayment,
   GlobalStats,
+  CVSUpdate,
 } from "../generated/schema";
 import {
   VaultCreated,
@@ -18,6 +19,10 @@ import {
   Deposited,
   Withdrawn,
 } from "../generated/AtlasADLV/AtlasADLV";
+import {
+  CVSUpdated as OracleCVSUpdated,
+  CVSSyncedFromSPG,
+} from "../generated/CVSOracle/CVSOracle";
 
 // ========================================
 // Vault Management
@@ -190,7 +195,7 @@ export function handleLoanIssued(event: LoanIssued): void {
 }
 
 // ========================================
-// CVS Update Handler
+// CVS Update Handler (from ADLV)
 // ========================================
 
 export function handleCVSUpdated(event: CVSUpdated): void {
@@ -207,6 +212,61 @@ export function handleCVSUpdated(event: CVSUpdated): void {
     
     vault.save();
   }
+}
+
+// ========================================
+// CVS Oracle Event Handlers (from CVSOracle contract)
+// ========================================
+
+/**
+ * Handle CVS updates from CVSOracle contract
+ * This event is emitted when CVS is updated in the oracle (from SPG or manual)
+ */
+export function handleOracleCVSUpdated(event: OracleCVSUpdated): void {
+  let ipId = event.params.ipId;
+  let updateId = event.transaction.hash.toHex() + "-" + event.logIndex.toString();
+  
+  // Create CVSUpdate entity to track oracle updates
+  let cvsUpdate = new CVSUpdate(updateId);
+  cvsUpdate.ipId = ipId;
+  cvsUpdate.oldValue = event.params.oldValue;
+  cvsUpdate.newValue = event.params.newValue;
+  cvsUpdate.confidence = event.params.confidence;
+  cvsUpdate.timestamp = event.params.timestamp;
+  cvsUpdate.blockNumber = event.block.number;
+  cvsUpdate.transactionHash = event.transaction.hash;
+  cvsUpdate.source = "oracle";
+  cvsUpdate.save();
+  
+  // Try to find and update vaults that use this IP ID
+  // Note: This requires a mapping from IP ID to vault address
+  // For now, we track the update and the indexer service can process it
+}
+
+/**
+ * Handle CVS synced from Story Protocol SPG
+ * This event is emitted when CVS is automatically synced from Story Protocol's system
+ */
+export function handleCVSSyncedFromSPG(event: CVSSyncedFromSPG): void {
+  let ipId = event.params.ipId;
+  let cvs = event.params.cvs;
+  let timestamp = event.params.timestamp;
+  let updateId = event.transaction.hash.toHex() + "-" + event.logIndex.toString();
+  
+  // Create CVSUpdate entity to track SPG syncs
+  let cvsUpdate = new CVSUpdate(updateId);
+  cvsUpdate.ipId = ipId;
+  cvsUpdate.oldValue = BigInt.fromI32(0); // SPG sync doesn't provide old value
+  cvsUpdate.newValue = cvs;
+  cvsUpdate.confidence = BigInt.fromI32(10000); // High confidence for SPG data
+  cvsUpdate.timestamp = timestamp;
+  cvsUpdate.blockNumber = event.block.number;
+  cvsUpdate.transactionHash = event.transaction.hash;
+  cvsUpdate.source = "spg-sync";
+  cvsUpdate.save();
+  
+  // Track SPG syncs for monitoring and analytics
+  // The actual vault update will happen through the oracle's CVSUpdated event
 }
 
 // ========================================

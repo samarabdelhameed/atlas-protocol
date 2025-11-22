@@ -5,6 +5,7 @@ import "./IDO.sol";
 import "./interfaces/IStoryProtocolSPG.sol";
 import "./interfaces/IStoryProtocolIPAssetRegistry.sol";
 import "./interfaces/IStoryProtocolLicenseRegistry.sol";
+import "./interfaces/ILoanNFT.sol";
 
 /**
  * @title ADLVWithStory - ADLV with Story Protocol Integration
@@ -52,6 +53,27 @@ contract ADLVWithStory {
     /// @notice Counter for vault addresses
     uint256 public vaultCounter;
     
+    /// @notice Loan NFT contract
+    address public loanNFT;
+    
+    /// @notice Lending Module contract
+    address public lendingModule;
+    
+    /// @notice Default loan terms
+    LoanTerms public defaultLoanTerms;
+    
+    /// @notice Interest rate model
+    InterestRateModel public interestRateModel;
+    
+    /// @notice Protocol liquidation fee (basis points)
+    uint256 public liquidationFeeBps = 500; // 5%
+    
+    /// @notice Minimum health factor (10000 = 100%)
+    uint256 public constant MIN_HEALTH_FACTOR = 10000; // 100%
+    
+    /// @notice Liquidation threshold (8000 = 80%)
+    uint256 public constant LIQUIDATION_THRESHOLD = 8000; // 80%
+    
     // ========================================
     // Structs
     // ========================================
@@ -77,15 +99,31 @@ contract ADLVWithStory {
         address vaultAddress;
         address borrower;
         uint256 loanAmount;
-        uint256 collateralAmount;
-        uint256 interestRate;
+        uint256 collateralAmount;        // ETH/IP collateral
+        address ipCollateral;            // IP Asset used as collateral
+        uint256 ipCollateralValue;       // CVS value at issuance
+        uint256 interestRate;            // Annual interest rate (basis points)
         uint256 duration;
         uint256 cvsAtIssuance;
         uint256 startTime;
         uint256 endTime;
         uint256 repaidAmount;
         uint256 outstandingAmount;
+        uint256 accruedInterest;         // Accumulated interest
+        uint256 healthFactor;            // Loan health (10000 = 100%)
+        uint256 liquidationThreshold;    // CVS threshold for liquidation
         LoanStatus status;
+    }
+    
+    struct LoanTerms {
+        uint256 minLoanAmount;
+        uint256 maxLoanAmount;
+        uint256 minDuration;
+        uint256 maxDuration;
+        uint256 minCollateralRatio;     // Minimum collateral ratio (basis points)
+        uint256 liquidationPenalty;     // Penalty for liquidation (basis points)
+        uint256 baseInterestRate;       // Base interest rate (basis points)
+        bool allowIPCollateral;         // Allow IP assets as collateral
     }
     
     enum LoanStatus {
@@ -94,6 +132,12 @@ contract ADLVWithStory {
         Repaid,
         Defaulted,
         Liquidated
+    }
+    
+    enum InterestRateModel {
+        Fixed,      // Fixed interest rate
+        Variable,   // Variable based on utilization
+        Dynamic     // Dynamic based on CVS and market
     }
     
     // ========================================
@@ -111,6 +155,12 @@ contract ADLVWithStory {
     mapping(address => string[]) public vaultLicenses; // Vault address to license IDs
     mapping(address => address) public derivativeToParentVault; // Derivative vault => Parent vault
     mapping(address => address[]) public vaultDerivatives; // Parent vault => Derivative vaults[]
+    
+    // Lending Module Mappings
+    mapping(address => LoanTerms) public vaultLoanTerms; // Custom loan terms per vault
+    mapping(address => uint256) public ipCollateralValue; // IP asset => CVS value
+    mapping(uint256 => address) public loanToIPCollateral; // Loan ID => IP collateral address
+    mapping(address => uint256[]) public ipCollateralLoans; // IP asset => loan IDs
     
     // ========================================
     // Events
@@ -197,6 +247,37 @@ contract ADLVWithStory {
         address creator
     );
     
+    event LoanTermsUpdated(
+        address indexed vaultAddress,
+        uint256 minLoanAmount,
+        uint256 maxLoanAmount,
+        uint256 minCollateralRatio
+    );
+    
+    event LoanHealthUpdated(
+        uint256 indexed loanId,
+        uint256 healthFactor,
+        uint256 currentCVS
+    );
+    
+    event LoanNFTMinted(
+        uint256 indexed loanId,
+        uint256 indexed nftTokenId,
+        address indexed borrower
+    );
+    
+    event IPCollateralAdded(
+        uint256 indexed loanId,
+        address indexed ipAsset,
+        uint256 cvsValue
+    );
+    
+    event InterestAccrued(
+        uint256 indexed loanId,
+        uint256 interestAmount,
+        uint256 totalDebt
+    );
+    
     // ========================================
     // Modifiers
     // ========================================
@@ -219,7 +300,9 @@ contract ADLVWithStory {
         address _idoContract,
         address _storySPG,
         address _storyIPAssetRegistry,
-        address _storyLicenseRegistry
+        address _storyLicenseRegistry,
+        address _loanNFT,
+        address _lendingModule
     ) {
         require(_idoContract != address(0), "ADLV: Invalid IDO address");
         require(_storySPG != address(0), "ADLV: Invalid SPG address");
@@ -232,7 +315,24 @@ contract ADLVWithStory {
         if (_storyLicenseRegistry != address(0)) {
             storyLicenseRegistry = IStoryProtocolLicenseRegistry(_storyLicenseRegistry);
         }
+        loanNFT = _loanNFT;
+        lendingModule = _lendingModule;
         owner = msg.sender;
+        
+        // Set default loan terms
+        defaultLoanTerms = LoanTerms({
+            minLoanAmount: 0.01 ether,
+            maxLoanAmount: 1000 ether,
+            minDuration: 7 days,
+            maxDuration: 365 days,
+            minCollateralRatio: 15000, // 150%
+            liquidationPenalty: 1000,  // 10%
+            baseInterestRate: 1000,    // 10% APR
+            allowIPCollateral: true
+        });
+        
+        // Set default interest rate model
+        interestRateModel = InterestRateModel.Dynamic;
     }
     
     // ========================================
@@ -597,8 +697,54 @@ contract ADLVWithStory {
         uint256 loanAmount,
         uint256 duration
     ) external payable vaultExists(vaultAddress) returns (uint256 loanId) {
+        return _issueLoanInternal(vaultAddress, loanAmount, duration, address(0), msg.value);
+    }
+    
+    /**
+     * @notice Issue loan with IP collateral
+     * @param vaultAddress The vault address
+     * @param loanAmount Amount to borrow
+     * @param duration Loan duration
+     * @param ipCollateral IP asset address to use as collateral
+     * @return loanId The loan ID
+     */
+    function issueLoanWithIPCollateral(
+        address vaultAddress,
+        uint256 loanAmount,
+        uint256 duration,
+        address ipCollateral
+    ) external payable vaultExists(vaultAddress) returns (uint256 loanId) {
+        require(ipCollateral != address(0), "ADLV: Invalid IP collateral");
+        
+        // Verify IP ownership via Story Protocol
+        address ipOwner = storyIPAssetRegistry.ownerOf(addressToString(ipCollateral));
+        require(ipOwner == msg.sender, "ADLV: Not IP owner");
+        
+        return _issueLoanInternal(vaultAddress, loanAmount, duration, ipCollateral, msg.value);
+    }
+    
+    /**
+     * @notice Internal function to issue loan
+     */
+    function _issueLoanInternal(
+        address vaultAddress,
+        uint256 loanAmount,
+        uint256 duration,
+        address ipCollateral,
+        uint256 ethCollateral
+    ) internal returns (uint256 loanId) {
         Vault storage vault = vaults[vaultAddress];
         bytes32 ipId = vault.ipId;
+        
+        LoanTerms memory terms = vaultLoanTerms[vaultAddress].minLoanAmount > 0 
+            ? vaultLoanTerms[vaultAddress] 
+            : defaultLoanTerms;
+        
+        // Validate loan terms
+        require(loanAmount >= terms.minLoanAmount, "ADLV: Loan amount too small");
+        require(loanAmount <= terms.maxLoanAmount, "ADLV: Loan amount too large");
+        require(duration >= terms.minDuration, "ADLV: Duration too short");
+        require(duration <= terms.maxDuration, "ADLV: Duration too long");
         
         uint256 currentCVS = idoContract.getCVS(ipId);
         
@@ -612,13 +758,34 @@ contract ADLVWithStory {
             "ADLV: Insufficient liquidity"
         );
         
-        uint256 interestRate = calculateInterestRate(currentCVS);
-        uint256 requiredCollateral = (loanAmount * defaultCollateralRatio) / 10000;
+        // Calculate collateral value
+        uint256 totalCollateralValue = ethCollateral;
+        uint256 ipCollateralVal = 0;
+        
+        if (ipCollateral != address(0)) {
+            require(terms.allowIPCollateral, "ADLV: IP collateral not allowed");
+            
+            // Get IP CVS value
+            bytes32 ipCollateralId = keccak256(abi.encodePacked(ipCollateral));
+            ipCollateralVal = idoContract.getCVS(ipCollateralId);
+            totalCollateralValue += ipCollateralVal;
+        }
+        
+        uint256 requiredCollateral = (loanAmount * terms.minCollateralRatio) / 10000;
         
         require(
-            msg.value >= requiredCollateral,
+            totalCollateralValue >= requiredCollateral,
             "ADLV: Insufficient collateral"
         );
+        
+        // Calculate interest rate
+        uint256 interestRate = _calculateDynamicInterestRate(currentCVS, vault.availableLiquidity, vault.totalLiquidity);
+        
+        // Calculate health factor
+        uint256 healthFactor = (totalCollateralValue * 10000) / loanAmount;
+        
+        // Calculate liquidation threshold
+        uint256 liquidationThreshold = (loanAmount * LIQUIDATION_THRESHOLD) / 10000;
         
         loanId = loanCounter++;
         
@@ -627,7 +794,9 @@ contract ADLVWithStory {
             vaultAddress: vaultAddress,
             borrower: msg.sender,
             loanAmount: loanAmount,
-            collateralAmount: msg.value,
+            collateralAmount: ethCollateral,
+            ipCollateral: ipCollateral,
+            ipCollateralValue: ipCollateralVal,
             interestRate: interestRate,
             duration: duration,
             cvsAtIssuance: currentCVS,
@@ -635,15 +804,32 @@ contract ADLVWithStory {
             endTime: block.timestamp + duration,
             repaidAmount: 0,
             outstandingAmount: loanAmount,
+            accruedInterest: 0,
+            healthFactor: healthFactor,
+            liquidationThreshold: liquidationThreshold,
             status: LoanStatus.Active
         });
         
         vaultLoans[vaultAddress].push(loanId);
         borrowerLoans[msg.sender].push(loanId);
         
+        if (ipCollateral != address(0)) {
+            loanToIPCollateral[loanId] = ipCollateral;
+            ipCollateralLoans[ipCollateral].push(loanId);
+            
+            emit IPCollateralAdded(loanId, ipCollateral, ipCollateralVal);
+        }
+        
         vault.totalLoansIssued += loanAmount;
         vault.activeLoansCount += 1;
         vault.availableLiquidity -= loanAmount;
+        
+        // Mint Loan NFT
+        if (loanNFT != address(0)) {
+            try ILoanNFT(loanNFT).mint(msg.sender, loanId) returns (uint256 nftTokenId) {
+                emit LoanNFTMinted(loanId, nftTokenId, msg.sender);
+            } catch {}
+        }
         
         payable(msg.sender).transfer(loanAmount);
         
@@ -652,7 +838,7 @@ contract ADLVWithStory {
             msg.sender,
             loanId,
             loanAmount,
-            msg.value,
+            totalCollateralValue,
             interestRate,
             duration
         );
@@ -698,32 +884,8 @@ contract ADLVWithStory {
         emit LoanRepaid(loan.vaultAddress, loan.borrower, loanId, repaymentAmount);
     }
     
-    function liquidateLoan(uint256 loanId) external {
-        Loan storage loan = loans[loanId];
-        require(loan.status == LoanStatus.Active, "ADLV: Loan not active");
-        require(block.timestamp > loan.endTime, "ADLV: Loan not expired");
-        
-        bytes32 ipId = vaults[loan.vaultAddress].ipId;
-        uint256 currentCVS = idoContract.getCVS(ipId);
-        bool isUndercollateralized = currentCVS < (loan.loanAmount * MIN_CVS_RATIO);
-        
-        require(
-            isUndercollateralized || block.timestamp > loan.endTime,
-            "ADLV: Loan not liquidatable"
-        );
-        
-        loan.status = LoanStatus.Liquidated;
-        
-        Vault storage vault = vaults[loan.vaultAddress];
-        vault.activeLoansCount -= 1;
-        
-        payable(msg.sender).transfer(loan.collateralAmount);
-        
-        emit LoanLiquidated(loan.vaultAddress, loan.borrower, loanId);
-    }
-    
     // ========================================
-    // Deposit/Withdraw (same as original)
+    // Deposit/Withdraw
     // ========================================
     
     function deposit(
@@ -1086,6 +1248,278 @@ contract ADLVWithStory {
         emit LicenseSold(vaultAddress, vault.ipId, msg.sender, msg.value, licenseType);
         
         return licenseId;
+    }
+    
+    // ========================================
+    // Advanced Lending Functions
+    // ========================================
+    
+    /**
+     * @notice Update loan health factor
+     * @param loanId The loan ID
+     * @return healthFactor Updated health factor
+     */
+    function updateLoanHealth(uint256 loanId) public returns (uint256 healthFactor) {
+        Loan storage loan = loans[loanId];
+        require(loan.status == LoanStatus.Active, "ADLV: Loan not active");
+        
+        // Get current collateral value
+        uint256 currentCollateralValue = loan.collateralAmount;
+        
+        if (loan.ipCollateral != address(0)) {
+            bytes32 ipCollateralId = keccak256(abi.encodePacked(loan.ipCollateral));
+            uint256 currentIPValue = idoContract.getCVS(ipCollateralId);
+            currentCollateralValue += currentIPValue;
+        }
+        
+        // Calculate current debt (principal + accrued interest)
+        uint256 accruedInterest = calculateAccruedInterest(loanId);
+        uint256 totalDebt = loan.outstandingAmount + accruedInterest;
+        
+        // Calculate health factor
+        healthFactor = (currentCollateralValue * 10000) / totalDebt;
+        loan.healthFactor = healthFactor;
+        loan.accruedInterest = accruedInterest;
+        
+        // Get current CVS
+        bytes32 ipId = vaults[loan.vaultAddress].ipId;
+        uint256 currentCVS = idoContract.getCVS(ipId);
+        
+        emit LoanHealthUpdated(loanId, healthFactor, currentCVS);
+        
+        return healthFactor;
+    }
+    
+    /**
+     * @notice Calculate accrued interest for a loan
+     * @param loanId The loan ID
+     * @return interest Accrued interest amount
+     */
+    function calculateAccruedInterest(uint256 loanId) public view returns (uint256 interest) {
+        Loan memory loan = loans[loanId];
+        
+        if (loan.status != LoanStatus.Active) {
+            return loan.accruedInterest;
+        }
+        
+        uint256 timeElapsed = block.timestamp - loan.startTime;
+        uint256 principal = loan.outstandingAmount;
+        uint256 annualRate = loan.interestRate;
+        
+        // Interest = Principal * Rate * Time / (10000 * 365 days)
+        interest = (principal * annualRate * timeElapsed) / (10000 * 365 days);
+        
+        return interest;
+    }
+    
+    /**
+     * @notice Liquidate undercollateralized loan
+     * @param loanId The loan ID
+     */
+    function liquidateLoan(uint256 loanId) external {
+        Loan storage loan = loans[loanId];
+        require(loan.status == LoanStatus.Active, "ADLV: Loan not active");
+        
+        // Update health factor
+        uint256 healthFactor = updateLoanHealth(loanId);
+        
+        // Check if loan is liquidatable
+        require(
+            healthFactor < MIN_HEALTH_FACTOR || block.timestamp > loan.endTime,
+            "ADLV: Loan not liquidatable"
+        );
+        
+        loan.status = LoanStatus.Liquidated;
+        
+        Vault storage vault = vaults[loan.vaultAddress];
+        vault.activeLoansCount -= 1;
+        
+        // Calculate liquidation amounts
+        uint256 totalDebt = loan.outstandingAmount + loan.accruedInterest;
+        uint256 liquidationPenalty = (totalDebt * defaultLoanTerms.liquidationPenalty) / 10000;
+        uint256 protocolFee = (loan.collateralAmount * liquidationFeeBps) / 10000;
+        
+        // Distribute collateral
+        uint256 vaultShare = loan.collateralAmount - protocolFee;
+        vault.totalLiquidity += vaultShare;
+        vault.availableLiquidity += vaultShare;
+        
+        if (protocolFee > 0) {
+            payable(owner).transfer(protocolFee);
+        }
+        
+        // Transfer liquidation reward to liquidator
+        if (liquidationPenalty > 0 && address(this).balance >= liquidationPenalty) {
+            payable(msg.sender).transfer(liquidationPenalty);
+        }
+        
+        // Burn Loan NFT
+        if (loanNFT != address(0)) {
+            try ILoanNFT(loanNFT).burn(ILoanNFT(loanNFT).getTokenId(loanId)) {} catch {}
+        }
+        
+        emit LoanLiquidated(loan.vaultAddress, loan.borrower, loanId);
+    }
+    
+    /**
+     * @notice Set custom loan terms for vault
+     * @param vaultAddress The vault address
+     * @param terms Custom loan terms
+     */
+    function setVaultLoanTerms(
+        address vaultAddress,
+        LoanTerms calldata terms
+    ) external vaultExists(vaultAddress) {
+        Vault storage vault = vaults[vaultAddress];
+        require(vault.creator == msg.sender, "ADLV: Only creator");
+        
+        vaultLoanTerms[vaultAddress] = terms;
+        
+        emit LoanTermsUpdated(
+            vaultAddress,
+            terms.minLoanAmount,
+            terms.maxLoanAmount,
+            terms.minCollateralRatio
+        );
+    }
+    
+    /**
+     * @notice Get loan details with current status
+     * @param loanId The loan ID
+     * @return loan Loan struct
+     * @return currentHealth Current health factor
+     * @return currentDebt Current total debt
+     */
+    function getLoanDetails(uint256 loanId) external view returns (
+        Loan memory loan,
+        uint256 currentHealth,
+        uint256 currentDebt
+    ) {
+        loan = loans[loanId];
+        
+        if (loan.status == LoanStatus.Active) {
+            // Calculate current values
+            uint256 accruedInterest = calculateAccruedInterest(loanId);
+            currentDebt = loan.outstandingAmount + accruedInterest;
+            
+            uint256 currentCollateralValue = loan.collateralAmount;
+            if (loan.ipCollateral != address(0)) {
+                bytes32 ipCollateralId = keccak256(abi.encodePacked(loan.ipCollateral));
+                currentCollateralValue += idoContract.getCVS(ipCollateralId);
+            }
+            
+            currentHealth = (currentCollateralValue * 10000) / currentDebt;
+        } else {
+            currentHealth = loan.healthFactor;
+            currentDebt = loan.outstandingAmount + loan.accruedInterest;
+        }
+        
+        return (loan, currentHealth, currentDebt);
+    }
+    
+    /**
+     * @notice Calculate dynamic interest rate
+     * @param cvs Current CVS value
+     * @param availableLiquidity Available liquidity
+     * @param totalLiquidity Total liquidity
+     * @return rate Interest rate (basis points)
+     */
+    function _calculateDynamicInterestRate(
+        uint256 cvs,
+        uint256 availableLiquidity,
+        uint256 totalLiquidity
+    ) internal view returns (uint256 rate) {
+        if (interestRateModel == InterestRateModel.Fixed) {
+            return defaultLoanTerms.baseInterestRate;
+        }
+        
+        uint256 baseRate = defaultLoanTerms.baseInterestRate;
+        
+        if (interestRateModel == InterestRateModel.Variable) {
+            // Utilization-based rate
+            if (totalLiquidity == 0) return baseRate;
+            
+            uint256 utilization = ((totalLiquidity - availableLiquidity) * 10000) / totalLiquidity;
+            
+            // Rate increases with utilization
+            // 0% utilization = base rate
+            // 100% utilization = base rate * 3
+            rate = baseRate + (baseRate * 2 * utilization) / 10000;
+            
+        } else {
+            // Dynamic rate based on CVS and utilization
+            if (totalLiquidity == 0) return baseRate;
+            
+            uint256 utilization = ((totalLiquidity - availableLiquidity) * 10000) / totalLiquidity;
+            
+            // CVS discount (higher CVS = lower rate)
+            uint256 cvsDiscount = cvs / 1000000 ether; // 1% discount per 1M CVS
+            if (cvsDiscount > 500) cvsDiscount = 500; // Max 5% discount
+            
+            // Utilization premium
+            uint256 utilizationPremium = (baseRate * utilization) / 10000;
+            
+            rate = baseRate + utilizationPremium;
+            if (rate > cvsDiscount) {
+                rate -= cvsDiscount;
+            } else {
+                rate = baseRate / 2; // Minimum 50% of base rate
+            }
+        }
+        
+        // Ensure rate is within reasonable bounds
+        if (rate < 100) rate = 100;   // Min 1% APR
+        if (rate > 10000) rate = 10000; // Max 100% APR
+        
+        return rate;
+    }
+    
+    /**
+     * @notice Get loans by IP collateral
+     * @param ipAsset IP asset address
+     * @return loanIds Array of loan IDs
+     */
+    function getLoansByIPCollateral(address ipAsset) external view returns (uint256[] memory) {
+        return ipCollateralLoans[ipAsset];
+    }
+    
+    /**
+     * @notice Check if loan is liquidatable
+     * @param loanId The loan ID
+     * @return isLiquidatable True if loan can be liquidated
+     * @return reason Reason for liquidation
+     */
+    function isLoanLiquidatable(uint256 loanId) external view returns (
+        bool isLiquidatable,
+        string memory reason
+    ) {
+        Loan memory loan = loans[loanId];
+        
+        if (loan.status != LoanStatus.Active) {
+            return (false, "Loan not active");
+        }
+        
+        // Calculate current health
+        uint256 accruedInterest = calculateAccruedInterest(loanId);
+        uint256 totalDebt = loan.outstandingAmount + accruedInterest;
+        
+        uint256 currentCollateralValue = loan.collateralAmount;
+        if (loan.ipCollateral != address(0)) {
+            bytes32 ipCollateralId = keccak256(abi.encodePacked(loan.ipCollateral));
+            currentCollateralValue += idoContract.getCVS(ipCollateralId);
+        }
+        
+        uint256 healthFactor = (currentCollateralValue * 10000) / totalDebt;
+        
+        if (healthFactor < MIN_HEALTH_FACTOR) {
+            return (true, "Undercollateralized");
+        }
+        
+        if (block.timestamp > loan.endTime) {
+            return (true, "Loan expired");
+        }
+        
+        return (false, "Loan healthy");
     }
     
     // ========================================
