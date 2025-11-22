@@ -7,6 +7,7 @@ import { ContractMonitor } from './src/services/contract-monitor.js';
 import { VerificationServer } from './src/api/verification-server.js';
 import { IndexerService } from './src/services/indexer.js';
 import { IndexerAPI } from './src/api/indexer-api.js';
+import { CVSSyncService } from './src/services/cvs-sync-service.js';
 import { config } from './src/config/index.js';
 
 /**
@@ -31,6 +32,7 @@ class AgentService {
   private verificationServer: VerificationServer | null = null;
   private indexer: IndexerService | null = null;
   private indexerAPI: IndexerAPI | null = null;
+  private cvsSyncService: CVSSyncService | null = null;
 
   constructor() {
     console.log('🚀 Initializing Atlas Agent Service...');
@@ -42,22 +44,25 @@ class AgentService {
     );
 
     // Initialize contract services if addresses are configured
-    if (config.contracts.adlv && config.contracts.ido) {
+    const adlvAddress = config.contracts.adlv && config.contracts.adlv !== '' ? config.contracts.adlv as `0x${string}` : null;
+    const idoAddress = config.contracts.ido && config.contracts.ido !== '' ? config.contracts.ido as `0x${string}` : null;
+    
+    if (adlvAddress && idoAddress) {
       this.loanManager = new LoanManager(
-        config.contracts.adlv,
-        config.contracts.ido,
+        adlvAddress,
+        idoAddress,
         config.rpcUrl
       );
 
       this.licensingAgent = new LicensingAgent(
-        config.contracts.adlv,
-        config.contracts.ido,
+        adlvAddress,
+        idoAddress,
         config.rpcUrl
       );
 
       this.contractMonitor = new ContractMonitor(
-        config.contracts.adlv,
-        config.contracts.ido
+        adlvAddress,
+        idoAddress
       );
 
       // Initialize World ID Verification Server
@@ -65,12 +70,20 @@ class AgentService {
 
       // Initialize Local Indexer Service (replaces Goldsky subgraph)
       this.indexer = new IndexerService(
-        config.contracts.adlv,
-        config.contracts.ido
+        adlvAddress,
+        idoAddress
       );
       
       // Initialize Indexer API
       this.indexerAPI = new IndexerAPI(this.indexer.getDatabase());
+
+      // Initialize CVS Sync Service (for Story Protocol SPG integration)
+      if (process.env.CVS_ORACLE_ADDRESS && process.env.CVS_ORACLE_ADDRESS !== '0x0000000000000000000000000000000000000000') {
+        this.cvsSyncService = new CVSSyncService(
+          process.env.CVS_ORACLE_ADDRESS as `0x${string}`,
+          parseInt(process.env.CVS_SYNC_INTERVAL_MS || '300000') // 5 minutes default
+        );
+      }
     }
   }
 
@@ -107,6 +120,10 @@ class AgentService {
       console.log('   ✓ Indexer API - GraphQL-like queries available');
     }
     
+    if (this.cvsSyncService) {
+      console.log('   ✓ CVS Sync Service - Story Protocol SPG integration ready');
+    }
+    
     console.log('═══════════════════════════════════════════\n');
 
     // Start CVS monitoring
@@ -140,6 +157,15 @@ class AgentService {
     // Start Indexer API Server
     if (this.indexerAPI) {
       this.indexerAPI.start(3002);
+    }
+
+    // Start CVS Sync Service (automatic sync from Story Protocol)
+    if (this.cvsSyncService && process.env.CVS_AUTO_SYNC_IPS) {
+      const ipIds = process.env.CVS_AUTO_SYNC_IPS.split(',').map(
+        (ip) => ip.trim() as `0x${string}`
+      );
+      this.cvsSyncService.startAutoSync(ipIds);
+      console.log(`🔄 CVS Auto-sync started for ${ipIds.length} IP assets`);
     }
 
     // Display initial stats
@@ -249,6 +275,10 @@ class AgentService {
     
     if (this.indexerAPI) {
       this.indexerAPI.stop();
+    }
+    
+    if (this.cvsSyncService) {
+      this.cvsSyncService.stopAutoSync();
     }
     
     console.log('✅ Agent Service stopped');

@@ -4,14 +4,15 @@ pragma solidity ^0.8.20;
 import "forge-std/Script.sol";
 import "../src/StoryProtocolCore.sol";
 import "../src/IDO.sol";
-import "../src/ADLVWithStory.sol";
+import "../src/ADLV.sol";
 import "../src/LoanNFT.sol";
+import "../src/LendingModule.sol";
 
 /**
- * @title DeployComplete
- * @notice Deploy all contracts with full Story Protocol integration
+ * @title DeployModular
+ * @notice Deploy modular architecture with separate lending module
  */
-contract DeployCompleteScript is Script {
+contract DeployModularScript is Script {
     
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
@@ -20,7 +21,7 @@ contract DeployCompleteScript is Script {
         vm.startBroadcast(deployerPrivateKey);
         
         console.log("==============================================");
-        console.log("DEPLOYING COMPLETE STORY PROTOCOL INTEGRATION");
+        console.log("DEPLOYING MODULAR ARCHITECTURE");
         console.log("==============================================");
         console.log("Deployer:", deployer);
         console.log("");
@@ -43,27 +44,29 @@ contract DeployCompleteScript is Script {
         console.log("   Loan NFT:", address(loanNFT));
         console.log("");
         
-        // 4. Deploy ADLV with Story Integration
-        console.log("4. Deploying ADLV with Story Integration...");
-        ADLVWithStory adlv = new ADLVWithStory(
+        // 4. Deploy Lending Module
+        console.log("4. Deploying Lending Module...");
+        LendingModule lendingModule = new LendingModule(
             address(ido),
-            address(storyCore), // SPG
-            address(storyCore), // IP Asset Registry
-            address(0),         // License Registry (optional)
-            address(loanNFT),  // Loan NFT
-            address(0)          // lendingModule (optional)
+            address(loanNFT)
         );
+        console.log("   Lending Module:", address(lendingModule));
+        console.log("");
+        
+        // 5. Deploy ADLV (Simple version)
+        console.log("5. Deploying ADLV...");
+        ADLV adlv = new ADLV(address(ido));
         console.log("   ADLV:", address(adlv));
         console.log("");
         
-        // 5. Transfer Loan NFT ownership to ADLV
-        console.log("5. Transferring Loan NFT ownership to ADLV...");
-        loanNFT.transferOwnership(address(adlv));
+        // 6. Setup ownership
+        console.log("6. Setting up ownership...");
+        loanNFT.transferOwnership(address(lendingModule));
         console.log("   Loan NFT owner:", loanNFT.owner());
-        console.log("");
         
-        // 6. Transfer IDO ownership to ADLV
-        console.log("6. Transferring IDO ownership to ADLV...");
+        lendingModule.setADLVContract(address(adlv));
+        console.log("   Lending Module ADLV:", address(adlv));
+        
         ido.transferOwnership(address(adlv));
         console.log("   IDO owner:", ido.owner());
         console.log("");
@@ -78,6 +81,7 @@ contract DeployCompleteScript is Script {
         console.log("  Story Protocol Core:", address(storyCore));
         console.log("  IDO:", address(ido));
         console.log("  Loan NFT:", address(loanNFT));
+        console.log("  Lending Module:", address(lendingModule));
         console.log("  ADLV:", address(adlv));
         console.log("");
         console.log("Features:");
@@ -88,17 +92,11 @@ contract DeployCompleteScript is Script {
         console.log("  Derivative IP Support");
         console.log("  Revenue Claiming");
         console.log("  Revenue Sharing");
-        console.log("  IP-Backed Lending (NEW!)");
-        console.log("  Loan NFTs (NEW!)");
-        console.log("  Dynamic Interest Rates (NEW!)");
-        console.log("  Health Factor Monitoring (NEW!)");
-        console.log("  Liquidation System (NEW!)");
-        console.log("==============================================");
-        console.log("");
-        console.log("Next Steps:");
-        console.log("1. Update .env with new addresses");
-        console.log("2. Run: forge script script/FullIntegrationTest.s.sol --broadcast");
-        console.log("3. Verify contracts on explorer");
+        console.log("  IP-Backed Lending (Modular)");
+        console.log("  Loan NFTs");
+        console.log("  Dynamic Interest Rates");
+        console.log("  Health Factor Monitoring");
+        console.log("  Liquidation System");
         console.log("==============================================");
     }
 }
