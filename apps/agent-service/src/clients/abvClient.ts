@@ -1,8 +1,10 @@
 /**
- * ABV.dev Client - Register Licenses as IP Assets
+ * ABV.dev Client - Generate License Content & Register as IP Assets
  * 
  * ABV.dev provides GenAI licensing services
- * This client registers licenses sold on Atlas Protocol as IP assets on ABV.dev
+ * This client:
+ * 1. Generates license content using ABV.dev API
+ * 2. Registers licenses sold on Atlas Protocol as IP assets on ABV.dev
  */
 
 export interface ABVLicenseRegistration {
@@ -21,6 +23,85 @@ export interface ABVLicenseResponse {
   status: 'registered' | 'pending' | 'failed';
   abvAssetId?: string;
   message?: string;
+}
+
+export interface ABVGeneratedContent {
+  content: string;
+  contentHash: string;
+  metadata?: {
+    licenseType?: string;
+    terms?: string;
+    duration?: number;
+  };
+}
+
+/**
+ * Generate license content using ABV.dev GenAI API
+ * 
+ * @param prompt - Prompt for generating license content
+ * @param licenseType - Type of license (commercial, exclusive, etc.)
+ * @returns Generated license content
+ */
+export async function generateLicenseContent(
+  prompt: string,
+  licenseType?: string
+): Promise<ABVGeneratedContent> {
+  const apiKey = process.env.ABV_API_KEY;
+  const apiUrl = process.env.ABV_API_URL || 'https://api.abv.dev/v1/generate';
+  
+  if (!apiKey) {
+    throw new Error('ABV_API_KEY not set in environment variables. Please set ABV_API_KEY in .env file');
+  }
+
+  try {
+    console.log(`🔍 Generating license content with ABV.dev...`);
+    console.log(`   Prompt: ${prompt.substring(0, 100)}...`);
+    if (licenseType) {
+      console.log(`   License Type: ${licenseType}`);
+    }
+    
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'X-ABV-API-Key': apiKey,
+      },
+      body: JSON.stringify({
+        prompt: prompt,
+        licenseType: licenseType,
+        format: 'license-agreement',
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`ABV.dev API error: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    
+    console.log('✅ ABV.dev Generated Content:', JSON.stringify(data, null, 2));
+    
+    // Calculate content hash
+    const crypto = await import('crypto');
+    const contentHash = crypto.createHash('sha256')
+      .update(data.content || data.text || data.generated || '')
+      .digest('hex');
+    
+    return {
+      content: data.content || data.text || data.generated || '',
+      contentHash: `0x${contentHash}`,
+      metadata: {
+        licenseType: data.licenseType || licenseType,
+        terms: data.terms,
+        duration: data.duration,
+      },
+    };
+  } catch (error: any) {
+    console.error('❌ Error generating license content with ABV.dev:', error.message);
+    throw error;
+  }
 }
 
 /**
