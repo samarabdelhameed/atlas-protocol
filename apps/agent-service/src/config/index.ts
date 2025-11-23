@@ -40,12 +40,12 @@ export const config = {
   },
   
   // Private Key (for testing)
-  privateKey: process.env.PRIVATE_KEY || '',
+  privateKey: process.env.PRIVATE_KEY || process.env.WALLET_PRIVATE_KEY || '',
   
   // Contract Addresses
   contracts: {
-    adlv: process.env.ADLV_ADDRESS || '' as `0x${string}`,
-    ido: process.env.IDO_ADDRESS || '' as `0x${string}`,
+    adlv: (process.env.ADLV_ADDRESS || process.env.ADLV_CONTRACT_ADDRESS || '') as `0x${string}`,
+    ido: (process.env.IDO_ADDRESS || process.env.IDO_CONTRACT_ADDRESS || '') as `0x${string}`,
   },
   
   // Chain Configuration
