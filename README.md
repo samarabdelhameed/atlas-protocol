@@ -265,6 +265,9 @@ bun run dev
 - **[How to Verify](./contracts/HOW_TO_VERIFY.md)** - RPC-based verification
 
 ### Story Protocol SDK
+- **[Complete Integration Guide](./STORY_PROTOCOL_INTEGRATION_GUIDE.md)** - 🎯 Complete Story Protocol integration guide (NEW)
+- **[Implementation Checklist](./IMPLEMENTATION_CHECKLIST.md)** - Detailed implementation checklist (NEW)
+- **[Integration Status](./README_STORY_PROTOCOL_INTEGRATION.md)** - Quick status overview (NEW)
 - **[SDK Guide](./STORY_PROTOCOL_SDK_GUIDE.md)** - Complete SDK integration guide
 - **[Installation Summary](./STORY_SDK_INSTALLATION_SUMMARY.md)** - SDK installation summary
 - **[Examples](./apps/agent-service/examples/)** - SDK usage examples
@@ -522,6 +525,14 @@ MIT
 - ✅ Complete documentation
 - ✅ Frontend integration guides
 - ✅ Backend service ready
+- ✅ **Story Protocol Integration: 78% Complete** - See [Integration Status](./README_STORY_PROTOCOL_INTEGRATION.md)
+  - ✅ IP Registration & IPAccount Logic (100%)
+  - ✅ Royalty Module (100%)
+  - ✅ Access Controller (100%)
+  - ✅ SDK/API Wrapper (100%)
+  - ⚠️ Module Registry (70% - Interface ready)
+  - ⚠️ PIL Policy Integration (80%)
+  - ❌ UI IP Graph Visualization (0%)
 
 ### Ready for Use 🚀
 - 🚀 Contracts are live and operational

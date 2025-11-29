@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "@openzeppelin/contracts/utils/Errors.sol";
 import "./IDO.sol";
 import "./interfaces/IStoryProtocolSPG.sol";
 import "./interfaces/IStoryProtocolIPAssetRegistry.sol";
 import "./interfaces/IStoryProtocolLicenseRegistry.sol";
 import "./interfaces/ILoanNFT.sol";
+import "./interfaces/IIPAccount.sol";
+import "./interfaces/ILicensingModule.sol";
 
 /**
  * @title ADLVWithStory - ADLV with Story Protocol Integration
@@ -28,6 +31,9 @@ contract ADLVWithStory {
     
     /// @notice Story Protocol License Registry address
     IStoryProtocolLicenseRegistry public storyLicenseRegistry;
+    
+    /// @notice Story Protocol Licensing Module address (for PIL policies)
+    ILicensingModule public storyLicensingModule;
     
     /// @notice Protocol owner
     address public owner;
@@ -155,6 +161,8 @@ contract ADLVWithStory {
     mapping(address => string[]) public vaultLicenses; // Vault address to license IDs
     mapping(address => address) public derivativeToParentVault; // Derivative vault => Parent vault
     mapping(address => address[]) public vaultDerivatives; // Parent vault => Derivative vaults[]
+    mapping(address => uint256) public vaultPILPolicy; // Vault address => PIL Policy ID (0 = no policy)
+    mapping(address => uint256) public vaultLicenseTermsId; // Vault address => License Terms ID
     
     // Lending Module Mappings
     mapping(address => LoanTerms) public vaultLoanTerms; // Custom loan terms per vault
@@ -196,6 +204,25 @@ contract ADLVWithStory {
         uint256 price,
         string licenseType
     );
+    
+    event PILPolicyAttached(
+        address indexed vaultAddress,
+        bytes32 indexed ipId,
+        uint256 indexed policyId,
+        uint256 licenseTermsId
+    );
+    
+    event PILLicenseMinted(
+        address indexed vaultAddress,
+        bytes32 indexed ipId,
+        string indexed licenseId,
+        uint256 licenseTokenId,
+        uint256 policyId,
+        address licensee,
+        uint256 price
+    );
+    
+    event LicensingModuleUpdated(address indexed newLicensingModule);
     
     event LoanIssued(
         address indexed vaultAddress,
@@ -302,7 +329,8 @@ contract ADLVWithStory {
         address _storyIPAssetRegistry,
         address _storyLicenseRegistry,
         address _loanNFT,
-        address _lendingModule
+        address _lendingModule,
+        address _storyLicensingModule
     ) {
         require(_idoContract != address(0), "ADLV: Invalid IDO address");
         require(_storySPG != address(0), "ADLV: Invalid SPG address");
@@ -314,6 +342,9 @@ contract ADLVWithStory {
         storyIPAssetRegistry = IStoryProtocolIPAssetRegistry(_storyIPAssetRegistry);
         if (_storyLicenseRegistry != address(0)) {
             storyLicenseRegistry = IStoryProtocolLicenseRegistry(_storyLicenseRegistry);
+        }
+        if (_storyLicensingModule != address(0)) {
+            storyLicensingModule = ILicensingModule(_storyLicensingModule);
         }
         loanNFT = _loanNFT;
         lendingModule = _lendingModule;
@@ -346,6 +377,15 @@ contract ADLVWithStory {
      */
     function updateCVS(bytes32 ipId, uint256 newCVS) external onlyOwner {
         idoContract.updateCVS(ipId, newCVS);
+    }
+    
+    /**
+     * @notice Set Story Protocol Licensing Module address
+     * @param _storyLicensingModule The Licensing Module address
+     */
+    function setLicensingModule(address _storyLicensingModule) external onlyOwner {
+        storyLicensingModule = ILicensingModule(_storyLicensingModule);
+        emit LicensingModuleUpdated(_storyLicensingModule);
     }
     
     function setProtocolFee(uint256 _protocolFeeBps) external onlyOwner {
@@ -624,6 +664,137 @@ contract ADLVWithStory {
         emit LicenseSold(vaultAddress, ipId, msg.sender, msg.value, licenseType);
         
         return licenseId;
+    }
+    
+    /**
+     * @notice Sell license with PIL (Programmable IP License) policy support
+     * @dev Mints license via Story Protocol Licensing Module with PIL policy
+     * @param vaultAddress The vault address
+     * @param policyId The PIL policy ID (1 = Non-Commercial Social Remixing, 2 = Commercial Use, 3 = Commercial Remix)
+     * @param licenseType License type description
+     * @param duration License duration in seconds
+     * @return licenseId The created license ID
+     * @return mintedLicenseTokenIds Array of minted license token IDs from Story Protocol
+     */
+    function sellLicenseWithPILPolicy(
+        address vaultAddress,
+        uint256 policyId,
+        string calldata licenseType,
+        uint256 duration
+    ) external payable vaultExists(vaultAddress) returns (string memory licenseId, uint256[] memory mintedLicenseTokenIds) {
+        require(msg.value > 0, "ADLV: Invalid price");
+        require(policyId >= 1 && policyId <= 3, "ADLV: Invalid PIL policy ID");
+        
+        Vault storage vault = vaults[vaultAddress];
+        require(vault.registeredOnStory && bytes(vault.storyIPId).length > 0, "ADLV: IP not registered on Story");
+        
+        bytes32 ipId = vault.ipId;
+        
+        // Get IPAccount for this IP Asset
+        address ipAccount = _getIPAccount(vault.storyIPId);
+        address ipIdAddress = _parseStoryIPId(vault.storyIPId);
+        
+        // If policy not attached yet, attach it first
+        if (vaultLicenseTermsId[vaultAddress] == 0 && address(storyLicensingModule) != address(0)) {
+            bytes memory attachData = abi.encodeWithSelector(
+                ILicensingModule.attachLicenseTerms.selector,
+                ipIdAddress,
+                policyId
+            );
+            
+            bytes memory attachResult = _executeViaIPAccount(ipAccount, address(storyLicensingModule), attachData, 0);
+            uint256 licenseTermsId = abi.decode(attachResult, (uint256));
+            
+            vaultLicenseTermsId[vaultAddress] = licenseTermsId;
+            vaultPILPolicy[vaultAddress] = policyId;
+            
+            emit PILPolicyAttached(vaultAddress, ipId, policyId, licenseTermsId);
+        }
+        
+        // Mint license via Licensing Module
+        if (address(storyLicensingModule) != address(0) && vaultLicenseTermsId[vaultAddress] > 0) {
+            bytes memory mintData = abi.encodeWithSelector(
+                ILicensingModule.mintLicense.selector,
+                ipIdAddress,
+                policyId,
+                1, // amount
+                msg.sender // receiver
+            );
+            
+            bytes memory mintResult = _executeViaIPAccount(ipAccount, address(storyLicensingModule), mintData, msg.value);
+            mintedLicenseTokenIds = abi.decode(mintResult, (uint256[]));
+            
+            // Create license ID
+            if (mintedLicenseTokenIds.length > 0) {
+                licenseId = string(abi.encodePacked(
+                    "pil-license-",
+                    uint2str(mintedLicenseTokenIds[0]),
+                    "-",
+                    uint2str(block.timestamp)
+                ));
+                vaultLicenses[vaultAddress].push(licenseId);
+                
+                emit PILLicenseMinted(
+                    vaultAddress,
+                    ipId,
+                    licenseId,
+                    mintedLicenseTokenIds[0],
+                    policyId,
+                    msg.sender,
+                    msg.value
+                );
+            }
+        } else {
+            // Fallback to regular license sale
+            licenseId = this.sellLicense{value: msg.value}(vaultAddress, licenseType, duration);
+        }
+        
+        // Distribute revenue
+        _distributeLicenseRevenue(vaultAddress, ipId, msg.value);
+        
+        return (licenseId, mintedLicenseTokenIds);
+    }
+    
+    /**
+     * @notice Attach PIL policy to vault (one-time setup)
+     * @dev Attaches a PIL policy to the vault's IP Asset via Licensing Module
+     * @param vaultAddress The vault address
+     * @param policyId The PIL policy ID (1 = Non-Commercial, 2 = Commercial Use, 3 = Commercial Remix)
+     * @return licenseTermsId The attached license terms ID
+     */
+    function attachPILPolicyToVault(
+        address vaultAddress,
+        uint256 policyId
+    ) external vaultExists(vaultAddress) returns (uint256 licenseTermsId) {
+        require(policyId >= 1 && policyId <= 3, "ADLV: Invalid PIL policy ID");
+        require(vaultLicenseTermsId[vaultAddress] == 0, "ADLV: Policy already attached");
+        require(address(storyLicensingModule) != address(0), "ADLV: Licensing Module not configured");
+        
+        Vault storage vault = vaults[vaultAddress];
+        require(vault.registeredOnStory && bytes(vault.storyIPId).length > 0, "ADLV: IP not registered on Story");
+        require(vault.creator == msg.sender, "ADLV: Only creator");
+        
+        // Get IPAccount for this IP Asset
+        address ipAccount = _getIPAccount(vault.storyIPId);
+        address ipIdAddress = _parseStoryIPId(vault.storyIPId);
+        
+        // Attach license terms via IPAccount
+        bytes memory data = abi.encodeWithSelector(
+            ILicensingModule.attachLicenseTerms.selector,
+            ipIdAddress,
+            policyId
+        );
+        
+        bytes memory result = _executeViaIPAccount(ipAccount, address(storyLicensingModule), data, 0);
+        licenseTermsId = abi.decode(result, (uint256));
+        
+        // Store policy info
+        vaultLicenseTermsId[vaultAddress] = licenseTermsId;
+        vaultPILPolicy[vaultAddress] = policyId;
+        
+        emit PILPolicyAttached(vaultAddress, vault.ipId, policyId, licenseTermsId);
+        
+        return licenseTermsId;
     }
     
     // Helper function to convert address to string
@@ -1015,6 +1186,28 @@ contract ADLVWithStory {
     }
     
     /**
+     * @notice Get IPAccount address for a vault's Story IP Asset
+     * @dev Returns the IPAccount (Smart Contract Account) for the vault's IP Asset
+     * @param vaultAddress The vault address
+     * @return ipAccount The IPAccount address
+     */
+    function getVaultIPAccount(address vaultAddress) external view vaultExists(vaultAddress) returns (address ipAccount) {
+        Vault memory vault = vaults[vaultAddress];
+        require(vault.registeredOnStory && bytes(vault.storyIPId).length > 0, "ADLV: IP not registered on Story");
+        return _getIPAccount(vault.storyIPId);
+    }
+    
+    /**
+     * @notice Get IPAccount address for a Story IP ID
+     * @param storyIPId Story Protocol IP ID
+     * @return ipAccount The IPAccount address
+     */
+    function getIPAccountByStoryIPId(string calldata storyIPId) external view returns (address ipAccount) {
+        require(bytes(storyIPId).length > 0, "ADLV: Empty Story IP ID");
+        return _getIPAccount(storyIPId);
+    }
+    
+    /**
      * @notice Get license information from Story Protocol
      * @param licenseId The license ID
      * @return ipId The IP Asset ID
@@ -1042,6 +1235,7 @@ contract ADLVWithStory {
     
     /**
      * @notice Set royalty policy for vault's IP
+     * @dev Executes via IPAccount.execute() as per Story Protocol architecture
      * @param vaultAddress The vault address
      * @param beneficiary The royalty beneficiary
      * @param royaltyPercentage Royalty percentage (basis points)
@@ -1053,16 +1247,29 @@ contract ADLVWithStory {
     ) external vaultExists(vaultAddress) {
         Vault storage vault = vaults[vaultAddress];
         require(vault.creator == msg.sender, "ADLV: Only creator");
+        require(vault.registeredOnStory && bytes(vault.storyIPId).length > 0, "ADLV: IP not registered on Story");
+        
+        // Get IPAccount for this IP Asset
+        address ipAccount = _getIPAccount(vault.storyIPId);
         
         // Parse Story IP ID to address
         address ipId = _parseStoryIPId(vault.storyIPId);
         
-        // Set royalty policy on Story Protocol
-        IStoryProtocolSPG(address(storySPG)).setRoyaltyPolicy(ipId, beneficiary, royaltyPercentage);
+        // Encode function call data
+        bytes memory data = abi.encodeWithSelector(
+            IStoryProtocolSPG.setRoyaltyPolicy.selector,
+            ipId,
+            beneficiary,
+            royaltyPercentage
+        );
+        
+        // Execute via IPAccount
+        _executeViaIPAccount(ipAccount, address(storySPG), data, 0);
     }
     
     /**
      * @notice Claim accumulated royalties for vault
+     * @dev Executes via IPAccount.execute() as per Story Protocol architecture
      * @param vaultAddress The vault address
      * @return claimedAmount Amount claimed
      */
@@ -1071,12 +1278,24 @@ contract ADLVWithStory {
     ) external vaultExists(vaultAddress) returns (uint256 claimedAmount) {
         Vault storage vault = vaults[vaultAddress];
         require(vault.creator == msg.sender, "ADLV: Only creator");
+        require(vault.registeredOnStory && bytes(vault.storyIPId).length > 0, "ADLV: IP not registered on Story");
+        
+        // Get IPAccount for this IP Asset
+        address ipAccount = _getIPAccount(vault.storyIPId);
         
         // Parse Story IP ID to address
         address ipId = _parseStoryIPId(vault.storyIPId);
         
-        // Claim revenue from Story Protocol
-        claimedAmount = IStoryProtocolSPG(address(storySPG)).claimRevenue(ipId, msg.sender);
+        // Encode function call data
+        bytes memory data = abi.encodeWithSelector(
+            IStoryProtocolSPG.claimRevenue.selector,
+            ipId,
+            msg.sender
+        );
+        
+        // Execute via IPAccount and decode result
+        bytes memory result = _executeViaIPAccount(ipAccount, address(storySPG), data, 0);
+        claimedAmount = abi.decode(result, (uint256));
         
         emit RoyaltiesClaimed(vaultAddress, msg.sender, claimedAmount);
         
@@ -1107,6 +1326,7 @@ contract ADLVWithStory {
     
     /**
      * @notice Register derivative IP and create vault
+     * @dev Executes via IPAccount.execute() as per Story Protocol architecture
      * @param parentVaultAddress Parent vault address
      * @param licenseId License ID from parent
      * @param name Derivative IP name
@@ -1124,20 +1344,27 @@ contract ADLVWithStory {
         address derivativeIpId
     ) {
         Vault storage parentVault = vaults[parentVaultAddress];
-        require(parentVault.registeredOnStory, "ADLV: Parent not on Story");
+        require(parentVault.registeredOnStory && bytes(parentVault.storyIPId).length > 0, "ADLV: Parent not on Story");
+        
+        // Get IPAccount for parent IP Asset
+        address parentIPAccount = _getIPAccount(parentVault.storyIPId);
         
         // Parse parent Story IP ID to address
         address parentIpId = _parseStoryIPId(parentVault.storyIPId);
         
-        // Register derivative on Story Protocol
-        (uint256 tokenId, address _derivativeIpId) = IStoryProtocolSPG(address(storySPG))
-            .registerDerivative(
-                parentIpId,
-                licenseId,
-                msg.sender,
-                name,
-                contentHash
-            );
+        // Encode function call data
+        bytes memory data = abi.encodeWithSelector(
+            IStoryProtocolSPG.registerDerivative.selector,
+            parentIpId,
+            licenseId,
+            msg.sender,
+            name,
+            contentHash
+        );
+        
+        // Execute via IPAccount and decode result
+        bytes memory result = _executeViaIPAccount(parentIPAccount, address(storySPG), data, 0);
+        (uint256 tokenId, address _derivativeIpId) = abi.decode(result, (uint256, address));
         
         derivativeIpId = _derivativeIpId;
         
@@ -1204,6 +1431,7 @@ contract ADLVWithStory {
     
     /**
      * @notice Sell license with automatic royalty sharing for derivatives
+     * @dev Executes via IPAccount.execute() as per Story Protocol architecture
      * @param vaultAddress The vault address
      * @param licenseType License type
      * @param duration License duration
@@ -1221,15 +1449,22 @@ contract ADLVWithStory {
         // Check if derivative
         bool isDerivative = derivativeToParentVault[vaultAddress] != address(0);
         
-        if (isDerivative && vault.registeredOnStory) {
-            // Use Story Protocol's revenue sharing
+        if (isDerivative && vault.registeredOnStory && bytes(vault.storyIPId).length > 0) {
+            // Get IPAccount for this IP Asset
+            address ipAccount = _getIPAccount(vault.storyIPId);
+            
+            // Parse Story IP ID to address
             address ipId = _parseStoryIPId(vault.storyIPId);
             
-            // Pay royalty with sharing
-            IStoryProtocolSPG(address(storySPG)).payRoyaltyWithSharing{value: msg.value}(
+            // Encode function call data
+            bytes memory data = abi.encodeWithSelector(
+                IStoryProtocolSPG.payRoyaltyWithSharing.selector,
                 ipId,
                 msg.sender
             );
+            
+            // Execute via IPAccount with ETH value
+            _executeViaIPAccount(ipAccount, address(storySPG), data, msg.value);
         } else {
             // Regular license sale
             return this.sellLicense{value: msg.value}(vaultAddress, licenseType, duration);
@@ -1525,6 +1760,58 @@ contract ADLVWithStory {
     // ========================================
     // Helper Functions
     // ========================================
+    
+    /**
+     * @notice Get IPAccount address for a given Story IP ID
+     * @dev IPAccount is the execution layer for IP Assets in Story Protocol
+     * @param storyIPId Story Protocol IP ID (string format)
+     * @return ipAccount The IPAccount address
+     */
+    function _getIPAccount(string memory storyIPId) internal view returns (address ipAccount) {
+        require(bytes(storyIPId).length > 0, "ADLV: Empty Story IP ID");
+        
+        // Try to resolve IPAccount from Registry
+        try storyIPAssetRegistry.resolve(storyIPId) returns (address account) {
+            require(account != address(0), "ADLV: IPAccount not found");
+            return account;
+        } catch {
+            // Fallback: If resolve fails, try to get from parsed address
+            address ipId = _parseStoryIPId(storyIPId);
+            try storyIPAssetRegistry.resolve(ipId) returns (address account) {
+                require(account != address(0), "ADLV: IPAccount not found");
+                return account;
+            } catch {
+                revert("ADLV: Failed to resolve IPAccount");
+            }
+        }
+    }
+    
+    /**
+     * @notice Execute a function call via IPAccount
+     * @dev This ensures all IP-related operations go through IPAccount.execute()
+     * @param ipAccount The IPAccount address
+     * @param target Target contract to call
+     * @param data Encoded function call data
+     * @param value ETH value to send
+     * @return result Return data from execution
+     */
+    function _executeViaIPAccount(
+        address ipAccount,
+        address target,
+        bytes memory data,
+        uint256 value
+    ) internal returns (bytes memory result) {
+        require(ipAccount != address(0), "ADLV: Invalid IPAccount");
+        
+        // Execute via IPAccount
+        try IIPAccount(ipAccount).execute(target, data, value) returns (bytes memory ret) {
+            return ret;
+        } catch Error(string memory reason) {
+            revert(string(abi.encodePacked("ADLV: IPAccount execution failed: ", reason)));
+        } catch {
+            revert("ADLV: IPAccount execution failed");
+        }
+    }
     
     /**
      * @notice Parse Story IP ID string to address

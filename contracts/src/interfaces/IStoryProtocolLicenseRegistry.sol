@@ -67,3 +67,4 @@ interface IStoryProtocolLicenseRegistry {
     function revokeLicense(string calldata licenseId) external;
 }
 
+

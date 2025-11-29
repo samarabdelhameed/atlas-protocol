@@ -9,9 +9,9 @@ dataSources:
     name: AtlasADLV
     network: story-aeneid
     source:
-      address: "0xD13218C0F39f1F862F11014F4C9C9d33EE92A5C1" # Atlas ADLV Contract address (Latest v2.0 - Complete Integration)
+      address: "0x793402b59d2ca4c501EDBa328347bbaF69a59f7b" # Atlas ADLV Contract address (v3.0 - Latest with Lending Module)
       abi: AtlasADLV
-      startBlock: 11377722 # Latest deployment block (v2.0) - Update if needed
+      startBlock: 11122612 # Latest deployment block (v3.0) - Update if needed
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7

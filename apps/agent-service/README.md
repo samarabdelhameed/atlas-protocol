@@ -10,6 +10,12 @@ Backend service for Atlas Protocol that handles CVS monitoring, loan management,
 - ✅ **Contract Monitor**: Real-time event monitoring from ADLV and IDO contracts
 - ✅ **Subgraph Integration**: Query Goldsky subgraph for protocol data
 - ✅ **Goldsky Client**: Fetch real-time data from deployed subgraph
+- ✅ **Yakoa Client**: Fetch originality scores for IP assets
+- ✅ **CVS Calculator**: Calculate CVS from Goldsky + Yakoa data
+- ✅ **CVS Updater**: Update CVS on-chain via updateCVS()
+- ✅ **ABV.dev Client**: Generate license content and register as IP assets
+- ✅ **ABV + Story Integration**: Register generated content on Story Protocol
+- ✅ **Owlto Client**: Cross-chain bridge between Story Network and other chains
 
 ## Setup
 
@@ -24,14 +30,14 @@ bun install
 Create a `.env` file:
 
 ```bash
-# RPC Configuration
-RPC_URL=https://mainnet.base.org
-CHAIN_ID=8453
-CHAIN_NAME=Base
+# RPC Configuration (Story Protocol Testnet)
+RPC_URL=https://rpc-storyevm-testnet.aldebaranode.xyz
+CHAIN_ID=1315
+CHAIN_NAME=Story Protocol Testnet
 
-# Contract Addresses (after deployment)
-ADLV_ADDRESS=0x...
-IDO_ADDRESS=0x...
+# Contract Addresses (v3 - Latest)
+ADLV_ADDRESS=0x793402b59d2ca4c501EDBa328347bbaF69a59f7b
+IDO_ADDRESS=0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8
 
 # Private Key (for signing transactions)
 PRIVATE_KEY=0x...
@@ -47,10 +53,16 @@ ABV_API_KEY=your_abv_api_key
 
 # Story Protocol
 STORY_PROTOCOL_API_KEY=your_story_api_key
-STORY_PROTOCOL_RPC=your_story_rpc_url
+STORY_PROTOCOL_RPC=https://rpc-storyevm-testnet.aldebaranode.xyz
+STORY_SPG_ADDRESS=0x69415CE984A79a3Cfbe3F51024C63b6C107331e3
+STORY_IP_ASSET_REGISTRY=0x292639452A975630802C17c9267169D93BD5a793
 
 # Goldsky Subgraph (after deployment)
 SUBGRAPH_URL=https://api.goldsky.com/api/public/project_xxxxx/subgraphs/atlas-protocol/1.0.0/gn
+
+# Yakoa (for originality scores)
+YAKOA_API_KEY=your_yakoa_api_key
+YAKOA_API_URL=https://api.yakoa.com/v1/verify
 
 # World ID
 WORLD_ID_APP_ID=your_world_id_app_id
@@ -411,6 +423,42 @@ The subgraph indexes:
 bun run test-goldsky.ts
 ```
 
+### Test CVS Calculation and Update
+
+```bash
+bun run test-cvs-update.ts <ipAssetId>
+```
+
+This tests:
+1. Fetching Yakoa originality score
+2. Fetching license sales from Goldsky
+3. Calculating CVS
+4. Updating CVS on-chain
+
+### Test Real Data Flow
+
+```bash
+bun run test-real-data.ts
+```
+
+Tests the complete flow with real data from Goldsky subgraph.
+
+### Test ABV Agent
+
+```bash
+bun run test-abv-agent.ts
+```
+
+Tests license registration with ABV.dev using real license sales.
+
+### Test Owlto Bridge
+
+```bash
+bun run test-owlto-bridge.ts
+```
+
+Tests cross-chain bridge between Story Network and Base.
+
 ### Test Loan Issuance
 
 1. Ensure contracts are deployed
@@ -459,20 +507,31 @@ bun run test-goldsky.ts
 apps/agent-service/
 ├── src/
 │   ├── clients/
-│   │   └── goldskyClient.ts # Goldsky subgraph client
+│   │   ├── goldskyClient.ts    # Goldsky subgraph client
+│   │   ├── yakoaClient.ts      # Yakoa originality score client
+│   │   ├── abvClient.ts        # ABV.dev GenAI client
+│   │   └── owltoClient.ts      # Owlto cross-chain bridge client
 │   ├── config/
-│   │   └── index.ts          # Configuration
+│   │   └── index.ts             # Configuration
 │   └── services/
-│       ├── cvs-engine.ts     # CVS calculation
-│       ├── loan-manager.ts   # Loan operations + Owlto
+│       ├── cvs-engine.ts        # CVS calculation
+│       ├── cvs-calculator.ts   # CVS calculation from Goldsky + Yakoa
+│       ├── cvs-updater.ts      # CVS on-chain updater
+│       ├── loan-manager.ts     # Loan operations + Owlto
 │       ├── licensing-agent.ts # License sales + abv.dev
+│       ├── abv-agent.ts       # ABV.dev agent service
+│       ├── abv-story-integration.ts # ABV + Story Protocol integration
 │       └── contract-monitor.ts # Event monitoring
 ├── contracts/
-│   ├── ADLV.json            # ADLV ABI
-│   └── IDO.json             # IDO ABI
-├── test-goldsky.ts          # Goldsky client test script
-├── index.ts                 # Main service entry
-└── README.md               # This file
+│   ├── ADLV.json              # ADLV ABI
+│   └── IDO.json               # IDO ABI
+├── test-goldsky.ts            # Goldsky client test
+├── test-cvs-update.ts         # CVS update flow test
+├── test-real-data.ts          # Real data flow test
+├── test-abv-agent.ts          # ABV agent test
+├── test-owlto-bridge.ts       # Owlto bridge test
+├── index.ts                   # Main service entry
+└── README.md                  # This file
 ```
 
 ### Adding New Features
@@ -653,6 +712,225 @@ for (const sale of licenseSales) {
 - The subgraph uses lowercase field names (`ipassets`, `idovaults`)
 - Update queries to match the actual schema
 - Check `subgraph/schema.graphql` for correct field names
+
+## Yakoa Originality Score Integration
+
+### Overview
+
+Yakoa provides originality verification for IP assets. The Yakoa client fetches originality scores (0-100) which are used in CVS calculation.
+
+### Implementation
+
+**File**: `src/clients/yakoaClient.ts`
+
+**Functions**:
+- `fetchOriginalityScore(ipAssetId)` - Fetch originality score for an IP asset
+- `fetchOriginalityScores(ipAssetIds[])` - Batch fetch scores for multiple IP assets
+
+**Usage**:
+```typescript
+import { fetchOriginalityScore } from './src/clients/yakoaClient.js';
+
+const score = await fetchOriginalityScore('0x123...abc');
+console.log(`Originality Score: ${score.score}/100`);
+```
+
+**Environment Variables**:
+```env
+YAKOA_API_KEY=your_yakoa_api_key
+YAKOA_API_URL=https://api.yakoa.com/v1/verify
+```
+
+**Testing**:
+```bash
+# Test is included in CVS update flow
+bun run test-cvs-update.ts <ipAssetId>
+```
+
+## CVS Calculation and Update
+
+### Overview
+
+CVS (Collateral Value Score) is calculated based on:
+1. License Sales (from Goldsky)
+2. Revenue (from Goldsky)
+3. Originality Score (from Yakoa)
+
+### CVS Formula
+
+```
+CVS = 1000 + (Revenue/10) + (Originality×50) + (Sales×100)
+
+Where:
+- Base = 1000 (minimum CVS)
+- Revenue Component = Total Revenue / 10
+- Originality Component = Originality Score × 50
+- License Sales Component = Number of Sales × 100
+```
+
+### Implementation
+
+**Files**:
+- `src/services/cvs-calculator.ts` - CVS calculation service
+- `src/services/cvs-updater.ts` - On-chain CVS updater
+
+**Usage**:
+```typescript
+import { cvsCalculator } from './src/services/cvs-calculator.js';
+import { cvsUpdater } from './src/services/cvs-updater.js';
+
+// Calculate CVS
+const calculation = await cvsCalculator.calculateCVS(ipAssetId);
+console.log(`CVS: ${calculation.calculatedCVS}`);
+
+// Update on-chain
+const result = await cvsUpdater.updateCVSOnChain(ipAssetId);
+console.log(`Transaction: ${result.transactionHash}`);
+```
+
+**Testing**:
+```bash
+bun run test-cvs-update.ts <ipAssetId>
+```
+
+**Expected Output**:
+```
+✅ Yakoa Score: 85/100
+✅ CVS Calculated: 5250
+✅ CVS Updated on-chain: tx 0xabc123... ✅
+```
+
+## ABV.dev + Story Protocol Integration
+
+### Overview
+
+ABV.dev provides GenAI license content generation. This integration:
+1. Generates license content using ABV.dev GenAI
+2. Registers the generated content as a new IP Asset on Story Protocol
+3. Links the new IP Asset to the original IP Asset
+
+### Implementation
+
+**Files**:
+- `src/clients/abvClient.ts` - ABV.dev client (updated with `generateLicenseContent()`)
+- `src/services/abv-story-integration.ts` - ABV + Story Protocol integration service
+
+**Functions**:
+- `generateLicenseContent(prompt, licenseType)` - Generate license content with ABV.dev
+- `generateAndRegisterIPAsset()` - Generate and register as IP Asset on Story Protocol
+- `generateLicenseForSale()` - Generate license for existing license sale
+
+**Usage**:
+```typescript
+import { abvStoryIntegration } from './src/services/abv-story-integration.js';
+
+const result = await abvStoryIntegration.generateLicenseForSale(
+  originalIPId,
+  licensee,
+  'commercial',
+  '1000000000000000000' // 1 ETH
+);
+
+console.log(`Story IP ID: ${result.storyIPId}`);
+console.log(`Linked to: ${result.linkedToOriginalIP}`);
+```
+
+**Environment Variables**:
+```env
+ABV_API_KEY=your_abv_api_key
+ABV_API_URL=https://api.abv.dev/v1/generate
+STORY_PROTOCOL_API_KEY=your_story_api_key
+```
+
+**Testing**:
+```bash
+bun run test-abv-agent.ts
+```
+
+**Expected Output**:
+```
+✅ License Content Generated
+✅ IP Asset Registered on Story: tx 0xabc... ✅
+✅ License linked to original IP: 0x123... ✅
+```
+
+## Owlto Cross-Chain Bridge
+
+### Overview
+
+Owlto Finance provides cross-chain bridging services. This client handles bridging funds between chains (e.g., Story Network ↔ Base).
+
+### Implementation
+
+**File**: `src/clients/owltoClient.ts`
+
+**Functions**:
+- `bridgeFunds(params)` - Bridge funds between chains
+- `getBridgeStatus(bridgeId)` - Check bridge transaction status
+- `getSupportedChains()` - Get list of supported chains
+
+**Usage**:
+```typescript
+import { bridgeFunds } from './src/clients/owltoClient.js';
+
+const result = await bridgeFunds({
+  fromChain: 1315, // Story Network
+  toChain: 8453,  // Base
+  amount: '100000000000000000', // 0.1 ETH
+  token: '0x0000000000000000000000000000000000000000', // Native token
+  recipient: '0x...',
+});
+
+console.log(`Bridge ID: ${result.bridgeId}`);
+console.log(`TX Hash: ${result.transactionHash}`);
+```
+
+**Environment Variables**:
+```env
+OWLTO_API_KEY=your_owlto_api_key
+OWLTO_API_URL=https://api.owlto.finance/api/v2/bridge
+OWLTO_SLIPPAGE=0.5
+OWLTO_REFERRAL_CODE=your_referral_code
+```
+
+**Supported Chains**:
+- Story Aeneid Testnet (1315)
+- Base (8453)
+- Ethereum (1)
+- Polygon (137)
+
+**Testing**:
+```bash
+bun run test-owlto-bridge.ts
+```
+
+**Expected Output**:
+```
+✅ Bridge Request Sent
+✅ Funds Bridged: 0.1 ETH from Story → Base
+✅ Bridge TX: 0xxyz... ✅
+```
+
+## Complete Data Flow
+
+### Step 4.3: Yakoa + CVS Calculation
+
+1. Fetch Yakoa originality score for IP asset
+2. Fetch license sales from Goldsky
+3. Calculate CVS: `CVS = 1000 + (Revenue/10) + (Originality×50) + (Sales×100)`
+4. Update CVS on-chain via `updateCVS()`
+
+### Step 4.4: ABV.dev + Story Protocol
+
+1. Generate license content using ABV.dev GenAI
+2. Register generated content as IP Asset on Story Protocol
+3. Link new IP Asset to original IP Asset
+
+### Step 4.5: Owlto Cross-Chain Bridge
+
+1. Initiate bridge request via Owlto API
+2. Monitor bridge status
+3. Funds arrive on target chain
 
 ## License
 

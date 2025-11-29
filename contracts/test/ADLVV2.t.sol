@@ -20,6 +20,7 @@ contract ADLVV2Test is Test {
     address public storySPG;
     address public storyIPAssetRegistry;
     address public storyLicenseRegistry;
+    address public storyLicensingModule;
     
     function setUp() public {
         owner = address(this);
@@ -31,6 +32,7 @@ contract ADLVV2Test is Test {
         storySPG = makeAddr("storySPG");
         storyIPAssetRegistry = makeAddr("storyIPAssetRegistry");
         storyLicenseRegistry = makeAddr("storyLicenseRegistry");
+        storyLicensingModule = makeAddr("storyLicensingModule");
         
         // Deploy contracts
         ido = new IDO(owner);
@@ -42,7 +44,8 @@ contract ADLVV2Test is Test {
             storyIPAssetRegistry,
             storyLicenseRegistry,
             address(loanNFT),
-            address(0)
+            address(0),
+            storyLicensingModule
         );
         
         // Setup
