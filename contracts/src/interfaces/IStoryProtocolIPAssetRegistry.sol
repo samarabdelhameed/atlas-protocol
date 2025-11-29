@@ -60,5 +60,21 @@ interface IStoryProtocolIPAssetRegistry {
      * @param to The new owner address
      */
     function transfer(string calldata ipId, address to) external;
+
+    /**
+     * @notice Resolve IPAccount address for a given IP Asset ID
+     * @dev In Story Protocol, each IP Asset has an associated IPAccount (Smart Contract Account)
+     * @param ipId The IP Asset ID (string format)
+     * @return ipAccount The IPAccount address associated with the IP Asset
+     */
+    function resolve(string calldata ipId) external view returns (address ipAccount);
+
+    /**
+     * @notice Resolve IPAccount address for a given IP Asset ID (address format)
+     * @param ipId The IP Asset ID (address format)
+     * @return ipAccount The IPAccount address associated with the IP Asset
+     */
+    function resolve(address ipId) external view returns (address ipAccount);
 }
+
 

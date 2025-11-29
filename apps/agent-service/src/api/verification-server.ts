@@ -80,6 +80,11 @@ export class VerificationServer {
       return await this.handleVerifyVault(req);
     }
 
+    // Handle POST /licenses/metadata
+    if (req.method === 'POST' && url.pathname === '/licenses/metadata') {
+      return await this.handleLicenseMetadata(req);
+    }
+
     // Handle health check
     if (req.method === 'GET' && url.pathname === '/health') {
       return new Response(JSON.stringify({ status: 'ok', service: 'world-id-verification' }), {
@@ -258,3 +263,41 @@ export class VerificationServer {
   }
 }
 
+
+  /**
+   * Handle license metadata submission
+   */
+  private async handleLicenseMetadata(req: Request): Promise<Response> {
+    try {
+      const body = await req.json();
+      const { personalName, organization, email, tierId, tierName, amount } = body;
+
+      console.log(`📜 License metadata received:`);
+      console.log(`   Organization: ${organization}`);
+      console.log(`   Contact: ${email}`);
+      console.log(`   Tier: ${tierName} (${tierId})`);
+      console.log(`   Amount: ${amount}`);
+
+      // Store metadata (in production, save to database)
+      // For now, just log and return success
+
+      return this.jsonResponse({
+        success: true,
+        message: 'License metadata recorded successfully',
+        data: {
+          organization,
+          email,
+          tier: tierName,
+          amount,
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+    } catch (error: any) {
+      console.error('❌ Error handling license metadata:', error);
+      return this.jsonResponse(
+        { error: 'Failed to process license metadata', details: error.message },
+        500
+      );
+    }
+  }

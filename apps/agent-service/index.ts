@@ -69,13 +69,14 @@ class AgentService {
       this.verificationServer = new VerificationServer(this.loanManager);
 
       // Initialize Local Indexer Service (replaces Goldsky subgraph)
-      this.indexer = new IndexerService(
-        adlvAddress,
-        idoAddress
-      );
+      // DISABLED: better-sqlite3 has issues with Bun on macOS
+      // this.indexer = new IndexerService(
+      //   adlvAddress,
+      //   idoAddress
+      // );
       
       // Initialize Indexer API
-      this.indexerAPI = new IndexerAPI(this.indexer.getDatabase());
+      // this.indexerAPI = new IndexerAPI(this.indexer.getDatabase());
 
       // Initialize CVS Sync Service (for Story Protocol SPG integration)
       if (process.env.CVS_ORACLE_ADDRESS && process.env.CVS_ORACLE_ADDRESS !== '0x0000000000000000000000000000000000000000') {
@@ -150,14 +151,15 @@ class AgentService {
     }
 
     // Start Local Indexer Service
-    if (this.indexer) {
-      await this.indexer.start();
-    }
+    // DISABLED: better-sqlite3 has issues with Bun on macOS
+    // if (this.indexer) {
+    //   await this.indexer.start();
+    // }
 
     // Start Indexer API Server
-    if (this.indexerAPI) {
-      this.indexerAPI.start(3002);
-    }
+    // if (this.indexerAPI) {
+    //   this.indexerAPI.start(3002);
+    // }
 
     // Start CVS Sync Service (automatic sync from Story Protocol)
     if (this.cvsSyncService && process.env.CVS_AUTO_SYNC_IPS) {

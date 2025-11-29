@@ -76,14 +76,16 @@ contract ADLVWithStoryV2 is ADLVWithStory {
         address _storyIPAssetRegistry,
         address _storyLicenseRegistry,
         address _loanNFT,
-        address _lendingModule
+        address _lendingModule,
+        address _storyLicensingModule
     ) ADLVWithStory(
         _idoContract,
         _storySPG,
         _storyIPAssetRegistry,
         _storyLicenseRegistry,
         _loanNFT,
-        _lendingModule
+        _lendingModule,
+        _storyLicensingModule
     ) {
         // Deploy meta-transaction handler
         licenseMetaTx = new LicenseMetaTx();
