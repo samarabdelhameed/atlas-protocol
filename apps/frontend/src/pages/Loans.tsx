@@ -118,11 +118,12 @@ export default function Loans({ onNavigate }: LoansProps = {}) {
       const loanAmountWei = parseUnits(loanAmount, 18);
       const collateralWei = (loanAmountWei * BigInt(collateralBps)) / BigInt(10000);
       setIssuing(true);
+      const targetChainId = selectedChain ? BigInt(selectedChain) : BigInt(0);
       const txHash = await walletClient.writeContract({
         address: ADLV_ADDRESS,
         abi: ADLV_JSON.abi,
         functionName: 'issueLoan',
-        args: [vaultAddress, loanAmountWei, durationSeconds],
+        args: [vaultAddress, loanAmountWei, durationSeconds, targetChainId],
         value: collateralWei,
         chain: { id: CHAIN_ID } as any,
       });

@@ -125,6 +125,7 @@ export class LoanManager {
     collateral: bigint,
     interestRate: bigint,
     duration: bigint,
+    targetChainId: bigint,
     event: EventLog
   ): Promise<void> {
     const amountEth = Number(amount) / 1e18;
@@ -138,14 +139,21 @@ export class LoanManager {
     console.log(`   Collateral: ${Number(collateral) / 1e18} tokens`);
     console.log(`   Interest Rate: ${Number(interestRate) / 100}%`);
     console.log(`   Duration: ${Number(duration)} seconds`);
+    console.log(`   Target Chain: ${targetChainId.toString()} ${targetChainId === 0n ? '(Same Chain - No Bridge)' : ''}`);
     console.log('═══════════════════════════════════════════\n');
 
     try {
-      // Get vault details to determine target chain
+      // Skip cross-chain transfer if targetChainId is 0 (same chain)
+      if (targetChainId === 0n) {
+        console.log('✅ Loan issued on same chain. No bridging required.');
+        return;
+      }
+      
+      // Get vault details
       const vault = await this.adlvContract.getVault(vaultAddress);
       
-      // Determine target chain (default to Base if not specified)
-      const targetChainId = config.chain.id || 8453; // Base mainnet
+      // Use targetChainId from event
+      const destChainId = Number(targetChainId);
       
       // Get token address (USDC on Base: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913)
       // You can make this configurable per vault
@@ -154,7 +162,7 @@ export class LoanManager {
       // Execute cross-chain transfer via Owlto Finance
       await this.executeCrossChainTransfer({
         recipient: borrower,
-        targetChainId: targetChainId,
+        targetChainId: destChainId,
         tokenAddress: tokenAddress,
         amount: amount.toString(),
         loanId: loanId,
@@ -377,6 +385,7 @@ export class LoanManager {
         request.vaultAddress,
         request.loanAmount,
         BigInt(request.duration),
+        BigInt(request.targetChain || 0), // targetChainId (0 = same chain)
         { value: collateralAmount }
       );
 
