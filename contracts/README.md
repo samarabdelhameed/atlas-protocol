@@ -411,7 +411,7 @@ forge script script/DeployModular.s.sol:DeployModularScript \
 
 ## ✅ Verified Contracts
 
-### Production Contracts (v4.0 - Cross-Chain Support)
+### Production Contracts (v4.1 - Cross-Chain Support - FINAL)
 
 All contracts are deployed and verified on **Story Aeneid Testnet** (Chain ID: 1315).
 
@@ -420,20 +420,32 @@ All contracts are deployed and verified on **Story Aeneid Testnet** (Chain ID: 1
 | **Story Protocol Core** | `0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5` | ✅ Verified    | [View Code ↗️](https://aeneid.storyscan.io/address/0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5) |
 | **Loan NFT**            | `0x9386262027dc860337eC4F93A8503aD4ee852c41` | ✅ Verified    | [View Code ↗️](https://aeneid.storyscan.io/address/0x9386262027dc860337eC4F93A8503aD4ee852c41) |
 | **Lending Module**      | `0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3` | ✅ Verified    | [View Code ↗️](https://aeneid.storyscan.io/address/0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3) |
-| **ADLV (v4)** 🌉        | `0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713` | ✅ Verified    | [View Code ↗️](https://aeneid.storyscan.io/address/0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713) |
-| **IDO (v3)**            | `0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8` | ⚠️ Operational | [View ↗️](https://aeneid.storyscan.io/address/0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8)      |
+| **ADLV (v4.1)** 🌉      | `0xFe9E0Dd8893F71303ACF8164462d323905199669` | ✅ Deployed    | [View ↗️](https://aeneid.storyscan.io/address/0xFe9E0Dd8893F71303ACF8164462d323905199669) |
+| **IDO (v4.1)**          | `0x64A5997775e59Ae304662D0850B281A5a224E0cf` | ✅ Deployed    | [View ↗️](https://aeneid.storyscan.io/address/0x64A5997775e59Ae304662D0850B281A5a224E0cf)      |
 
 **Deployment Date:** November 30, 2024  
 **Features:** IP-Backed Lending, Loan NFTs, Dynamic Interest Rates, **Cross-Chain Disbursement via Owlto Bridge** 🌉  
-**Status:** ✅ Production Ready
+**Status:** ✅ Production Ready & Tested with Real Data
 
-**New in v4.0:**
+**New in v4.1:**
 - ✅ Cross-chain loan disbursement (Base, Arbitrum, Optimism, Polygon)
 - ✅ Owlto Finance bridge integration
 - ✅ Target chain selection in `issueLoan()` function
 - ✅ Automatic ETH → USDC conversion on destination chains
+- ✅ `updateIPCVS()` function for easy CVS management
+- ✅ Proper IDO ownership (ADLV is owner)
+- ✅ **Tested with real transactions** - [View Test TX](https://aeneid.storyscan.io/tx/0x3d703811f9d95f3aeb0c3f481c848bb84e40c6ec03d1ce0564e9bc79ee47735e)
 
 ### Legacy Contracts
+
+#### v4.0 (Deprecated - Ownership Issue)
+
+| Contract | Address                                      | Status      | Explorer                                                                                       |
+| -------- | -------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------- |
+| **ADLV (v4.0)** | `0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713` | ⚠️ Deprecated | [View Code ↗️](https://aeneid.storyscan.io/address/0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713) |
+| **IDO (v3)** | `0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8` | ⚠️ Deprecated | [View ↗️](https://aeneid.storyscan.io/address/0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8) |
+
+**Note:** v4.0 had IDO ownership issues. Use v4.1 for new integrations.
 
 #### v3.0 (Deprecated - No Cross-Chain)
 
@@ -441,7 +453,7 @@ All contracts are deployed and verified on **Story Aeneid Testnet** (Chain ID: 1
 | -------- | -------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------- |
 | **ADLV (v3)** | `0x793402b59d2ca4c501EDBa328347bbaF69a59f7b` | ⚠️ Deprecated | [View Code ↗️](https://aeneid.storyscan.io/address/0x793402b59d2ca4c501EDBa328347bbaF69a59f7b) |
 
-**Note:** v3 ADLV does not support cross-chain disbursement. Use v4 for new integrations.
+**Note:** v3 ADLV does not support cross-chain disbursement.
 
 #### v2.0 (Legacy)
 
@@ -471,13 +483,13 @@ All contracts are deployed and verified on **Story Aeneid Testnet** (Chain ID: 1
 ### For Frontend Integration
 
 ```typescript
-// Contract addresses (v4 - Latest with Cross-Chain Support)
+// Contract addresses (v4.1 - FINAL - Tested & Working)
 const contractsV4 = {
   StoryProtocolCore: "0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5",
-  IDO: "0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8",
+  IDO: "0x64A5997775e59Ae304662D0850B281A5a224E0cf", // ← UPDATED v4.1
   LoanNFT: "0x9386262027dc860337eC4F93A8503aD4ee852c41",
   LendingModule: "0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3",
-  ADLV: "0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713", // ← UPDATED v4
+  ADLV: "0xFe9E0Dd8893F71303ACF8164462d323905199669", // ← UPDATED v4.1
 };
 
 // Network config
@@ -500,15 +512,16 @@ const supportedChains = {
 ### For Backend Integration
 
 ```bash
-# Set environment variables (v4 - Latest with Cross-Chain)
+# Set environment variables (v4.1 - FINAL - Tested & Working)
 export STORY_PROTOCOL_CORE=0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5
-export IDO_V3=0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8
+export IDO_V4=0x64A5997775e59Ae304662D0850B281A5a224E0cf
 export LOAN_NFT=0x9386262027dc860337eC4F93A8503aD4ee852c41
 export LENDING_MODULE=0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3
-export ADLV_V4=0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713
+export ADLV_V4=0xFe9E0Dd8893F71303ACF8164462d323905199669
 
 # For backward compatibility
-export ADLV_ADDRESS=0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713
+export ADLV_ADDRESS=0xFe9E0Dd8893F71303ACF8164462d323905199669
+export IDO_ADDRESS=0x64A5997775e59Ae304662D0850B281A5a224E0cf
 
 export RPC_URL=https://rpc-storyevm-testnet.aldebaranode.xyz
 ```
@@ -571,18 +584,25 @@ export RPC_URL=https://rpc-storyevm-testnet.aldebaranode.xyz
 
 ## 🚀 Usage Examples
 
-### Check Contract Status
+### Check Contract Status (v4.1)
 
 ```bash
-# Check Story Protocol Core
-cast call 0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5 \
-  "ipIdCounter()(uint256)" \
+# Check ADLV v4.1
+cast call 0xFe9E0Dd8893F71303ACF8164462d323905199669 \
+  "vaultCounter()(uint256)" \
   --rpc-url https://rpc-storyevm-testnet.aldebaranode.xyz
 
-# Check IDO owner
-cast call 0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8 \
+# Check IDO v4.1 owner (should be ADLV)
+cast call 0x64A5997775e59Ae304662D0850B281A5a224E0cf \
   "owner()(address)" \
   --rpc-url https://rpc-storyevm-testnet.aldebaranode.xyz
+# Expected: 0xFe9E0Dd8893F71303ACF8164462d323905199669
+
+# Check ADLV's IDO reference
+cast call 0xFe9E0Dd8893F71303ACF8164462d323905199669 \
+  "idoContract()(address)" \
+  --rpc-url https://rpc-storyevm-testnet.aldebaranode.xyz
+# Expected: 0x64A5997775e59Ae304662D0850B281A5a224E0cf
 
 # Check Loan NFT supply
 cast call 0x9386262027dc860337eC4F93A8503aD4ee852c41 \
@@ -593,12 +613,70 @@ cast call 0x9386262027dc860337eC4F93A8503aD4ee852c41 \
 cast call 0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3 \
   "loanCounter()(uint256)" \
   --rpc-url https://rpc-storyevm-testnet.aldebaranode.xyz
-
-# Check ADLV vaults
-cast call 0x793402b59d2ca4c501EDBa328347bbaF69a59f7b \
-  "vaultCounter()(uint256)" \
-  --rpc-url https://rpc-storyevm-testnet.aldebaranode.xyz
 ```
+
+### Test Cross-Chain Loan (Complete Example)
+
+```bash
+# Set environment
+source .env
+ADLV=0xFe9E0Dd8893F71303ACF8164462d323905199669
+IDO=0x64A5997775e59Ae304662D0850B281A5a224E0cf
+
+# Step 1: Create vault
+cast send $ADLV "createVault(bytes32)" \
+  0x9999999999999999999999999999999999999999999999999999999999999999 \
+  --private-key $PRIVATE_KEY \
+  --rpc-url https://rpc-storyevm-testnet.aldebaranode.xyz \
+  --legacy
+
+# Step 2: Get vault address
+VAULT=$(cast call $ADLV "ipToVault(bytes32)(address)" \
+  0x9999999999999999999999999999999999999999999999999999999999999999 \
+  --rpc-url https://rpc-storyevm-testnet.aldebaranode.xyz)
+
+echo "Vault: $VAULT"
+
+# Step 3: Deposit liquidity
+cast send $ADLV "deposit(address)" $VAULT \
+  --value 3000000000000000000 \
+  --private-key $PRIVATE_KEY \
+  --rpc-url https://rpc-storyevm-testnet.aldebaranode.xyz \
+  --legacy
+
+# Step 4: Update CVS
+cast send $ADLV "updateIPCVS(bytes32,uint256)" \
+  0x9999999999999999999999999999999999999999999999999999999999999999 \
+  5000000000000000000000 \
+  --private-key $PRIVATE_KEY \
+  --rpc-url https://rpc-storyevm-testnet.aldebaranode.xyz \
+  --legacy
+
+# Step 5: Issue loan with cross-chain (Base)
+cast send $ADLV "issueLoan(address,uint256,uint256,uint256)" \
+  $VAULT \
+  1000000000000000000 \
+  2592000 \
+  8453 \
+  --value 1500000000000000000 \
+  --private-key $PRIVATE_KEY \
+  --rpc-url https://rpc-storyevm-testnet.aldebaranode.xyz \
+  --legacy
+
+# ✅ Success! Loan issued with cross-chain to Base
+```
+
+### Real Test Transaction
+
+**Live test transaction on Story Aeneid Testnet:**
+
+- **TX Hash:** `0x3d703811f9d95f3aeb0c3f481c848bb84e40c6ec03d1ce0564e9bc79ee47735e`
+- **Explorer:** https://aeneid.storyscan.io/tx/0x3d703811f9d95f3aeb0c3f481c848bb84e40c6ec03d1ce0564e9bc79ee47735e
+- **Vault:** `0xeaa48871cA327935B37D162840480b9b1dE831a8`
+- **Loan Amount:** 1 ETH
+- **Target Chain:** 8453 (Base)
+- **Collateral:** 1.5 ETH
+- **Status:** ✅ Success
 
 ### Verify Contract on Explorer
 
@@ -626,15 +704,19 @@ curl "https://aeneid.storyscan.io/api?module=contract&action=getsourcecode&addre
 
 ## 🔗 Quick Links
 
-### V3 Contracts (Latest)
+### V4.1 Contracts (FINAL - Use These!)
 
+- **ADLV (v4.1):** https://aeneid.storyscan.io/address/0xFe9E0Dd8893F71303ACF8164462d323905199669
+- **IDO (v4.1):** https://aeneid.storyscan.io/address/0x64A5997775e59Ae304662D0850B281A5a224E0cf
 - **Story Protocol Core:** https://aeneid.storyscan.io/address/0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5
-- **IDO (v3):** https://aeneid.storyscan.io/address/0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8
 - **Loan NFT:** https://aeneid.storyscan.io/address/0x9386262027dc860337eC4F93A8503aD4ee852c41
 - **Lending Module:** https://aeneid.storyscan.io/address/0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3
-- **ADLV (v3):** https://aeneid.storyscan.io/address/0x793402b59d2ca4c501EDBa328347bbaF69a59f7b
 
-### V2 Contracts (Legacy)
+### Test Transaction
+
+- **Cross-Chain Loan Test:** https://aeneid.storyscan.io/tx/0x3d703811f9d95f3aeb0c3f481c848bb84e40c6ec03d1ce0564e9bc79ee47735e
+
+### Legacy Contracts
 
 - **IDO:** https://aeneid.storyscan.io/address/0x21aD95c76B71f0adCdD37fB2217Dc9d554437e6F
 - **ADLV:** https://aeneid.storyscan.io/address/0xdd0fF1a826FCAC7e3EBAE6E978A4BB043D27eC13
