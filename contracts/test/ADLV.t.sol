@@ -145,7 +145,8 @@ contract ADLVTest is Test {
         uint256 loanId = adlv.issueLoan{value: collateral}(
             vaultAddress,
             LOAN_AMOUNT,
-            LOAN_DURATION
+            LOAN_DURATION,
+            0 // targetChainId = 0 (same chain, no bridge)
         );
         
         ADLV.Loan memory loan = adlv.getLoan(loanId);
@@ -168,7 +169,7 @@ contract ADLVTest is Test {
         uint256 collateral = (LOAN_AMOUNT * 150) / 100;
         vm.prank(borrower);
         vm.expectRevert("ADLV: Insufficient CVS");
-        adlv.issueLoan{value: collateral}(vaultAddress, LOAN_AMOUNT, LOAN_DURATION);
+        adlv.issueLoan{value: collateral}(vaultAddress, LOAN_AMOUNT, LOAN_DURATION, 0);
     }
     
     function test_IssueLoan_RevertIfInsufficientLiquidity() public {
@@ -179,7 +180,7 @@ contract ADLVTest is Test {
         uint256 collateral = (LOAN_AMOUNT * 150) / 100;
         vm.prank(borrower);
         vm.expectRevert("ADLV: Insufficient liquidity");
-        adlv.issueLoan{value: collateral}(vaultAddress, LOAN_AMOUNT, LOAN_DURATION);
+        adlv.issueLoan{value: collateral}(vaultAddress, LOAN_AMOUNT, LOAN_DURATION, 0);
     }
     
     function test_RepayLoan() public {
@@ -196,7 +197,8 @@ contract ADLVTest is Test {
         uint256 loanId = adlv.issueLoan{value: collateral}(
             vaultAddress,
             LOAN_AMOUNT,
-            LOAN_DURATION
+            LOAN_DURATION,
+            0 // targetChainId = 0 (same chain)
         );
         
         // Advance time slightly to calculate interest

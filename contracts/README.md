@@ -341,6 +341,8 @@ forge build
 
 ### Deploy Contracts
 
+#### Option 1: Deploy Full System (All Contracts)
+
 ```bash
 # Deploy modular architecture (v3)
 forge script script/DeployModular.s.sol:DeployModularScript \
@@ -350,7 +352,49 @@ forge script script/DeployModular.s.sol:DeployModularScript \
   --legacy
 ```
 
+#### Option 2: Deploy ADLV Only (Cross-Chain Update)
+
+**Use this if you only need to update ADLV with cross-chain support:**
+
+```bash
+# Deploy ADLV with cross-chain support
+./deploy-adlv-crosschain.sh
+```
+
+**What this does:**
+- Deploys new ADLV contract with `targetChainId` parameter
+- Uses existing IDO contract (no need to redeploy)
+- Outputs new ADLV address for .env files
+
+**After deployment:**
+1. Copy the new ADLV address from output
+2. Update environment files:
+   ```bash
+   # contracts/.env
+   ADLV_V3=<new_address>
+   
+   # apps/agent-service/.env
+   ADLV_ADDRESS=<new_address>
+   
+   # apps/frontend/.env
+   VITE_ADLV_CONTRACT_ADDRESS=<new_address>
+   ```
+
 ### Verify Contracts
+
+#### Verify ADLV (After Cross-Chain Deployment)
+
+```bash
+# Verify ADLV contract
+./verify-adlv.sh <ADLV_ADDRESS>
+```
+
+**Example:**
+```bash
+./verify-adlv.sh 0x793402b59d2ca4c501EDBa328347bbaF69a59f7b
+```
+
+#### Verify All Contracts
 
 ```bash
 # Check environment
@@ -367,7 +411,7 @@ forge script script/DeployModular.s.sol:DeployModularScript \
 
 ## ✅ Verified Contracts
 
-### Production Contracts (v3.0 - Modular Architecture)
+### Production Contracts (v4.0 - Cross-Chain Support)
 
 All contracts are deployed and verified on **Story Aeneid Testnet** (Chain ID: 1315).
 
@@ -376,14 +420,30 @@ All contracts are deployed and verified on **Story Aeneid Testnet** (Chain ID: 1
 | **Story Protocol Core** | `0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5` | ✅ Verified    | [View Code ↗️](https://aeneid.storyscan.io/address/0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5) |
 | **Loan NFT**            | `0x9386262027dc860337eC4F93A8503aD4ee852c41` | ✅ Verified    | [View Code ↗️](https://aeneid.storyscan.io/address/0x9386262027dc860337eC4F93A8503aD4ee852c41) |
 | **Lending Module**      | `0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3` | ✅ Verified    | [View Code ↗️](https://aeneid.storyscan.io/address/0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3) |
-| **ADLV (v3)**           | `0x793402b59d2ca4c501EDBa328347bbaF69a59f7b` | ✅ Verified    | [View Code ↗️](https://aeneid.storyscan.io/address/0x793402b59d2ca4c501EDBa328347bbaF69a59f7b) |
+| **ADLV (v4)** 🌉        | `0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713` | ✅ Verified    | [View Code ↗️](https://aeneid.storyscan.io/address/0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713) |
 | **IDO (v3)**            | `0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8` | ⚠️ Operational | [View ↗️](https://aeneid.storyscan.io/address/0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8)      |
 
-**Deployment Date:** November 21, 2024  
-**Features:** IP-Backed Lending, Loan NFTs, Dynamic Interest Rates  
+**Deployment Date:** November 30, 2024  
+**Features:** IP-Backed Lending, Loan NFTs, Dynamic Interest Rates, **Cross-Chain Disbursement via Owlto Bridge** 🌉  
 **Status:** ✅ Production Ready
 
-### Legacy Contracts (v2.0 - Verified)
+**New in v4.0:**
+- ✅ Cross-chain loan disbursement (Base, Arbitrum, Optimism, Polygon)
+- ✅ Owlto Finance bridge integration
+- ✅ Target chain selection in `issueLoan()` function
+- ✅ Automatic ETH → USDC conversion on destination chains
+
+### Legacy Contracts
+
+#### v3.0 (Deprecated - No Cross-Chain)
+
+| Contract | Address                                      | Status      | Explorer                                                                                       |
+| -------- | -------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------- |
+| **ADLV (v3)** | `0x793402b59d2ca4c501EDBa328347bbaF69a59f7b` | ⚠️ Deprecated | [View Code ↗️](https://aeneid.storyscan.io/address/0x793402b59d2ca4c501EDBa328347bbaF69a59f7b) |
+
+**Note:** v3 ADLV does not support cross-chain disbursement. Use v4 for new integrations.
+
+#### v2.0 (Legacy)
 
 | Contract | Address                                      | Status      | Explorer                                                                                       |
 | -------- | -------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------- |
@@ -411,13 +471,13 @@ All contracts are deployed and verified on **Story Aeneid Testnet** (Chain ID: 1
 ### For Frontend Integration
 
 ```typescript
-// Contract addresses (v3 - Latest with Lending)
-const contractsV3 = {
+// Contract addresses (v4 - Latest with Cross-Chain Support)
+const contractsV4 = {
   StoryProtocolCore: "0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5",
   IDO: "0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8",
   LoanNFT: "0x9386262027dc860337eC4F93A8503aD4ee852c41",
   LendingModule: "0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3",
-  ADLV: "0x793402b59d2ca4c501EDBa328347bbaF69a59f7b",
+  ADLV: "0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713", // ← UPDATED v4
 };
 
 // Network config
@@ -426,17 +486,29 @@ const network = {
   rpcUrl: "https://rpc-storyevm-testnet.aldebaranode.xyz",
   explorer: "https://aeneid.storyscan.io",
 };
+
+// Supported cross-chain targets
+const supportedChains = {
+  story: 0,      // Same chain (no bridge)
+  base: 8453,    // Base (USDC)
+  arbitrum: 42161, // Arbitrum (USDC)
+  optimism: 10,  // Optimism (USDC)
+  polygon: 137,  // Polygon (USDC)
+};
 ```
 
 ### For Backend Integration
 
 ```bash
-# Set environment variables (v3 - Latest with Lending)
+# Set environment variables (v4 - Latest with Cross-Chain)
 export STORY_PROTOCOL_CORE=0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5
 export IDO_V3=0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8
 export LOAN_NFT=0x9386262027dc860337eC4F93A8503aD4ee852c41
 export LENDING_MODULE=0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3
-export ADLV_V3=0x793402b59d2ca4c501EDBa328347bbaF69a59f7b
+export ADLV_V4=0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713
+
+# For backward compatibility
+export ADLV_ADDRESS=0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713
 
 export RPC_URL=https://rpc-storyevm-testnet.aldebaranode.xyz
 ```

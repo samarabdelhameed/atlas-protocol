@@ -136,7 +136,8 @@ contract ADLV {
         uint256 amount,
         uint256 collateral,
         uint256 interestRate,
-        uint256 duration
+        uint256 duration,
+        uint256 targetChainId
     );
     
     /// @notice Emitted when CVS is updated
@@ -367,12 +368,14 @@ contract ADLV {
      * @param vaultAddress The vault address
      * @param loanAmount Amount to borrow
      * @param duration Loan duration in seconds
+     * @param targetChainId Target chain ID for cross-chain disbursement (0 = same chain)
      * @return loanId The ID of the issued loan
      */
     function issueLoan(
         address vaultAddress,
         uint256 loanAmount,
-        uint256 duration
+        uint256 duration,
+        uint256 targetChainId
     ) external payable vaultExists(vaultAddress) returns (uint256 loanId) {
         Vault storage vault = vaults[vaultAddress];
         bytes32 ipId = vault.ipId;
@@ -441,7 +444,8 @@ contract ADLV {
             loanAmount,
             msg.value,
             interestRate,
-            duration
+            duration,
+            targetChainId
         );
         
         return loanId;

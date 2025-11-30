@@ -1,9 +1,26 @@
 # 🎯 ATLAS PROTOCOL - COMPLETE FRONTEND IMPLEMENTATION GUIDE
 **Everything You Need in One File**
 
-**Date**: November 29, 2024  
+**Date**: November 30, 2024 (Updated with v4 Cross-Chain Support)  
 **Network**: Story Aeneid Testnet (Chain ID: 1315)  
 **Estimated Time**: 2-3 days
+
+---
+
+## 🆕 WHAT'S NEW IN v4.0
+
+**Cross-Chain Loan Disbursement via Owlto Bridge** 🌉
+
+- ✅ Users can now receive loans on different chains (Base, Arbitrum, Optimism, Polygon)
+- ✅ Automatic ETH → USDC conversion on destination chains
+- ✅ New `targetChainId` parameter in `issueLoan()` function
+- ✅ Updated ADLV contract: `0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713`
+
+**Migration from v3:**
+- Old ADLV (v3): `0x793402b59d2ca4c501EDBa328347bbaF69a59f7b` (Deprecated)
+- New ADLV (v4): `0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713` (Use this!)
+
+**See:** [CROSS_CHAIN_INTEGRATION.md](contracts/CROSS_CHAIN_INTEGRATION.md) for full details
 
 ---
 
@@ -44,13 +61,22 @@ cp ../agent-service/contracts/IPAssetRegistry.json src/contracts/abis/
 ```bash
 cat > src/contracts/addresses.ts << 'EOF'
 export const CONTRACTS = {
-  ADLV: '0x793402b59d2ca4c501EDBa328347bbaF69a59f7b' as const,
+  ADLV: '0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713' as const, // v4 - Cross-Chain
   IDO: '0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8' as const,
   LendingModule: '0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3' as const,
   LoanNFT: '0x9386262027dc860337eC4F93A8503aD4ee852c41' as const,
   StoryProtocolCore: '0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5' as const,
   IPAssetRegistry: '0x292639452A975630802C17c9267169D93BD5a793' as const,
   SPG: '0x69415CE984A79a3Cfbe3F51024C63b6C107331e3' as const,
+};
+
+// Supported cross-chain targets for loan disbursement
+export const SUPPORTED_CHAINS = {
+  story: { id: 0, name: 'Story Protocol', token: 'ETH' },
+  base: { id: 8453, name: 'Base', token: 'USDC' },
+  arbitrum: { id: 42161, name: 'Arbitrum', token: 'USDC' },
+  optimism: { id: 10, name: 'Optimism', token: 'USDC' },
+  polygon: { id: 137, name: 'Polygon', token: 'USDC' },
 };
 EOF
 ```
@@ -61,7 +87,7 @@ EOF
 cat > .env << 'EOF'
 VITE_CHAIN_ID=1315
 VITE_RPC_URL=https://rpc-storyevm-testnet.aldebaranode.xyz
-VITE_ADLV_ADDRESS=0x793402b59d2ca4c501EDBa328347bbaF69a59f7b
+VITE_ADLV_ADDRESS=0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713
 VITE_IDO_ADDRESS=0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8
 VITE_LENDING_MODULE_ADDRESS=0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3
 VITE_LOAN_NFT_ADDRESS=0x9386262027dc860337eC4F93A8503aD4ee852c41
@@ -76,13 +102,15 @@ EOF
 
 **All contracts on Story Aeneid Testnet (Chain ID: 1315)**
 
-| Contract | Address | Explorer |
-|----------|---------|----------|
-| ADLV | `0x793402b59d2ca4c501EDBa328347bbaF69a59f7b` | [View](https://aeneid.storyscan.io/address/0x793402b59d2ca4c501EDBa328347bbaF69a59f7b) |
-| IDO | `0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8` | [View](https://aeneid.storyscan.io/address/0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8) |
-| LendingModule | `0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3` | [View](https://aeneid.storyscan.io/address/0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3) |
-| LoanNFT | `0x9386262027dc860337eC4F93A8503aD4ee852c41` | [View](https://aeneid.storyscan.io/address/0x9386262027dc860337eC4F93A8503aD4ee852c41) |
-| StoryProtocolCore | `0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5` | [View](https://aeneid.storyscan.io/address/0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5) |
+| Contract | Address | Version | Explorer |
+|----------|---------|---------|----------|
+| **ADLV** 🌉 | `0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713` | v4 (Cross-Chain) | [View](https://aeneid.storyscan.io/address/0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713) |
+| IDO | `0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8` | v3 | [View](https://aeneid.storyscan.io/address/0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8) |
+| LendingModule | `0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3` | v3 | [View](https://aeneid.storyscan.io/address/0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3) |
+| LoanNFT | `0x9386262027dc860337eC4F93A8503aD4ee852c41` | v3 | [View](https://aeneid.storyscan.io/address/0x9386262027dc860337eC4F93A8503aD4ee852c41) |
+| StoryProtocolCore | `0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5` | v3 | [View](https://aeneid.storyscan.io/address/0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5) |
+
+**New in v4:** ADLV now supports cross-chain loan disbursement via Owlto Bridge 🌉
 
 **Network**: https://rpc-storyevm-testnet.aldebaranode.xyz  
 **Explorer**: https://aeneid.storyscan.io
@@ -590,7 +618,7 @@ const submitMetadata = async () => {
 
 ## 📚 CONTRACT FUNCTIONS
 
-### ADLV Contract (`0x793402b59d2ca4c501EDBa328347bbaF69a59f7b`)
+### ADLV Contract (`0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713`) - v4 Cross-Chain
 
 **Read Functions:**
 ```typescript
@@ -641,8 +669,9 @@ getUserLoans(address) → uint256[]
 // Get loan details
 getLoan(uint256 loanId) → { borrower, amount, ... }
 
-// Issue loan
-issueLoan(address vault, uint256 amount, uint256 duration) payable
+// Issue loan (v4 - with cross-chain support)
+issueLoan(address vault, uint256 amount, uint256 duration, uint256 targetChainId) payable
+// targetChainId: 0 = Story, 8453 = Base, 42161 = Arbitrum, 10 = Optimism, 137 = Polygon
 
 // Repay loan
 repayLoan(uint256 loanId) payable
