@@ -2,17 +2,43 @@ import { motion } from 'framer-motion';
 import { TrendingUp, DollarSign, FileText, Activity, ArrowUp, ArrowDown, Sparkles } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { parseAbiItem, createPublicClient, http, formatUnits } from 'viem';
+import { useAccount } from 'wagmi';
+import { useQuery, useQueries } from '@tanstack/react-query';
 import { storyTestnet } from '../wagmi';
+import { CONTRACTS } from '../contracts/addresses';
+import ADLV_ABI from '../contracts/abis/ADLV.json';
+import IDO_ABI from '../contracts/abis/IDO.json';
 
 interface DashboardProps {
   onNavigate?: (page: string) => void;
 }
 
+interface VaultData {
+  address: `0x${string}`;
+  ipId: `0x${string}`;
+  creator: string;
+  totalLiquidity: bigint;
+  cvs: bigint;
+  maxLoan: bigint;
+}
+
+interface LicenseSaleLog {
+  blockNumber: bigint;
+  args: {
+    price?: bigint;
+    ipId?: string;
+    licensee?: string;
+  };
+}
+
 export default function Dashboard({ onNavigate }: DashboardProps = {}) {
+  // Wallet connection
+  const { address } = useAccount();
+
   // Env-driven chain setup for read-only event logs (same as LandingPage)
   const RPC_URL = import.meta.env.VITE_RPC_URL as string | undefined;
   const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || storyTestnet.id);
-  const ADLV_ADDRESS = (import.meta.env.VITE_ADLV_CONTRACT_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`;
+  const ADLV_ADDRESS = CONTRACTS.ADLV;
 
   // Create public client to query logs from chain (real data)
   const publicClient = useMemo(() => {
@@ -23,18 +49,74 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
     });
   }, [RPC_URL, CHAIN_ID]);
 
+  // Fetch user's vaults
+  const { data: userVaults, isLoading: isLoadingVaults } = useQuery({
+    queryKey: ['userVaults', address],
+    queryFn: async () => {
+      if (!publicClient || !address) return [];
+      const vaults = await publicClient.readContract({
+        address: CONTRACTS.ADLV,
+        abi: ADLV_ABI.abi,
+        functionName: 'getUserVaults',
+        args: [address],
+      });
+      return vaults as `0x${string}`[];
+    },
+    enabled: !!address && !!publicClient,
+    refetchInterval: 10000, // Refetch every 10 seconds
+  });
+
+  // Fetch details for each vault
+  const vaultQueries = useQueries({
+    queries: (userVaults || []).map((vaultAddr) => ({
+      queryKey: ['vault', vaultAddr],
+      queryFn: async (): Promise<VaultData | null> => {
+        if (!publicClient) return null;
+
+        // Get vault details
+        const vault = await publicClient.readContract({
+          address: CONTRACTS.ADLV,
+          abi: ADLV_ABI.abi,
+          functionName: 'getVault',
+          args: [vaultAddr],
+        }) as { ipId: `0x${string}`; creator: string; totalLiquidity: bigint };
+
+        // Get CVS score
+        const cvs = await publicClient.readContract({
+          address: CONTRACTS.IDO,
+          abi: IDO_ABI.abi,
+          functionName: 'getCVS',
+          args: [vault.ipId],
+        }) as bigint;
+
+        // Get max loan amount
+        const maxLoan = await publicClient.readContract({
+          address: CONTRACTS.ADLV,
+          abi: ADLV_ABI.abi,
+          functionName: 'calculateMaxLoanAmount',
+          args: [vaultAddr],
+        }) as bigint;
+
+        return { address: vaultAddr, ...vault, cvs, maxLoan };
+      },
+      enabled: !!publicClient,
+    })),
+  });
+
+  // Calculate total CVS and max borrowable across all vaults
+  const totalCVS = vaultQueries.reduce((sum, q) =>
+    sum + Number(formatUnits(q.data?.cvs || 0n, 18)), 0
+  );
+
+  const totalMaxBorrowable = vaultQueries.reduce((sum, q) =>
+    sum + Number(formatUnits(q.data?.maxLoan || 0n, 18)), 0
+  );
+
   // Event ABIs for parsing ADLV logs (real events from chain)
   const evLicenseSold = useMemo(
     () =>
       parseAbiItem(
         "event LicenseSold(address indexed vaultAddress, bytes32 indexed ipId, address indexed licensee, uint256 price, string licenseType)"
-      ),
-    []
-  );
-  const evVaultCreated = useMemo(
-    () =>
-      parseAbiItem(
-        "event VaultCreated(address indexed vaultAddress, bytes32 indexed ipId, string storyIPId, address indexed creator, uint256 initialCVS)"
       ),
     []
   );
@@ -46,9 +128,8 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
     []
   );
 
-  const [cvsScore, setCvsScore] = useState(8542);
   const [chartData, setChartData] = useState<number[]>([]);
-  const [licenseSalesData, setLicenseSalesData] = useState<any[]>([]);
+  const [licenseSalesData, setLicenseSalesData] = useState<LicenseSaleLog[]>([]);
   const [activeLoansCount, setActiveLoansCount] = useState(0);
   const [totalRevenue, setTotalRevenue] = useState(0);
 
@@ -64,8 +145,8 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
       ];
     }
 
-    return licenseSalesData.slice(0, 10).map((log: any, index: number) => {
-      const blockNumber = log.blockNumber || 0;
+    return licenseSalesData.slice(0, 10).map((log: LicenseSaleLog, index: number) => {
+      const blockNumber = Number(log.blockNumber || 0n);
       const now = Date.now();
       // Approximate: assume 2 seconds per block
       const blockTime = blockNumber * 2000;
@@ -101,50 +182,51 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
 
   // Calculate stats from chain data (real data)
   const stats = useMemo(() => {
-    const revenue = totalRevenue || 45320;
-    const loans = activeLoansCount || 0;
+    const revenue = totalRevenue;
+    const loans = activeLoansCount;
+    const userCVS = totalCVS;
 
     return [
-      { 
-        label: 'CVS Score (Live)', 
-        value: cvsScore.toLocaleString(), 
-        change: '+12.5%', 
-        icon: TrendingUp, 
-        positive: true, 
-        subtitle: 'IDOVault Query' 
+      {
+        label: 'My Total CVS',
+        value: userCVS > 0 ? userCVS.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '0',
+        change: userCVS > 0 ? '+' + ((userCVS / 1000) * 100).toFixed(1) + '%' : '0%',
+        icon: TrendingUp,
+        positive: userCVS > 0,
+        subtitle: 'Across All Vaults'
       },
-      { 
-        label: 'Data Licensing Yield', 
-        value: `$${revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, 
-        change: '+8.2%', 
-        icon: DollarSign, 
-        positive: true, 
-        subtitle: 'Total Revenue' 
+      {
+        label: 'Data Licensing Yield',
+        value: `$${revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+        change: revenue > 0 ? '+' + ((revenue / 10000) * 100).toFixed(1) + '%' : '0%',
+        icon: DollarSign,
+        positive: revenue > 0,
+        subtitle: 'Total Revenue'
       },
-      { 
-        label: 'Active Data-Backed Loans', 
-        value: loans.toString(), 
-        change: loans > 0 ? `+${loans}` : '-1', 
-        icon: FileText, 
-        positive: loans > 0, 
-        subtitle: 'X-Chain Loans' 
+      {
+        label: 'Active Data-Backed Loans',
+        value: loans.toString(),
+        change: loans > 0 ? `+${loans}` : '0',
+        icon: FileText,
+        positive: loans > 0,
+        subtitle: 'X-Chain Loans'
       },
-      { 
-        label: 'Dynamic Collateral Ratio', 
-        value: '200%', 
-        change: '+2%', 
-        icon: Activity, 
-        positive: true, 
-        subtitle: 'CVS-Based' 
+      {
+        label: 'Max Borrowable',
+        value: `$${totalMaxBorrowable.toFixed(0)}`,
+        change: totalMaxBorrowable > 0 ? '+' + ((totalMaxBorrowable / 1000) * 100).toFixed(1) + '%' : '0%',
+        icon: Activity,
+        positive: totalMaxBorrowable > 0,
+        subtitle: 'Across All Vaults'
       },
     ];
-  }, [totalRevenue, activeLoansCount, cvsScore]);
+  }, [totalRevenue, activeLoansCount, totalCVS, totalMaxBorrowable]);
 
   // Fetch real data from chain (same approach as LandingPage)
   useEffect(() => {
     const run = async () => {
       try {
-        if (!publicClient || !ADLV_ADDRESS || ADLV_ADDRESS === "0x0000000000000000000000000000000000000000") return;
+        if (!publicClient) return;
         
         const latest = await publicClient.getBlockNumber();
         const window = 10_000n;
@@ -191,29 +273,16 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
           setChartData(data);
         }
         
-        // Update CVS score from real license sales
-        if (soldLogs.length > 0) {
-          const latestSale = soldLogs[0];
-          const price = latestSale.args.price as bigint;
-          const increment = parseFloat(formatUnits(price || 0n, 18)) * 0.1; // 10% of price
-          setCvsScore(prev => Math.max(prev, Math.floor(prev + increment)));
-        }
       } catch (error) {
         console.error('Error fetching chain data:', error);
       }
     };
-    
+
     run();
     const interval = setInterval(run, 60000); // Refresh every minute
-    
-    // Also update CVS score periodically
-    const cvsInterval = setInterval(() => {
-      setCvsScore(prev => prev + Math.floor(Math.random() * 100 - 20));
-    }, 3000);
 
     return () => {
       clearInterval(interval);
-      clearInterval(cvsInterval);
     };
   }, [publicClient, ADLV_ADDRESS, evLicenseSold, evLoanIssued]);
 
@@ -282,11 +351,11 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
                 className="text-right"
               >
                 <div className="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-blue-600 bg-clip-text text-transparent">
-                  {cvsScore.toLocaleString()}
+                  {totalCVS > 0 ? totalCVS.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '0'}
                 </div>
                 <div className="text-sm text-green-400 flex items-center gap-1 justify-end">
                   <Sparkles className="w-4 h-4" />
-                  Live
+                  {address ? 'My CVS' : 'Live'}
                 </div>
               </motion.div>
             </div>
@@ -369,7 +438,7 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
                   className="h-full bg-gradient-to-r from-orange-500 to-amber-600"
                 />
               </div>
-              <p className="text-gray-500 text-xs mt-1">Based on current CVS: {cvsScore.toLocaleString()}</p>
+              <p className="text-gray-500 text-xs mt-1">Based on current CVS: {totalCVS > 0 ? totalCVS.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '0'}</p>
             </div>
 
             <div className="space-y-4">
@@ -478,6 +547,109 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
             </div>
           </motion.div>
         </motion.div>
+
+        {/* My Vaults Section */}
+        {address && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.8 }}
+            className="mt-8"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-white">My Vaults</h2>
+              <button
+                onClick={() => onNavigate?.('vault')}
+                className="px-6 py-3 bg-orange-500 text-white rounded-xl font-medium hover:bg-orange-600 transition-colors"
+              >
+                + Create Vault
+              </button>
+            </div>
+
+            {/* Vault Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+              <div className="bg-gray-800/50 border border-gray-700 rounded-2xl p-6">
+                <div className="text-3xl mb-2">🏦</div>
+                <div className="text-3xl font-bold text-white">{userVaults?.length || 0}</div>
+                <div className="text-sm text-gray-400">My Vaults</div>
+              </div>
+              <div className="bg-gray-800/50 border border-gray-700 rounded-2xl p-6">
+                <div className="text-3xl mb-2">📊</div>
+                <div className="text-3xl font-bold text-white">{totalCVS.toFixed(0)}</div>
+                <div className="text-sm text-gray-400">Total CVS</div>
+              </div>
+              <div className="bg-gray-800/50 border border-gray-700 rounded-2xl p-6">
+                <div className="text-3xl mb-2">💰</div>
+                <div className="text-3xl font-bold text-white">
+                  ${totalMaxBorrowable.toFixed(0)}
+                </div>
+                <div className="text-sm text-gray-400">Max Borrowable</div>
+              </div>
+            </div>
+
+            {/* Vault Cards */}
+            {isLoadingVaults ? (
+              <div className="text-center py-12 bg-gray-800/30 border border-gray-700 rounded-2xl">
+                <div className="text-gray-400">Loading vaults...</div>
+              </div>
+            ) : userVaults && userVaults.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {vaultQueries.map((query, i) => {
+                  if (!query.data) return null;
+                  const v = query.data;
+                  return (
+                    <motion.div
+                      key={i}
+                      whileHover={{ scale: 1.02 }}
+                      className="bg-gray-800/50 border border-gray-700 rounded-2xl p-6"
+                    >
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-white font-bold">
+                          {(v.address as string).slice(0, 6)}...{(v.address as string).slice(-4)}
+                        </h3>
+                        <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-xs">
+                          Active
+                        </span>
+                      </div>
+                      <div className="space-y-3 mb-4">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400 text-sm">CVS</span>
+                          <span className="text-white font-bold">
+                            {Number(formatUnits((v.cvs as bigint) || 0n, 18)).toFixed(0)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400 text-sm">Max Loan</span>
+                          <span className="text-amber-400 font-bold">
+                            ${Number(formatUnits((v.maxLoan as bigint) || 0n, 18)).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => onNavigate?.('loans')}
+                        className="w-full py-2 bg-orange-500 text-white rounded-xl text-sm font-medium hover:bg-orange-600 transition-colors"
+                      >
+                        Request Loan
+                      </button>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-12 bg-gray-800/30 border border-gray-700 rounded-2xl">
+                <div className="text-6xl mb-4">📦</div>
+                <h3 className="text-xl font-bold text-white mb-2">No Vaults Yet</h3>
+                <p className="text-gray-400 mb-6">Create your first vault to start earning</p>
+                <button
+                  onClick={() => onNavigate?.('vault')}
+                  className="px-6 py-3 bg-orange-500 text-white rounded-xl font-medium hover:bg-orange-600 transition-colors"
+                >
+                  Create Vault
+                </button>
+              </div>
+            )}
+          </motion.div>
+        )}
       </div>
     </div>
   );
