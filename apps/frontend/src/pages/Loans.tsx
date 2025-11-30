@@ -3,8 +3,9 @@ import { DollarSign, TrendingDown, Clock, CheckCircle2, AlertTriangle, Network, 
 import { useEffect, useMemo, useState } from 'react';
 import { useAccount, useWalletClient } from 'wagmi';
 import { createPublicClient, http, isAddress, formatUnits, parseUnits } from 'viem';
-import ADLV_JSON from '../../../agent-service/contracts/ADLV.json';
-import IDO_JSON from '../../../agent-service/contracts/IDO.json';
+import { CONTRACTS } from '../contracts/addresses';
+import ADLV_JSON from '../contracts/abis/ADLV.json';
+import IDO_JSON from '../contracts/abis/IDO.json';
 
 interface LoansProps {
   onNavigate?: (page: string) => void;
@@ -22,11 +23,13 @@ export default function Loans({ onNavigate }: LoansProps = {}) {
   const [issuing, setIssuing] = useState(false);
   const [error, setError] = useState<string>('');
 
-  // Env-driven chain and contract addresses
+  // Env-driven chain setup
   const RPC_URL = import.meta.env.VITE_RPC_URL as string | undefined;
   const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || 1315);
-  const ADLV_ADDRESS = (import.meta.env.VITE_ADLV_CONTRACT_ADDRESS || '') as `0x${string}`;
-  const IDO_ADDRESS = (import.meta.env.VITE_IDO_CONTRACT_ADDRESS || '') as `0x${string}`;
+
+  // Contract addresses from centralized config
+  const ADLV_ADDRESS = CONTRACTS.ADLV;
+  const IDO_ADDRESS = CONTRACTS.IDO;
 
   const publicClient = useMemo(() => {
     if (!RPC_URL) return null;
