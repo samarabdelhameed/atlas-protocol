@@ -13,6 +13,7 @@ import ParticleField from "../components/ParticleField";
 import { useEffect, useMemo, useState } from "react";
 import { parseAbiItem, createPublicClient, http, formatUnits } from "viem";
 import { storyTestnet } from "../wagmi";
+import { CONTRACTS } from "../contracts/addresses";
 // Import subgraph hooks from the workspace package export
 import { useLicenseSales, useGlobalStats } from "@atlas-protocol/graphql-client";
 
@@ -29,7 +30,9 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
   // Env-driven chain setup for read-only event logs
   const RPC_URL = import.meta.env.VITE_RPC_URL as string | undefined;
   const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || storyTestnet.id);
-  const ADLV_ADDRESS = (import.meta.env.VITE_ADLV_CONTRACT_ADDRESS || "0x0000000000000000000000000000000000000000") as `0x${string}`;
+
+  // Contract address from centralized config
+  const ADLV_ADDRESS = CONTRACTS.ADLV;
 
   // Create a public client to query logs from your configured chain
   const publicClient = useMemo(() => {
