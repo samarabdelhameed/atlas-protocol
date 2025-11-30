@@ -4,14 +4,19 @@ import {
   Scan,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Settings,
   Loader2,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAccount } from "wagmi";
 import { IDKitWidget, VerificationLevel } from "@worldcoin/idkit";
 import { isAddress, createPublicClient, http, formatUnits, padHex } from "viem";
 import { useStoryProtocol } from "../hooks/useStoryProtocol";
+import { CONTRACTS, NETWORK, getExplorerUrl } from "../contracts/addresses";
+import { storyTestnet } from "../wagmi";
+import ADLV_ABI from "../contracts/abis/ADLV.json";
+import IDO_ABI from "../contracts/abis/IDO.json";
 
 interface VaultCreationProps {
   onNavigate?: (page: string) => void;
@@ -50,18 +55,23 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
     : import.meta.env.VITE_VERIFICATION_ENDPOINT ||
       "http://localhost:3001/verify-vault";
   const MOCK_VERIFICATION = import.meta.env.VITE_MOCK_VERIFICATION === "true";
+
   // Chain/env for on-chain read-only queries
   const RPC_URL = import.meta.env.VITE_RPC_URL as string | undefined;
-  const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || 1315);
-  const ADLV_ADDRESS = (import.meta.env.VITE_ADLV_CONTRACT_ADDRESS || "") as `0x${string}`;
-  const IDO_ADDRESS = (import.meta.env.VITE_IDO_CONTRACT_ADDRESS || "") as `0x${string}`;
-  // Create a viem public client when RPC is available
-  const publicClient = RPC_URL
-    ? createPublicClient({
-        chain: { id: CHAIN_ID, name: "Story", nativeCurrency: { name: "STORY", symbol: "STORY", decimals: 18 }, rpcUrls: { default: { http: [RPC_URL] } } },
-        transport: http(RPC_URL),
-      })
-    : null;
+  const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || storyTestnet.id);
+
+  // Contract addresses from centralized config
+  const ADLV_ADDRESS = CONTRACTS.ADLV;
+  const IDO_ADDRESS = CONTRACTS.IDO;
+
+  // Create viem public client using Story Testnet chain config
+  const publicClient = useMemo(() => {
+    if (!RPC_URL) return null;
+    return createPublicClient({
+      chain: { ...storyTestnet, id: CHAIN_ID },
+      transport: http(RPC_URL),
+    });
+  }, [RPC_URL, CHAIN_ID]);
 
   useEffect(() => {
     if (!creatorAddress && isConnected && address) {
@@ -141,43 +151,50 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         // Handle existing vault case
         if (data.alreadyExists) {
           console.log("Vault already exists, using existing vault address");
+          setExistingVaultAddress(data.vaultAddress);
         }
         setIsVerified(true);
         setStep(3);
       } else {
         const errorData = await res.json().catch(() => ({}));
+
         // Handle different error cases
         if (res.status === 401) {
           // World ID verification failed - allow to proceed anyway for testing
-          console.warn(
-            "World ID verification failed, but allowing to proceed for testing"
-          );
+          console.warn("World ID verification failed, but allowing to proceed for testing");
           setIsVerified(true);
           setStep(3);
-        } else if (res.status === 409 || errorData.code === "VAULT_EXISTS") {
+          return;
+        }
+
+        if (res.status === 409 || errorData.code === "VAULT_EXISTS") {
           // Vault already exists - use existing vault
-          setVaultCreationError(
-            errorData.error || "Vault already exists for this IP Asset ID"
-          );
+          console.warn("Vault already exists:", errorData.vaultAddress);
           if (errorData.vaultAddress) {
+            setExistingVaultAddress(errorData.vaultAddress);
             setVaultAddress(errorData.vaultAddress);
           }
           setIsVerified(true);
           setStep(3);
-        } else {
-          // Other errors
-          setVaultCreationError(
-            errorData.error || errorData.details || "Verification failed"
-          );
-          setIsVerified(true);
-          setStep(3);
+          return;
         }
+
+        // Network or server errors
+        const errorText = await res.text().catch(() => "");
+        throw new Error(`Server error (${res.status}): ${errorData.error || errorData.details || errorText || "Verification failed"}`);
       }
     } catch (error: any) {
-      console.error("World ID verification error:", error);
-      setVaultCreationError(
-        error.message || "Network error during verification"
-      );
+      console.error("Vault verification error:", error);
+
+      // Check if it's a network error
+      if (error instanceof TypeError && error.message.includes("fetch")) {
+        setVaultCreationError("Network error. Please check your connection and try again.");
+        // Don't proceed on network errors
+        return;
+      }
+
+      // Other errors - show message but allow proceed for testing
+      setVaultCreationError(error.message || "Verification failed, but you can continue");
       setIsVerified(true);
       setStep(3);
     }
@@ -193,7 +210,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         publicClient
           .readContract({
             address: IDO_ADDRESS,
-            abi: [{ type: "function", name: "getCVS", inputs: [{ name: "ipId", type: "bytes32" }], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" }],
+            abi: IDO_ABI.abi,
             functionName: "getCVS",
             args: [ipBytes32],
           })
@@ -206,7 +223,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         publicClient
           .readContract({
             address: ADLV_ADDRESS,
-            abi: [{ type: "function", name: "ipToVault", inputs: [{ name: "ipId", type: "bytes32" }], outputs: [{ name: "", type: "address" }], stateMutability: "view" }],
+            abi: ADLV_ABI.abi,
             functionName: "ipToVault",
             args: [ipBytes32],
           })
@@ -217,7 +234,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
               publicClient
                 .readContract({
                   address: ADLV_ADDRESS,
-                  abi: [{ type: "function", name: "calculateMaxLoanAmount", inputs: [{ name: "vaultAddress", type: "address" }], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" }],
+                  abi: ADLV_ABI.abi,
                   functionName: "calculateMaxLoanAmount",
                   args: [addr],
                 })
@@ -233,14 +250,16 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         publicClient
           .readContract({
             address: ADLV_ADDRESS,
-            abi: [{ type: "function", name: "calculateMaxLoanAmount", inputs: [{ name: "vaultAddress", type: "address" }], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" }],
+            abi: ADLV_ABI.abi,
             functionName: "calculateMaxLoanAmount",
             args: [vaultAddress],
           })
           .then((amt: bigint) => setMaxBorrowable(formatUnits(amt, 18)))
           .catch(() => setMaxBorrowable(""));
       }
-    } catch {}
+    } catch (error) {
+      console.error("Error fetching vault metrics:", error);
+    }
   };
 
   const handleDeployVault = async () => {
@@ -754,6 +773,26 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                   </p>
                 </div>
 
+                {(cvsScore || maxBorrowable) && (
+                  <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+                    <h3 className="text-blue-400 font-medium mb-3">Vault Metrics</h3>
+                    <div className="space-y-2">
+                      {cvsScore && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-400 text-sm">Current CVS Score</span>
+                          <span className="text-white font-bold">{parseFloat(cvsScore).toFixed(2)}</span>
+                        </div>
+                      )}
+                      {maxBorrowable && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-400 text-sm">Max Borrowable</span>
+                          <span className="text-green-400 font-bold">{parseFloat(maxBorrowable).toFixed(2)} USDC</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
                   <div className="flex items-start gap-3">
                     <AlertCircle className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
@@ -824,20 +863,27 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                 </div>
 
                 {existingVaultAddress && (
-                  <div className="p-5 bg-yellow-500/10 rounded-xl border border-yellow-600/30">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-yellow-400 text-sm font-medium mb-1">Existing Vault Detected</p>
-                        <p className="text-white font-mono text-xs break-all">{existingVaultAddress}</p>
+                  <div className="mb-6 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <h4 className="text-yellow-400 font-medium mb-2">Vault Already Exists</h4>
+                        <p className="text-gray-300 text-sm mb-3">
+                          A vault for this IP Asset already exists. You can use the existing vault instead of creating a new one.
+                        </p>
+                        <div className="bg-gray-900/50 rounded-lg p-3">
+                          <div className="text-xs text-gray-400 mb-1">Existing Vault Address</div>
+                          <div className="text-white font-mono text-sm break-all">{existingVaultAddress}</div>
+                          <a
+                            href={getExplorerUrl(existingVaultAddress)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-400 text-sm mt-2 inline-flex items-center gap-1 hover:text-blue-300"
+                          >
+                            View on Explorer →
+                          </a>
+                        </div>
                       </div>
-                      <a
-                        href={`https://sepolia.basescan.org/address/${existingVaultAddress}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-orange-400 hover:text-orange-300 text-xs underline"
-                      >
-                        View Address →
-                      </a>
                     </div>
                   </div>
                 )}
@@ -887,28 +933,28 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                 </div>
               </div>
 
-              {existingVaultAddress ? (
-                <div className="w-full py-4 bg-gradient-to-r from-yellow-600 to-amber-600 text-white rounded-xl font-bold text-lg text-center">
-                  Existing Vault Detected — Deployment Disabled
-                </div>
-              ) : (
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleDeployVault}
-                  disabled={isDeploying || !validationSuccess || !isVerified}
-                  className="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-bold text-lg hover:shadow-lg hover:shadow-green-500/50 transition-all disabled:opacity-50"
-                >
-                  {isDeploying ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Deploying Atlas Vault...
-                    </span>
-                  ) : (
-                    "Deploy Atlas Vault"
-                  )}
-                </motion.button>
-              )}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleDeployVault}
+                disabled={isDeploying || !validationSuccess || !isVerified || (!!existingVaultAddress && !vaultAddress)}
+                className={`w-full py-4 rounded-xl font-bold text-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                  existingVaultAddress
+                    ? 'bg-gradient-to-r from-yellow-500 to-amber-600 text-black hover:shadow-lg hover:shadow-yellow-500/50'
+                    : 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:shadow-lg hover:shadow-green-500/50'
+                }`}
+              >
+                {isDeploying ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Processing...
+                  </span>
+                ) : existingVaultAddress ? (
+                  "Use Existing Vault"
+                ) : (
+                  "Deploy Atlas Vault"
+                )}
+              </motion.button>
 
               {isDeploying && (
                 <motion.div
@@ -996,7 +1042,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                       </p>
                       <div className="flex gap-3">
                         <a
-                          href={`https://sepolia.basescan.org/address/${vaultAddress}`}
+                          href={getExplorerUrl(vaultAddress)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-orange-400 hover:text-orange-300 text-xs underline"
@@ -1004,7 +1050,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                           View Address →
                         </a>
                         <a
-                          href={`https://sepolia.basescan.org/address/0x76d81731e26889Be3718BEB4d43e12C3692753b8`}
+                          href={getExplorerUrl(CONTRACTS.ADLV)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-orange-400 hover:text-orange-300 text-xs underline"
@@ -1022,7 +1068,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                         {transactionHash}
                       </div>
                       <a
-                        href={`https://sepolia.basescan.org/tx/${transactionHash}`}
+                        href={`${NETWORK.explorerUrl}/tx/${transactionHash}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-orange-400 hover:text-orange-300 text-xs underline"
