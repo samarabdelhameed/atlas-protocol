@@ -243,6 +243,15 @@ contract ADLV {
         idoContract = IDO(_idoContract);
     }
     
+    /**
+     * @notice Update CVS for an IP asset (calls IDO.updateCVS)
+     * @param ipId The IP asset ID
+     * @param newCVS The new CVS value
+     */
+    function updateIPCVS(bytes32 ipId, uint256 newCVS) external onlyOwner {
+        idoContract.updateCVS(ipId, newCVS);
+    }
+    
     // ========================================
     // Vault Management
     // ========================================

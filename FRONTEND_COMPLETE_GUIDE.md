@@ -1,24 +1,30 @@
 # 🎯 ATLAS PROTOCOL - COMPLETE FRONTEND IMPLEMENTATION GUIDE
 **Everything You Need in One File**
 
-**Date**: November 30, 2024 (Updated with v4 Cross-Chain Support)  
+**Date**: November 30, 2024 (Updated with v4.1 Cross-Chain Support - FINAL)  
 **Network**: Story Aeneid Testnet (Chain ID: 1315)  
 **Estimated Time**: 2-3 days
 
 ---
 
-## 🆕 WHAT'S NEW IN v4.0
+## 🆕 WHAT'S NEW IN v4.1 (FINAL - TESTED)
 
 **Cross-Chain Loan Disbursement via Owlto Bridge** 🌉
 
 - ✅ Users can now receive loans on different chains (Base, Arbitrum, Optimism, Polygon)
 - ✅ Automatic ETH → USDC conversion on destination chains
 - ✅ New `targetChainId` parameter in `issueLoan()` function
-- ✅ Updated ADLV contract: `0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713`
+- ✅ `updateIPCVS()` function for easy CVS management
+- ✅ **Tested with real transactions** - [View Test TX](https://aeneid.storyscan.io/tx/0x3d703811f9d95f3aeb0c3f481c848bb84e40c6ec03d1ce0564e9bc79ee47735e)
 
-**Migration from v3:**
+**Updated Contracts (v4.1 - FINAL):**
+- ADLV v4.1: `0xFe9E0Dd8893F71303ACF8164462d323905199669` ✅ Working
+- IDO v4.1: `0x64A5997775e59Ae304662D0850B281A5a224E0cf` ✅ Working
+
+**Migration from older versions:**
 - Old ADLV (v3): `0x793402b59d2ca4c501EDBa328347bbaF69a59f7b` (Deprecated)
-- New ADLV (v4): `0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713` (Use this!)
+- Old ADLV (v4.0): `0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713` (Deprecated - ownership issue)
+- **Use ADLV v4.1** for all new integrations!
 
 **See:** [CROSS_CHAIN_INTEGRATION.md](contracts/CROSS_CHAIN_INTEGRATION.md) for full details
 
@@ -61,8 +67,8 @@ cp ../agent-service/contracts/IPAssetRegistry.json src/contracts/abis/
 ```bash
 cat > src/contracts/addresses.ts << 'EOF'
 export const CONTRACTS = {
-  ADLV: '0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713' as const, // v4 - Cross-Chain
-  IDO: '0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8' as const,
+  ADLV: '0xFe9E0Dd8893F71303ACF8164462d323905199669' as const, // v4.1 - FINAL
+  IDO: '0x64A5997775e59Ae304662D0850B281A5a224E0cf' as const, // v4.1 - FINAL
   LendingModule: '0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3' as const,
   LoanNFT: '0x9386262027dc860337eC4F93A8503aD4ee852c41' as const,
   StoryProtocolCore: '0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5' as const,
@@ -87,8 +93,8 @@ EOF
 cat > .env << 'EOF'
 VITE_CHAIN_ID=1315
 VITE_RPC_URL=https://rpc-storyevm-testnet.aldebaranode.xyz
-VITE_ADLV_ADDRESS=0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713
-VITE_IDO_ADDRESS=0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8
+VITE_ADLV_ADDRESS=0xFe9E0Dd8893F71303ACF8164462d323905199669
+VITE_IDO_ADDRESS=0x64A5997775e59Ae304662D0850B281A5a224E0cf
 VITE_LENDING_MODULE_ADDRESS=0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3
 VITE_LOAN_NFT_ADDRESS=0x9386262027dc860337eC4F93A8503aD4ee852c41
 VITE_BACKEND_URL=http://localhost:3001
@@ -104,13 +110,16 @@ EOF
 
 | Contract | Address | Version | Explorer |
 |----------|---------|---------|----------|
-| **ADLV** 🌉 | `0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713` | v4 (Cross-Chain) | [View](https://aeneid.storyscan.io/address/0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713) |
-| IDO | `0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8` | v3 | [View](https://aeneid.storyscan.io/address/0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8) |
+| **ADLV** 🌉 | `0xFe9E0Dd8893F71303ACF8164462d323905199669` | v4.1 (FINAL) ✅ | [View](https://aeneid.storyscan.io/address/0xFe9E0Dd8893F71303ACF8164462d323905199669) |
+| **IDO** | `0x64A5997775e59Ae304662D0850B281A5a224E0cf` | v4.1 (FINAL) ✅ | [View](https://aeneid.storyscan.io/address/0x64A5997775e59Ae304662D0850B281A5a224E0cf) |
 | LendingModule | `0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3` | v3 | [View](https://aeneid.storyscan.io/address/0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3) |
 | LoanNFT | `0x9386262027dc860337eC4F93A8503aD4ee852c41` | v3 | [View](https://aeneid.storyscan.io/address/0x9386262027dc860337eC4F93A8503aD4ee852c41) |
 | StoryProtocolCore | `0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5` | v3 | [View](https://aeneid.storyscan.io/address/0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5) |
 
-**New in v4:** ADLV now supports cross-chain loan disbursement via Owlto Bridge 🌉
+**New in v4.1:** 
+- ✅ ADLV supports cross-chain loan disbursement via Owlto Bridge 🌉
+- ✅ `updateIPCVS()` function for easy CVS management
+- ✅ Tested with real data - [View Test Transaction](https://aeneid.storyscan.io/tx/0x3d703811f9d95f3aeb0c3f481c848bb84e40c6ec03d1ce0564e9bc79ee47735e)
 
 **Network**: https://rpc-storyevm-testnet.aldebaranode.xyz  
 **Explorer**: https://aeneid.storyscan.io
@@ -618,7 +627,7 @@ const submitMetadata = async () => {
 
 ## 📚 CONTRACT FUNCTIONS
 
-### ADLV Contract (`0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713`) - v4 Cross-Chain
+### ADLV Contract (`0xFe9E0Dd8893F71303ACF8164462d323905199669`) - v4.1 Cross-Chain (FINAL)
 
 **Read Functions:**
 ```typescript
