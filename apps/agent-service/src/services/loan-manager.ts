@@ -550,8 +550,8 @@ export class LoanManager {
       }
 
       // Call createVault on ADLV contract
-      // createVault(bytes32 ipId, string storyIPId)
-      const tx = await this.adlvContract.createVault(ipIdBytes32, ipId);
+      // createVault(bytes32 ipId) - takes only ONE parameter
+      const tx = await this.adlvContract.createVault(ipIdBytes32);
       
       // Wait for transaction receipt
       const receipt = await tx.wait();

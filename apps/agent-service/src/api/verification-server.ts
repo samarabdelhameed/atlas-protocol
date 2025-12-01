@@ -174,33 +174,16 @@ export class VerificationServer {
         isVerified = true;
       }
 
-      // Convert IP ID to proper bytes32 format
-      let ipIdBytes32: string;
-      
       console.log(`📝 Processing IP ID: ${vaultData.ipId}`);
       console.log(`   Length: ${vaultData.ipId.length} characters`);
-      
-      if (vaultData.ipId.startsWith('0x') && vaultData.ipId.length === 66) {
-        // Already proper bytes32 (0x + 64 hex chars)
-        ipIdBytes32 = vaultData.ipId;
-        console.log(`   ✅ Already bytes32 format`);
-      } else if (vaultData.ipId.startsWith('0x') && vaultData.ipId.length === 42) {
-        // It's an Ethereum address (20 bytes), pad to 32 bytes
-        ipIdBytes32 = vaultData.ipId + '0'.repeat(24);
-        console.log(`   🔄 Converted address to bytes32: ${ipIdBytes32}`);
-      } else {
-        // Hash the string to get bytes32
-        const { keccak256, toUtf8Bytes } = await import('ethers');
-        ipIdBytes32 = keccak256(toUtf8Bytes(vaultData.ipId));
-        console.log(`   🔄 Hashed string to bytes32: ${ipIdBytes32}`);
-      }
 
       // Create vault on-chain via LoanManager
+      // LoanManager handles the ipId to bytes32 conversion internally
       try {
-        const result = await this.loanManager.createVault(ipIdBytes32);
+        const result = await this.loanManager.createVault(vaultData.ipId);
 
         console.log(`✅ Vault created successfully:`);
-        console.log(`   IP ID (bytes32): ${ipIdBytes32}`);
+        console.log(`   IP ID: ${vaultData.ipId}`);
         console.log(`   Vault Address: ${result.vaultAddress}`);
         console.log(`   Transaction Hash: ${result.transactionHash}`);
 
