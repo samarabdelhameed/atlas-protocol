@@ -21,6 +21,18 @@ interface LandingPageProps {
   onNavigate: (page: string) => void;
 }
 
+interface SaleData {
+  salePrice?: number;
+  amount?: string;
+  ipAsset?: {
+    name?: string;
+  };
+  licensee?: string;
+  cvsIncrement?: number;
+  cvsImpact?: string;
+  licenseType?: string;
+}
+
 export default function LandingPage({ onNavigate }: LandingPageProps) {
   const prefersReducedMotion =
     typeof window !== "undefined" &&
@@ -77,10 +89,9 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
 
   // Poll chain logs periodically and map LicenseSold events to ticker items
   useEffect(() => {
-    let timer: any;
     const run = async () => {
       try {
-        if (!publicClient || !ADLV_ADDRESS || ADLV_ADDRESS === "0x0000000000000000000000000000000000000000") return;
+        if (!publicClient || !ADLV_ADDRESS || (ADLV_ADDRESS as string) === "0x0000000000000000000000000000000000000000") return;
         const latest = await publicClient.getBlockNumber();
         const window = 10_000n;
         const fromBlock = latest > window ? latest - window : 0n;
@@ -113,10 +124,12 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
         });
 
         setPlatformActivity([...createdItems, ...loanItems].slice(-20));
-      } catch {}
+      } catch (error) {
+        console.error('Error fetching chain data:', error);
+      }
     };
     run();
-    timer = setInterval(run, prefersReducedMotion ? 120_000 : 60_000);
+  const timer = setInterval(run, prefersReducedMotion ? 120_000 : 60_000);
     return () => clearInterval(timer);
   }, [publicClient, ADLV_ADDRESS, prefersReducedMotion, evLicenseSold]);
 
@@ -177,7 +190,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
   const tickerItems = useMemo(() => {
     if (chainSales.length > 0) return chainSales;
     if (salesData && Array.isArray(salesData) && salesData.length > 0) {
-      return salesData.map((sale: any) => {
+      return salesData.map((sale: SaleData) => {
         const amountUsd = sale.salePrice
           ? `$${Number(sale.salePrice).toLocaleString()}`
           : sale.amount || "$";
