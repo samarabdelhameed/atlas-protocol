@@ -41,6 +41,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
   const [assetName, setAssetName] = useState<string>("");
   const [assetType, setAssetType] = useState<string>("");
   const [assetOwner, setAssetOwner] = useState<string>("");
+  const [proof, setProof] = useState<string>("");
   // Read-only metrics for Review step
   const [cvsScore, setCvsScore] = useState<string>("");
   const [maxBorrowable, setMaxBorrowable] = useState<string>("");
@@ -136,8 +137,10 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
   };
 
   const handleWorldIDSuccess = async (result: WorldIDResult) => {
+    console.log("World ID verification successful:", result);
     setIsVerified(true);
     setStep(3);
+    setProof(result.proof);
     // Fetch vault metrics for Review step
     fetchVaultMetrics();
     if (MOCK_VERIFICATION) {
@@ -305,8 +308,8 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         body: JSON.stringify({
           // Backend supports creating or returning existing vault from the same endpoint
           // If ID proof was handled earlier, backend may ignore proof
-          // proof: null,
-          // signal: ipAssetId,
+          proof: proof,
+          signal: ipAssetId || "vault_creation",
           vaultData: { ipId: ipAssetId, creator: creatorAddress },
         }),
       });
@@ -661,6 +664,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                         signal={ipAssetId || "vault_creation"}
                         verification_level={VerificationLevel.Device}
                         onSuccess={handleWorldIDSuccess}
+                        
                       >
                         {({ open }) => (
                           <motion.button
