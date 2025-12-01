@@ -94,14 +94,12 @@ export function useStoryProtocol() {
 
   const handleGetIPAsset = useCallback(
     async (ipId: Address) => {
-      if (!address) throw new Error('Wallet not connected');
-
       setLoading(true);
       setError(null);
 
       try {
-        const client = createStoryClient(address);
-        const result = await getIPAsset(client, ipId);
+        // getIPAsset no longer requires a client - it uses direct contract calls
+        const result = await getIPAsset(ipId);
         return result;
       } catch (err) {
         const error = err as Error;
@@ -111,7 +109,7 @@ export function useStoryProtocol() {
         setLoading(false);
       }
     },
-    [address]
+    []
   );
 
   const handleRegisterDerivative = useCallback(

@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   AlertCircle,
   AlertTriangle,
-  Settings,
   Loader2,
 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
@@ -41,13 +40,12 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
   const [validationError, setValidationError] = useState<string>("");
   const [assetName, setAssetName] = useState<string>("");
   const [assetType, setAssetType] = useState<string>("");
+  const [assetOwner, setAssetOwner] = useState<string>("");
   // Read-only metrics for Review step
   const [cvsScore, setCvsScore] = useState<string>("");
   const [maxBorrowable, setMaxBorrowable] = useState<string>("");
   // Existing vault detection state
   const [existingVaultAddress, setExistingVaultAddress] = useState<string>("");
-  const [loanCurrency, setLoanCurrency] = useState("USDC");
-  const [loanDuration, setLoanDuration] = useState("30");
   const [isDeploying, setIsDeploying] = useState(false);
   const [vaultAddress, setVaultAddress] = useState<string>("");
   const [transactionHash, setTransactionHash] = useState<string>("");
@@ -89,7 +87,6 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
   const stepLabels = [
     "Select IP Asset",
     "Verify Human Identity",
-    "Configure Vault Terms",
     "Review & Deploy",
   ];
 
@@ -100,21 +97,31 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
     const run = async () => {
       try {
         const asset = await getIPAsset(ipAssetId as `0x${string}`);
-        const owner = (asset as any)?.owner || "";
-        if (!owner) {
+        console.log('IP Asset validation:', {
+          ipAssetId,
+          assetOwner: asset?.owner,
+          connectedAddress: creatorAddress,
+          ownerMatch: asset?.owner?.toLowerCase() === creatorAddress.toLowerCase()
+        });
+
+        if (!asset || !asset.owner) {
           setValidationError("IP Asset not found on Story Protocol");
           setIsValidating(false);
           return;
         }
-        if (owner.toLowerCase() !== creatorAddress.toLowerCase()) {
-          setValidationError("Creator address does not own this IP Asset");
+        if (asset.owner.toLowerCase() !== creatorAddress.toLowerCase()) {
+          setValidationError(
+            `IP Asset ownership mismatch:\n` +
+            `IP Asset owned by: ${asset.owner}\n` +
+            `Your address: ${creatorAddress}\n\n` +
+            `Please connect the wallet that owns this IP Asset, or use a different IP Asset ID.`
+          );
           setIsValidating(false);
           return;
         }
-        const name = (asset as any)?.name || "IP Asset";
-        const type = (asset as any)?.type || "Asset";
-        setAssetName(name);
-        setAssetType(type);
+        setAssetName(asset.name || "IP Asset");
+        setAssetType(asset.type?.toString() || "Asset");
+        setAssetOwner(asset.owner);
         setIsValidating(false);
         setValidationSuccess(true);
         setTimeout(() => {
@@ -204,11 +211,13 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
       setVaultCreationError(error instanceof Error ? error.message : "Verification failed, but you can continue");
       setIsVerified(true);
       setStep(3);
+
+      // Fetch vault metrics for Review step
+      fetchVaultMetrics();
     }
   };
 
-  const handleConfigureContinue = () => {
-    setStep(4);
+  const fetchVaultMetrics = () => {
     // Populate CVS and Max Borrowable for the Review step when addresses are available
     try {
       if (publicClient && IDO_ADDRESS && isAddress(IDO_ADDRESS) && ipAssetId && isAddress(ipAssetId)) {
@@ -276,7 +285,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
       setIsDeploying(true);
       setTimeout(() => {
         setIsDeploying(false);
-        setStep(5);
+        setStep(4);
       }, 1000);
       return;
     }
@@ -317,7 +326,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         }
         // Move to step 5 immediately
         setIsDeploying(false);
-        setStep(5);
+        setStep(4);
       } else {
         const errorData = await res.json().catch(() => ({}));
         // Handle vault already exists
@@ -327,7 +336,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
             setVaultAddress(errorData.vaultAddress);
             setTransactionHash("N/A - Existing Vault");
             setIsDeploying(false);
-            setStep(5);
+            setStep(4);
           } else {
             setVaultCreationError(
               errorData.error ||
@@ -367,13 +376,28 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         </motion.div>
 
         <div className="mb-12">
-          <div className="flex items-start justify-between relative">
-            {[1, 2, 3, 4].map((num) => (
-              <div
-                key={num}
-                className="flex flex-col items-center flex-1 last:flex-none relative"
-              >
-                <div className="flex items-center w-full">
+          <div className="relative max-w-4xl mx-auto px-8">
+            {/* Connector lines */}
+            <div className="absolute top-7 left-0 right-0 flex items-center justify-between px-20">
+              {[1, 2].map((num) => (
+                <div key={num} className="flex-1 h-1 mx-4 bg-gray-700 rounded-full overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: step > num ? "100%" : "0%" }}
+                    transition={{ duration: 0.5 }}
+                    className="h-full bg-gradient-to-r from-orange-500 to-amber-600"
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Step circles and labels */}
+            <div className="flex items-start justify-between relative">
+              {[1, 2, 3].map((num) => (
+                <div
+                  key={num}
+                  className="flex flex-col items-center"
+                >
                   <motion.div
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
@@ -398,29 +422,19 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                       {step > num ? <CheckCircle2 className="w-7 h-7" /> : num}
                     </motion.div>
                   </motion.div>
-                  {num < 4 && (
-                    <div className="flex-1 h-1 mx-3 bg-gray-700 rounded-full overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: step > num ? "100%" : "0%" }}
-                        transition={{ duration: 0.5 }}
-                        className="h-full bg-gradient-to-r from-orange-500 to-amber-600"
-                      />
-                    </div>
-                  )}
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: num * 0.1 + 0.2 }}
+                    className={`text-xs mt-3 text-center w-32 ${
+                      step >= num ? "text-amber-400 font-medium" : "text-gray-500"
+                    }`}
+                  >
+                    {stepLabels[num - 1]}
+                  </motion.p>
                 </div>
-                <motion.p
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: num * 0.1 + 0.2 }}
-                  className={`text-xs mt-2 text-center ${
-                    step >= num ? "text-amber-400 font-medium" : "text-gray-500"
-                  }`}
-                >
-                  {stepLabels[num - 1]}
-                </motion.p>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
 
@@ -556,8 +570,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                             {assetType || "Asset"}
                           </p>
                           <p className="text-gray-500 text-xs">
-                            Owned by: {ipAssetId.slice(0, 6)}...
-                            {ipAssetId.slice(-4)}
+                            Owned by: {assetOwner ? `${assetOwner.slice(0, 6)}...${assetOwner.slice(-4)}` : 'Validating...'}
                           </p>
                         </div>
                       </div>
@@ -708,136 +721,12 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
           {step === 3 && (
             <div>
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-14 h-14 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center">
-                  <Settings className="w-7 h-7 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-white">
-                    3. Configure Your Vault Terms
-                  </h2>
-                  <p className="text-gray-400 text-sm">
-                    Set default parameters for CVS-backed loans
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-gray-300 text-sm font-medium mb-3">
-                    Default Loan Currency
-                  </label>
-                  <div className="grid grid-cols-2 gap-4">
-                    {["USDC", "WETH"].map((currency) => (
-                      <motion.button
-                        key={currency}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => setLoanCurrency(currency)}
-                        className={`p-4 rounded-xl border-2 transition-all ${
-                          loanCurrency === currency
-                            ? "border-orange-500 bg-cyan-500/10"
-                            : "border-gray-700 bg-gray-900/50 hover:border-gray-600"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-white font-bold">
-                            {currency}
-                          </span>
-                          {loanCurrency === currency && (
-                            <CheckCircle2 className="w-5 h-5 text-amber-400" />
-                          )}
-                        </div>
-                      </motion.button>
-                    ))}
-                  </div>
-                  <p className="text-gray-500 text-xs mt-2">
-                    The currency in which loans will be issued from this vault
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-gray-300 text-sm font-medium mb-3">
-                    Default Loan Duration (days)
-                  </label>
-                  <div className="grid grid-cols-4 gap-3">
-                    {["7", "30", "60", "90"].map((days) => (
-                      <motion.button
-                        key={days}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => setLoanDuration(days)}
-                        className={`py-3 rounded-xl font-medium transition-all ${
-                          loanDuration === days
-                            ? "bg-black border-2 border-orange-500 text-orange-500 hover:text-white"
-                            : "bg-gray-900/50 text-gray-400 hover:text-white border border-gray-700"
-                        }`}
-                      >
-                        {days}d
-                      </motion.button>
-                    ))}
-                  </div>
-                  <p className="text-gray-500 text-xs mt-2">
-                    Default duration for loan repayment periods
-                  </p>
-                </div>
-
-                {(cvsScore || maxBorrowable) && (
-                  <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
-                    <h3 className="text-blue-400 font-medium mb-3">Vault Metrics</h3>
-                    <div className="space-y-2">
-                      {cvsScore && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-400 text-sm">Current CVS Score</span>
-                          <span className="text-white font-bold">{parseFloat(cvsScore).toFixed(2)}</span>
-                        </div>
-                      )}
-                      {maxBorrowable && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-400 text-sm">Max Borrowable</span>
-                          <span className="text-green-400 font-bold">{parseFloat(maxBorrowable).toFixed(2)} USDC</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-blue-400 text-sm font-medium mb-1">
-                        Note
-                      </p>
-                      <p className="text-gray-400 text-sm">
-                        These are default terms that can be adjusted for each
-                        individual loan request. Your actual borrowing capacity
-                        will be determined by your real-time CVS score.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleConfigureContinue}
-                  className="w-full py-4 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-xl font-bold text-lg hover:shadow-lg hover:shadow-orange-500/50 transition-all"
-                >
-                  Review Vault Details
-                </motion.button>
-              </div>
-            </div>
-          )}
-
-          {step === 4 && (
-            <div>
-              <div className="flex items-center gap-3 mb-6">
                 <div className="w-14 h-14 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center">
                   <CheckCircle2 className="w-7 h-7 text-white" />
                 </div>
                 <div>
                   <h2 className="text-2xl font-bold text-white">
-                    4. Review & Deploy Your Vault
+                    3. Review & Deploy Your Vault
                   </h2>
                   <p className="text-gray-400 text-sm">
                     Final confirmation before deployment
@@ -910,19 +799,6 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-5 bg-gray-900/50 rounded-xl border border-gray-700/50">
-                    <p className="text-gray-400 text-sm mb-1">Loan Currency</p>
-                    <p className="text-white font-bold">{loanCurrency}</p>
-                  </div>
-                  <div className="p-5 bg-gray-900/50 rounded-xl border border-gray-700/50">
-                    <p className="text-gray-400 text-sm mb-1">
-                      Default Duration
-                    </p>
-                    <p className="text-white font-bold">{loanDuration} days</p>
-                  </div>
-                </div>
-
                 <div className="p-5 bg-gray-900/50 rounded-xl border border-gray-700/50">
                   <div className="flex justify-between items-center">
                     <div>
@@ -986,7 +862,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
             </div>
           )}
 
-          {step === 5 && (
+          {step === 4 && (
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
