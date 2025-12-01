@@ -10,7 +10,7 @@ export const CONTRACTS = {
   LendingModule: '0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3' as const,
   LoanNFT: '0x9386262027dc860337eC4F93A8503aD4ee852c41' as const,
   StoryProtocolCore: '0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5' as const,
-  IPAssetRegistry: '0x292639452A975630802C17c9267169D93BD5a793' as const,
+  IPAssetRegistry: '0x77319B4031e6eF1250907aa00018B8B1c67a244b' as const, // Updated to official Aeneid deployment
   SPG: '0x69415CE984A79a3Cfbe3F51024C63b6C107331e3' as const,
 } as const;
 

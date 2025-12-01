@@ -1,5 +1,8 @@
 import { StoryClient, StoryConfig } from '@story-protocol/core-sdk';
-import { http, Address } from 'viem';
+import { http, Address, createPublicClient } from 'viem';
+import { storyTestnet } from '../wagmi';
+import { CONTRACTS } from '../contracts/addresses';
+import IPAssetRegistry_ABI from '../contracts/abis/IPAssetRegistry.json';
 
 /**
  * Initialize Story Protocol client with user's wallet
@@ -97,10 +100,105 @@ export async function mintLicenseTokens(
 
 /**
  * Get IP Asset details
+ * Note: The actual Story Protocol IPAssetRegistry only has isRegistered function.
+ * IP Assets are ERC-6551 token-bound accounts, so we check the account's owner via ERC-6551 interface.
  */
-export async function getIPAsset(client: StoryClient, ipId: Address) {
+export async function getIPAsset(ipId: Address) {
   try {
-    return await client.ipAsset.get(ipId);
+    // Create a public client for reading from the blockchain
+    const publicClient = createPublicClient({
+      chain: storyTestnet,
+      transport: http(),
+    });
+
+    // First, check if the IP Asset is registered
+    const isRegistered = await publicClient.readContract({
+      address: CONTRACTS.IPAssetRegistry,
+      abi: IPAssetRegistry_ABI.abi,
+      functionName: 'isRegistered',
+      args: [ipId],
+    }) as boolean;
+
+    if (!isRegistered) {
+      throw new Error('IP Asset not registered in Story Protocol');
+    }
+
+    // IP Assets are ERC-6551 token-bound accounts
+    // Try to get owner from the ERC-6551 account interface
+    const ERC6551_ABI = [
+      {
+        "inputs": [],
+        "name": "owner",
+        "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "token",
+        "outputs": [
+          {"internalType": "uint256", "name": "chainId", "type": "uint256"},
+          {"internalType": "address", "name": "tokenContract", "type": "address"},
+          {"internalType": "uint256", "name": "tokenId", "type": "uint256"}
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      }
+    ];
+
+    try {
+      // Get token info (NFT contract + token ID) from the IP Account
+      const [chainId, tokenContract, tokenId] = await publicClient.readContract({
+        address: ipId,
+        abi: ERC6551_ABI,
+        functionName: 'token',
+      }) as [bigint, Address, bigint];
+
+      // Now get the actual owner from the NFT contract
+      const ERC721_ABI = [
+        {
+          "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+          "name": "ownerOf",
+          "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+          "stateMutability": "view",
+          "type": "function"
+        }
+      ];
+
+      const owner = await publicClient.readContract({
+        address: tokenContract,
+        abi: ERC721_ABI,
+        functionName: 'ownerOf',
+        args: [tokenId],
+      }) as Address;
+
+      console.log('IP Asset details:', {
+        ipId,
+        tokenContract,
+        tokenId: tokenId.toString(),
+        owner,
+      });
+
+      return {
+        owner,
+        name: `IP Asset #${tokenId.toString()}`,
+        type: 1, // Default type
+        tokenContract,
+        tokenId: Number(tokenId),
+        chainId: Number(chainId),
+      };
+    } catch (accountError) {
+      console.warn('Could not read ERC-6551 account details:', accountError);
+      // If we can't get owner info, just return that it's registered
+      return {
+        owner: '0x0000000000000000000000000000000000000000' as Address,
+        name: 'IP Asset',
+        type: 1,
+        tokenContract: '0x0000000000000000000000000000000000000000' as Address,
+        tokenId: 0,
+        chainId: 1315,
+      };
+    }
   } catch (error) {
     console.error('Error fetching IP Asset:', error);
     throw error;
@@ -139,14 +237,10 @@ export async function registerDerivative(
 
 /**
  * Get royalty information for an IP Asset
+ * TODO: Implement when royalty module is needed
  */
 export async function getRoyaltyInfo(client: StoryClient, ipId: Address) {
-  try {
-    // This would use the royalty module from Story Protocol
-    // Implementation depends on the specific royalty contract
-    return await client.ipAsset.get(ipId);
-  } catch (error) {
-    console.error('Error fetching royalty info:', error);
-    throw error;
-  }
+  // This would use the royalty module from Story Protocol
+  // Implementation depends on the specific royalty contract
+  throw new Error('getRoyaltyInfo not yet implemented - requires royalty module contract integration');
 }
