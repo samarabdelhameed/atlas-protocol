@@ -51,6 +51,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
   const [vaultAddress, setVaultAddress] = useState<string>("");
   const [transactionHash, setTransactionHash] = useState<string>("");
   const [vaultCreationError, setVaultCreationError] = useState<string>("");
+  const [vaultExistsError, setVaultExistsError] = useState(false);
   // Prefer backend base endpoint, fallback to legacy verification endpoint or default
   const WORLD_ID_APP_ID = import.meta.env.VITE_WORLD_ID_APP_ID || "";
   const WORLD_ID_ACTION =
@@ -287,6 +288,17 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
   };
 
   const handleDeployVault = async () => {
+    // If existing vault was detected, just show it
+    if (existingVaultAddress && vaultAddress) {
+      setIsDeploying(true);
+      setTransactionHash("N/A - Existing Vault");
+      setTimeout(() => {
+        setIsDeploying(false);
+        setStep(4);
+      }, 1000);
+      return;
+    }
+
     // If vault was already created during World ID verification, just show it
     if (vaultAddress && transactionHash) {
       setIsDeploying(true);
@@ -345,13 +357,15 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
             setIsDeploying(false);
             setStep(4);
           } else {
+            setVaultExistsError(true);
             setVaultCreationError(
               errorData.error ||
-                "Vault already exists. Please use a different IP Asset ID."
+                "A vault already exists for this IP Asset. Please select a different IP Asset ID or check the existing vault in your dashboard."
             );
             setIsDeploying(false);
           }
         } else {
+          setVaultExistsError(false);
           setVaultCreationError(
             errorData.error || errorData.details || "Failed to deploy vault"
           );
@@ -885,18 +899,62 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                     transition={{
                       duration: 1,
                     }}
-                    className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-red-500 to-red-600 rounded-full flex items-center justify-center"
+                    className={`w-24 h-24 mx-auto mb-6 bg-gradient-to-br rounded-full flex items-center justify-center ${
+                      vaultExistsError
+                        ? 'from-yellow-500 to-amber-600'
+                        : 'from-red-500 to-red-600'
+                    }`}
                   >
-                    <AlertCircle className="w-12 h-12 text-white" />
+                    {vaultExistsError ? (
+                      <AlertTriangle className="w-12 h-12 text-white" />
+                    ) : (
+                      <AlertCircle className="w-12 h-12 text-white" />
+                    )}
                   </motion.div>
 
                   <h2 className="text-3xl font-bold text-white mb-3">
-                    Vault Deployment Error
+                    {vaultExistsError ? "Vault Already Exists" : "Vault Deployment Error"}
                   </h2>
-                  <p className="text-red-400 mb-8">{vaultCreationError}</p>
-                  <p className="text-gray-400 text-sm mb-8">
-                    Please check your connection and try again.
+                  <p className={`mb-4 ${vaultExistsError ? 'text-yellow-400' : 'text-red-400'}`}>
+                    {vaultCreationError}
                   </p>
+
+                  {vaultExistsError ? (
+                    <div className="space-y-6 mb-8">
+                      <p className="text-gray-400 text-sm">
+                        You can either try with a different IP Asset or view your existing vaults in the dashboard.
+                      </p>
+                      <div className="flex gap-4 justify-center flex-wrap">
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => {
+                            setStep(1);
+                            setIpAssetId("");
+                            setValidationSuccess(false);
+                            setVaultCreationError("");
+                            setVaultExistsError(false);
+                            setIsDeploying(false);
+                          }}
+                          className="px-6 py-3 bg-gradient-to-r from-orange-500 to-amber-600 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-orange-500/50 transition-all"
+                        >
+                          Try Different IP Asset
+                        </motion.button>
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => window.location.href = '/dashboard'}
+                          className="px-6 py-3 bg-gray-700 text-white rounded-xl font-semibold hover:bg-gray-600 transition-all"
+                        >
+                          View Dashboard
+                        </motion.button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-gray-400 text-sm mb-8">
+                      Please check your connection and try again.
+                    </p>
+                  )}
                 </>
               ) : vaultAddress && transactionHash ? (
                 <>
