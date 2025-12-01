@@ -3,7 +3,6 @@ import {
   Brain,
   Sparkles,
   Database,
-  Zap,
   CheckCircle2,
   Star,
   TrendingUp,
@@ -11,20 +10,143 @@ import {
   Users,
   Activity,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { parseUnits } from 'viem';
+import { CONTRACTS } from '../contracts/addresses';
+import ADLV_ABI from '../contracts/abis/ADLV.json';
 
-interface LicensingProps {
-  onNavigate?: (page: string) => void;
+
+
+interface LicenseTier {
+  id: string;
+  name: string;
+  price: string;
+  period: string;
+  color: string;
+  cvsImpact: string;
+  features: string[];
+  popular: boolean;
 }
 
-export default function Licensing({ onNavigate }: LicensingProps = {}) {
+interface PurchaseDetails {
+  tier: string;
+  price: string;
+  txHash: string;
+  organization: string;
+  email: string;
+  cvsImpact: string;
+  vaultAddress: string;
+}
+
+export default function Licensing() {
+  // Wallet and account
+  const { address } = useAccount();
+
+  // State management
   const [selectedTier, setSelectedTier] = useState<string | null>(null);
-  const [purchaseDetails, setPurchaseDetails] = useState<any>(null);
-  const [pendingTier, setPendingTier] = useState<any | null>(null);
+  const [purchaseDetails, setPurchaseDetails] = useState<PurchaseDetails | null>(null);
+  const [pendingTier, setPendingTier] = useState<LicenseTier | null>(null);
   const [showBuyerModal, setShowBuyerModal] = useState(false);
   const [buyerInfo, setBuyerInfo] = useState({ name: '', organization: '', email: '' });
   const [formErrors, setFormErrors] = useState<{ name?: string; organization?: string; email?: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedVault, setSelectedVault] = useState('');
+
+  // Fetch user's vaults for dropdown
+  const { data: userVaults } = useReadContract({
+    address: CONTRACTS.ADLV,
+    abi: ADLV_ABI.abi,
+    functionName: 'getUserVaults',
+    args: [address],
+    query: {
+      enabled: !!address,
+    },
+  });
+
+  // Helper to parse price string to Wei
+  const parseLicensePrice = (priceString: string): bigint => {
+    if (priceString === 'Custom') return 0n;
+    // "$1,500" → "1500" → 1500 * 10^18 Wei
+    const numericPrice = priceString.replace(/[$,]/g, '');
+    return parseUnits(numericPrice, 18);
+  };
+
+  // Map frontend tier IDs to contract license types
+  const tierToLicenseType = {
+    'basic': 'BASIC',
+    'commercial': 'COMMERCIAL',
+    'enterprise': 'ENTERPRISE',
+  } as const;
+
+  // Contract write for sellLicense
+  const { writeContract: purchaseLicense, data: txHash } = useWriteContract();
+
+  // Transaction monitoring
+  const { isLoading: isWaitingForTx } = useWaitForTransactionReceipt({
+    hash: txHash,
+  });
+
+  // Handle transaction success
+  useEffect(() => {
+    if (txHash && !isWaitingForTx) {
+      // Update purchase details with real data
+      setPurchaseDetails({
+        tier: pendingTier?.name || "",
+        price: pendingTier?.price || "",
+        txHash: txHash,
+        organization: buyerInfo.organization,
+        email: buyerInfo.email,
+        cvsImpact: pendingTier?.cvsImpact || "",
+        vaultAddress: selectedVault,
+      });
+
+      // Close buyer modal, show confirmation
+      setShowBuyerModal(false);
+      setSelectedTier(pendingTier?.id as string);
+
+      // Update recent purchases
+      if (pendingTier) {
+        setRecentPurchases((prev) => [
+          {
+            company: buyerInfo.organization || "Unknown Org",
+            tier: pendingTier.name,
+            date: "Just now",
+            amount: pendingTier.price,
+            cvsImpact: pendingTier.cvsImpact,
+            creator: "N/A",
+          },
+          ...prev,
+        ]);
+      }
+
+      // Send metadata to backend (non-blocking)
+      (async () => {
+        try {
+          const agentUrl = import.meta.env.VITE_AGENT_API_URL || 'http://localhost:3001';
+          await fetch(`${agentUrl}/licenses/metadata`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              personalName: buyerInfo.name,
+              organization: buyerInfo.organization,
+              email: buyerInfo.email,
+              tierId: pendingTier?.id,
+              tierName: pendingTier?.name,
+              amount: pendingTier?.price,
+              vaultAddress: selectedVault,
+              transactionHash: txHash,
+            }),
+          });
+        } catch (error) {
+          // Silent fail - metadata logging is not critical
+          console.warn('Backend metadata logging failed:', error);
+        } finally {
+          setIsSubmitting(false);
+        }
+      })();
+    }
+  }, [txHash, isWaitingForTx, pendingTier, buyerInfo, selectedVault]);
 
   const tiers = [
     {
@@ -141,60 +263,56 @@ export default function Licensing({ onNavigate }: LicensingProps = {}) {
     },
   ]);
 
-  const handlePurchase = (tier: any) => {
+
+  const handlePurchase = (tier: LicenseTier) => {
+    // Validate wallet connection
+    if (!address) {
+      alert('Please connect your wallet first');
+      return;
+    }
+
+    // Validate vault selected
+    if (!selectedVault) {
+      alert('Please select a vault first');
+      return;
+    }
+
     setPendingTier(tier);
     setShowBuyerModal(true);
   };
 
   const submitMetadata = async () => {
     setIsSubmitting(true);
-    const hasAgent = typeof import.meta !== "undefined" && (import.meta as any).env && (import.meta as any).env.VITE_AGENT_API_URL;
+    setFormErrors({});
+
     try {
-      if (hasAgent) {
-        const url = (import.meta as any).env.VITE_AGENT_API_URL + "/licenses/metadata";
-        await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            personalName: buyerInfo.name,
-            organization: buyerInfo.organization,
-            email: buyerInfo.email,
-            tierId: pendingTier?.id,
-            tierName: pendingTier?.name,
-            amount: pendingTier?.price,
-          }),
-        }).catch(() => {});
-      } else {
-        await new Promise((r) => setTimeout(r, 600));
+      if (!pendingTier || !selectedVault) {
+        throw new Error('Missing required data');
       }
-    } finally {
-      const tx = "0x" + Math.random().toString(16).substr(2, 40);
-      if (pendingTier) {
-        setPurchaseDetails({
-          tier: pendingTier.name,
-          price: pendingTier.price,
-          cvsImpact: pendingTier.cvsImpact,
-          txHash: tx,
-          creatorWallet: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
-          estimatedIndexing: "~30 seconds",
-          organization: buyerInfo.organization,
-          email: buyerInfo.email,
-          personalName: buyerInfo.name,
-        });
-        setSelectedTier(pendingTier.id);
-        setRecentPurchases((prev) => [
-          {
-            company: buyerInfo.organization || "Unknown Org",
-            tier: pendingTier.name,
-            date: "Just now",
-            amount: pendingTier.price,
-            cvsImpact: pendingTier.cvsImpact,
-            creator: "N/A",
-          },
-          ...prev,
-        ]);
-      }
-      setShowBuyerModal(false);
+
+      // Prepare contract arguments
+      const licenseType = tierToLicenseType[pendingTier.id as keyof typeof tierToLicenseType] || 'BASIC';
+      const duration = BigInt(30 * 24 * 60 * 60); // 30 days in seconds
+      const price = parseLicensePrice(pendingTier.price);
+
+      // Call smart contract
+      purchaseLicense?.({
+        address: CONTRACTS.ADLV,
+        abi: ADLV_ABI.abi,
+        functionName: 'sellLicense',
+        args: [
+          selectedVault as `0x${string}`,
+          licenseType,
+          duration,
+        ],
+        value: price,
+      });
+
+      // Note: Transaction monitoring will handle success/failure via useWaitForTransaction
+      // Don't set isSubmitting to false here - let onSuccess/onError handle it
+    } catch (error) {
+      console.error('Error initiating transaction:', error);
+      setFormErrors({ email: 'Failed to initiate transaction. Please try again.' });
       setIsSubmitting(false);
     }
   };
@@ -285,6 +403,34 @@ export default function Licensing({ onNavigate }: LicensingProps = {}) {
             Choose Your Plan
           </h2>
 
+          {address && (
+            <div className="mb-8 max-w-md mx-auto">
+              <label className="block text-gray-300 text-sm font-medium mb-2">
+                Select Vault to Sell License From
+              </label>
+              <select
+                value={selectedVault}
+                onChange={(e) => setSelectedVault(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-900/50 border border-gray-700 rounded-xl text-white focus:border-orange-500 focus:outline-none transition-colors"
+              >
+                <option value="">Choose a vault...</option>
+                {Array.isArray(userVaults) && userVaults.map((vault) => {
+                  const vaultAddress = vault as string;
+                  return (
+                    <option key={vaultAddress} value={vaultAddress}>
+                      {vaultAddress.slice(0, 6)}...{vaultAddress.slice(-4)}
+                    </option>
+                  );
+                })}
+              </select>
+              {!selectedVault && (
+                <p className="text-amber-400 text-xs mt-2">
+                  ⚠️ Select a vault before purchasing a license
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {tiers.map((tier, index) => (
               <motion.div
@@ -364,15 +510,22 @@ export default function Licensing({ onNavigate }: LicensingProps = {}) {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => handlePurchase(tier)}
+                    disabled={!address || !selectedVault || isSubmitting || isWaitingForTx}
                     className={`w-full py-4 rounded-2xl font-bold text-lg transition-all duration-300 ${
                       tier.popular
                         ? "bg-gradient-to-b from-orange-950/40 to-transparent border-2 border-orange-500 text-white shadow-[0_0_30px_rgba(249,115,22,0.4)] hover:shadow-[0_0_50px_rgba(249,115,22,0.6)]"
                         : "bg-gradient-to-b from-gray-950/40 to-transparent border-2 border-gray-600 text-white shadow-[0_0_15px_rgba(156,163,175,0.2)] hover:shadow-[0_0_25px_rgba(156,163,175,0.4)]"
-                    }`}
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
                   >
-                    {tier.price === "Custom"
-                      ? "Contact Sales"
-                      : "Purchase License"}
+                    {!address
+                      ? 'Connect Wallet'
+                      : !selectedVault
+                      ? 'Select Vault First'
+                      : isWaitingForTx
+                      ? 'Processing Transaction...'
+                      : tier.price === 'Custom'
+                      ? 'Contact Sales'
+                      : 'Purchase License'}
                   </motion.button>
                 </div>
               </motion.div>
@@ -545,17 +698,21 @@ export default function Licensing({ onNavigate }: LicensingProps = {}) {
             <div className="flex gap-3">
               <button
                 onClick={() => setShowBuyerModal(false)}
-                disabled={isSubmitting}
-                className="flex-1 py-3 bg-gray-700 text-white rounded-2xl font-medium"
+                disabled={isSubmitting || isWaitingForTx}
+                className="flex-1 py-3 bg-gray-700 text-white rounded-2xl font-medium disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={() => { if (validateBuyerInfo()) submitMetadata(); }}
-                disabled={isSubmitting}
-                className="flex-1 py-3 bg-gradient-to-b from-orange-950/40 to-transparent border-2 border-orange-500 text-white rounded-2xl font-bold shadow-[0_0_30px_rgba(249,115,22,0.4)] hover:shadow-[0_0_50px_rgba(249,115,22,0.6)] transition-all duration-300"
+                disabled={isSubmitting || isWaitingForTx}
+                className="flex-1 py-3 bg-gradient-to-b from-orange-950/40 to-transparent border-2 border-orange-500 text-white rounded-2xl font-bold shadow-[0_0_30px_rgba(249,115,22,0.4)] hover:shadow-[0_0_50px_rgba(249,115,22,0.6)] transition-all duration-300 disabled:opacity-50"
               >
-                {isSubmitting ? 'Processing...' : 'Continue'}
+                {isWaitingForTx
+                  ? 'Waiting for Transaction...'
+                  : isSubmitting
+                  ? 'Processing...'
+                  : 'Complete Purchase'}
               </button>
             </div>
           </motion.div>
@@ -622,23 +779,33 @@ export default function Licensing({ onNavigate }: LicensingProps = {}) {
                 </span>
               </div>
               <div className="p-3 bg-gray-900/50 rounded-lg border border-gray-700">
-                <div className="flex justify-between mb-1">
+                <div className="flex justify-between items-center mb-1">
                   <span className="text-gray-400 text-sm">
                     Transaction Hash
                   </span>
-                  <span className="text-amber-400 text-xs font-mono">
+                  <a
+                    href={`https://aeneid.storyscan.io/tx/${purchaseDetails.txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-orange-400 hover:text-orange-300 text-xs font-mono underline"
+                  >
                     {purchaseDetails.txHash.slice(0, 10)}...
                     {purchaseDetails.txHash.slice(-8)}
-                  </span>
+                  </a>
                 </div>
               </div>
               <div className="p-3 bg-gray-900/50 rounded-lg border border-gray-700">
-                <div className="flex justify-between mb-1">
-                  <span className="text-gray-400 text-sm">Creator Wallet</span>
-                  <span className="text-white text-xs font-mono">
-                    {purchaseDetails.creatorWallet.slice(0, 6)}...
-                    {purchaseDetails.creatorWallet.slice(-4)}
-                  </span>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-gray-400 text-sm">Vault Address</span>
+                  <a
+                    href={`https://aeneid.storyscan.io/address/${purchaseDetails.vaultAddress}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-white hover:text-orange-400 text-xs font-mono underline"
+                  >
+                    {purchaseDetails.vaultAddress?.slice(0, 6)}...
+                    {purchaseDetails.vaultAddress?.slice(-4)}
+                  </a>
                 </div>
               </div>
               <div className="p-4 bg-gradient-to-r from-violet-500/10 to-pink-500/10 rounded-lg border border-orange-500/30">
@@ -650,9 +817,9 @@ export default function Licensing({ onNavigate }: LicensingProps = {}) {
                 </div>
                 <div className="space-y-1 text-xs text-gray-400">
                   <div className="flex justify-between">
-                    <span>Contract Call:</span>
+                    <span>Contract:</span>
                     <span className="text-amber-400 font-mono">
-                      ADLV.depositLicenseRevenue()
+                      ADLV.sellLicense()
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -664,7 +831,7 @@ export default function Licensing({ onNavigate }: LicensingProps = {}) {
                   <div className="flex justify-between">
                     <span>Indexing:</span>
                     <span className="text-green-400">
-                      Goldsky ({purchaseDetails.estimatedIndexing})
+                      Goldsky (Real-time)
                     </span>
                   </div>
                 </div>

@@ -428,12 +428,14 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
             <div className="mb-6">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-gray-400 text-sm">Max Liquidity (CVS Limit)</span>
-                <span className="text-white font-bold">$4,271</span>
+                <span className="text-white font-bold">
+                  ${totalMaxBorrowable.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </span>
               </div>
               <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
                 <motion.div
                   initial={{ width: 0 }}
-                  animate={{ width: '50%' }}
+                  animate={{ width: `${Math.min((totalCVS / 10000) * 100, 100)}%` }}
                   transition={{ duration: 1, delay: 0.8 }}
                   className="h-full bg-gradient-to-r from-orange-500 to-amber-600"
                 />
