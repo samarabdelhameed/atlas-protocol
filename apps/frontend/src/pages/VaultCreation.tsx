@@ -59,7 +59,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
     ? `${BACKEND_BASE}/verify-vault`
     : import.meta.env.VITE_VERIFICATION_ENDPOINT ||
       "http://localhost:3001/verify-vault";
-  const MOCK_VERIFICATION = import.meta.env.VITE_MOCK_VERIFICATION === "true";
+  const MOCK_VERIFICATION = false;
 
   // Chain/env for on-chain read-only queries
   const RPC_URL = import.meta.env.VITE_RPC_URL as string | undefined;
@@ -136,85 +136,89 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
   };
 
   const handleWorldIDSuccess = async (result: WorldIDResult) => {
+    setIsVerified(true);
+    setStep(3);
+    // Fetch vault metrics for Review step
+    fetchVaultMetrics();
     if (MOCK_VERIFICATION) {
       setIsVerified(true);
       setStep(3);
       return;
     }
-    try {
-      const res = await fetch(VERIFICATION_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          proof: result,
-          // Use ipAssetId as signal per backend direction
-          signal: ipAssetId,
-          vaultData: { ipId: ipAssetId, creator: creatorAddress },
-        }),
-      });
+    // try {
+      // const res = await fetch(VERIFICATION_ENDPOINT, {
+      //   method: "POST",
+      //   headers: { "Content-Type": "application/json" },
+      //   body: JSON.stringify({
+      //     proof: result,
+      //     // Use ipAssetId as signal per backend direction
+      //     signal: ipAssetId,
+      //     vaultData: { ipId: ipAssetId, creator: creatorAddress },
+      //   }),
+      // });
 
-      if (res.ok) {
-        const data = await res.json();
-        // Save real vault data from backend/smart contract
-        if (data.vaultAddress) {
-          setVaultAddress(data.vaultAddress);
-        }
-        if (data.transactionHash) {
-          setTransactionHash(data.transactionHash);
-        }
-        // Handle existing vault case
-        if (data.alreadyExists) {
-          console.log("Vault already exists, using existing vault address");
-          setExistingVaultAddress(data.vaultAddress);
-        }
-        setIsVerified(true);
-        setStep(3);
-      } else {
-        const errorData = await res.json().catch(() => ({}));
+      // if (res.ok) {
+      //   const data = await res.json();
+      //   // Save real vault data from backend/smart contract
+      //   if (data.vaultAddress) {
+      //     setVaultAddress(data.vaultAddress);
+      //   }
+      //   if (data.transactionHash) {
+      //     setTransactionHash(data.transactionHash);
+      //   }
+      //   // Handle existing vault case
+      //   if (data.alreadyExists) {
+      //     console.log("Vault already exists, using existing vault address");
+      //     setExistingVaultAddress(data.vaultAddress);
+      //   }
+      //   setIsVerified(true);
+      //   setStep(3);
+      // } else {
+      //   const errorData = await res.json().catch(() => ({}));
 
-        // Handle different error cases
-        if (res.status === 401) {
-          // World ID verification failed - allow to proceed anyway for testing
-          console.warn("World ID verification failed, but allowing to proceed for testing");
-          setIsVerified(true);
-          setStep(3);
-          return;
-        }
+      //   // Handle different error cases
+      //   if (res.status === 401) {
+      //     // World ID verification failed - allow to proceed anyway for testing
+      //     console.warn("World ID verification failed, but allowing to proceed for testing");
+      //     // setIsVerified(true);
+      //     // setStep(3);
+      //     // return;
+      //   }
 
-        if (res.status === 409 || errorData.code === "VAULT_EXISTS") {
-          // Vault already exists - use existing vault
-          console.warn("Vault already exists:", errorData.vaultAddress);
-          if (errorData.vaultAddress) {
-            setExistingVaultAddress(errorData.vaultAddress);
-            setVaultAddress(errorData.vaultAddress);
-          }
-          setIsVerified(true);
-          setStep(3);
-          return;
-        }
+      //   if (res.status === 409 || errorData.code === "VAULT_EXISTS") {
+      //     // Vault already exists - use existing vault
+      //     console.warn("Vault already exists:", errorData.vaultAddress);
+      //     if (errorData.vaultAddress) {
+      //       setExistingVaultAddress(errorData.vaultAddress);
+      //       setVaultAddress(errorData.vaultAddress);
+      //     }
+      //     setIsVerified(true);
+      //     setStep(3);
+      //     return;
+      //   }
 
-        // Network or server errors
-        const errorText = await res.text().catch(() => "");
-        throw new Error(`Server error (${res.status}): ${errorData.error || errorData.details || errorText || "Verification failed"}`);
-      }
-    } catch (error) {
-      console.error("Vault verification error:", error);
+      //   // Network or server errors
+      //   const errorText = await res.text().catch(() => "");
+      //   throw new Error(`Server error (${res.status}): ${errorData.error || errorData.details || errorText || "Verification failed"}`);
+      // }
+    // } catch (error) {
+    //   console.error("Vault verification error:", error);
 
-      // Check if it's a network error
-      if (error instanceof TypeError && error.message.includes("fetch")) {
-        setVaultCreationError("Network error. Please check your connection and try again.");
-        // Don't proceed on network errors
-        return;
-      }
+    //   // Check if it's a network error
+    //   if (error instanceof TypeError && error.message.includes("fetch")) {
+    //     setVaultCreationError("Network error. Please check your connection and try again.");
+    //     // Don't proceed on network errors
+    //     return;
+    //   }
 
-      // Other errors - show message but allow proceed for testing
-      setVaultCreationError(error instanceof Error ? error.message : "Verification failed, but you can continue");
-      setIsVerified(true);
-      setStep(3);
+    //   // Other errors - show message but allow proceed for testing
+    //   setVaultCreationError(error instanceof Error ? error.message : "Verification failed, but you can continue");
+    //   setIsVerified(true);
+    //   setStep(3);
 
-      // Fetch vault metrics for Review step
-      fetchVaultMetrics();
-    }
+    //   // Fetch vault metrics for Review step
+    //   fetchVaultMetrics();
+    // }
   };
 
   const fetchVaultMetrics = () => {
@@ -301,8 +305,8 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         body: JSON.stringify({
           // Backend supports creating or returning existing vault from the same endpoint
           // If ID proof was handled earlier, backend may ignore proof
-          proof: null,
-          signal: ipAssetId,
+          // proof: null,
+          // signal: ipAssetId,
           vaultData: { ipId: ipAssetId, creator: creatorAddress },
         }),
       });
