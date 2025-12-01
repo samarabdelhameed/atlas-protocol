@@ -22,6 +22,13 @@ interface VaultCreationProps {
   onNavigate?: (page: string) => void;
 }
 
+interface WorldIDResult {
+  proof: string;
+  merkle_root: string;
+  nullifier_hash: string;
+  verification_level: string;
+}
+
 export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
   const [step, setStep] = useState(1);
   const [ipAssetId, setIpAssetId] = useState("");
@@ -113,15 +120,15 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         setTimeout(() => {
           setStep(2);
         }, 800);
-      } catch (e: any) {
-        setValidationError(e?.message || "Error validating IP Asset");
+      } catch (e) {
+        setValidationError(e instanceof Error ? e.message : "Error validating IP Asset");
         setIsValidating(false);
       }
     };
     run();
   };
 
-  const handleWorldIDSuccess = async (result: any) => {
+  const handleWorldIDSuccess = async (result: WorldIDResult) => {
     if (MOCK_VERIFICATION) {
       setIsVerified(true);
       setStep(3);
@@ -183,7 +190,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         const errorText = await res.text().catch(() => "");
         throw new Error(`Server error (${res.status}): ${errorData.error || errorData.details || errorText || "Verification failed"}`);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Vault verification error:", error);
 
       // Check if it's a network error
@@ -194,7 +201,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
       }
 
       // Other errors - show message but allow proceed for testing
-      setVaultCreationError(error.message || "Verification failed, but you can continue");
+      setVaultCreationError(error instanceof Error ? error.message : "Verification failed, but you can continue");
       setIsVerified(true);
       setStep(3);
     }
@@ -214,7 +221,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
             functionName: "getCVS",
             args: [ipBytes32],
           })
-          .then((cvs: bigint) => setCvsScore(formatUnits(cvs, 18)))
+          .then((cvs) => setCvsScore(formatUnits(cvs as bigint, 18)))
           .catch(() => setCvsScore(""));
       }
       // Existing vault detection via ipToVault; reflect in UI and compute max borrowable
@@ -227,10 +234,11 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
             functionName: "ipToVault",
             args: [ipBytes32],
           })
-          .then((addr: `0x${string}`) => {
-            if (addr && addr !== "0x0000000000000000000000000000000000000000") {
-              setExistingVaultAddress(addr);
-              setVaultAddress(addr);
+          .then((addr) => {
+            const vaultAddr = addr as `0x${string}`;
+            if (vaultAddr && vaultAddr !== "0x0000000000000000000000000000000000000000") {
+              setExistingVaultAddress(vaultAddr);
+              setVaultAddress(vaultAddr);
               publicClient
                 .readContract({
                   address: ADLV_ADDRESS,
@@ -238,7 +246,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                   functionName: "calculateMaxLoanAmount",
                   args: [addr],
                 })
-                .then((amt: bigint) => setMaxBorrowable(formatUnits(amt, 18)))
+                .then((amt) => setMaxBorrowable(formatUnits(amt as bigint, 18)))
                 .catch(() => setMaxBorrowable(""));
             } else {
               setExistingVaultAddress("");
@@ -254,7 +262,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
             functionName: "calculateMaxLoanAmount",
             args: [vaultAddress],
           })
-          .then((amt: bigint) => setMaxBorrowable(formatUnits(amt, 18)))
+          .then((amt) => setMaxBorrowable(formatUnits(amt as bigint, 18)))
           .catch(() => setMaxBorrowable(""));
       }
     } catch (error) {
@@ -334,9 +342,9 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
           setIsDeploying(false);
         }
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Vault deployment error:", error);
-      setVaultCreationError(error.message || "Network error during deployment");
+      setVaultCreationError(error instanceof Error ? error.message : "Network error during deployment");
       setIsDeploying(false);
     }
   };

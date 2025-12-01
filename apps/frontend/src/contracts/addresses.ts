@@ -5,8 +5,8 @@
  */
 
 export const CONTRACTS = {
-  ADLV: '0x572C39bE4E794Fac01f0CdfAe2d2471C52E49713' as const,
-  IDO: '0xeF83DB9b011261Ad3a76ccE8B7E54B2c055300D8' as const,
+  ADLV: '0xFe9E0Dd8893F71303ACF8164462d323905199669' as const, // v4.1 - Cross-chain support with Owlto Bridge
+  IDO: '0x64A5997775e59Ae304662D0850B281A5a224E0cf' as const, // v4.1 - Updated ownership structure
   LendingModule: '0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3' as const,
   LoanNFT: '0x9386262027dc860337eC4F93A8503aD4ee852c41' as const,
   StoryProtocolCore: '0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5' as const,
