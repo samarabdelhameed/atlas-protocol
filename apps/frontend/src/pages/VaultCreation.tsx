@@ -143,11 +143,11 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
     setProof(result.proof);
     // Fetch vault metrics for Review step
     fetchVaultMetrics();
-    if (MOCK_VERIFICATION) {
-      setIsVerified(true);
-      setStep(3);
-      return;
-    }
+    // if (MOCK_VERIFICATION) {
+    //   setIsVerified(true);
+    //   setStep(3);
+    //   return;
+    // }
     // try {
       // const res = await fetch(VERIFICATION_ENDPOINT, {
       //   method: "POST",
@@ -308,8 +308,8 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
         body: JSON.stringify({
           // Backend supports creating or returning existing vault from the same endpoint
           // If ID proof was handled earlier, backend may ignore proof
-          proof: proof,
-          signal: ipAssetId || "vault_creation",
+          // proof: proof,
+          // signal: ipAssetId || "vault_creation",
           vaultData: { ipId: ipAssetId, creator: creatorAddress },
         }),
       });
