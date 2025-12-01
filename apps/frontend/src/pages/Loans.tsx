@@ -342,6 +342,8 @@ export default function Loans() {
     { id: 'story', name: 'Story', currency: 'ETH', color: 'from-orange-400 to-amber-600' },
     { id: 'base', name: 'Base', currency: 'USDC', color: 'from-blue-500 to-indigo-600' },
     { id: 'arbitrum', name: 'Arbitrum', currency: 'USDC', color: 'from-cyan-400 to-cyan-600' },
+    { id: 'optimism', name: 'Optimism', currency: 'USDC', color: 'from-red-500 to-pink-600' },
+    { id: 'polygon', name: 'Polygon', currency: 'USDC', color: 'from-purple-500 to-violet-600' },
   ];
 
   const collateralRatio = collateralBps / 100;
@@ -432,7 +434,7 @@ export default function Loans() {
                 <label className="block text-gray-300 text-sm font-medium mb-3">
                   Where do you want to receive your loan?
                 </label>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                   {chains.map((chain) => (
                     <motion.button
                       key={chain.id}
