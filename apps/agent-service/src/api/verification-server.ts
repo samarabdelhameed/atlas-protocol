@@ -144,7 +144,7 @@ export class VerificationServer {
       if (!isVerified) {
         console.log(`❌ World ID proof verification failed for creator: ${vaultData.creator}`);
         return this.jsonResponse(
-          { error: 'World ID proof failed validation.' },
+          { error: 'World ID proof failed validation.', proof, signal },
           401
         );
       }
