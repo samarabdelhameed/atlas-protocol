@@ -535,15 +535,18 @@ export class LoanManager {
     }
 
     try {
-      // Convert ipId string to bytes32 using keccak256 (same as in tests)
-      // If ipId is already a hex string (0x...), use it directly, otherwise hash it
+      // Convert ipId to bytes32
+      // IP Asset IDs in Story Protocol are addresses (42 chars), need to pad to bytes32
       let ipIdBytes32: string;
       if (ipId.startsWith('0x') && ipId.length === 66) {
         // Already a bytes32 hex string
         ipIdBytes32 = ipId;
+      } else if (ipId.startsWith('0x') && ipId.length === 42) {
+        // It's an address, pad it to bytes32 (left-pad)
+        ipIdBytes32 = '0x' + ipId.slice(2).padStart(64, '0');
       } else {
-        // Hash the string to bytes32
-        ipIdBytes32 = keccak256(toUtf8Bytes(ipId));
+        // Invalid format
+        throw new Error('Invalid ipId format. Must be an address (0x... 42 chars) or bytes32 (0x... 66 chars)');
       }
 
       // Call createVault on ADLV contract
