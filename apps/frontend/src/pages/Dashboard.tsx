@@ -22,13 +22,14 @@ interface VaultData {
   maxLoan: bigint;
 }
 
-interface LicenseSaleLog {
-  blockNumber: bigint;
-  args: {
-    price?: bigint;
-    ipId?: string;
-    licensee?: string;
-  };
+interface LicenseMetadata {
+  personalName: string;
+  organization: string;
+  email: string;
+  tierId: string;
+  tierName: string;
+  amount: string;
+  timestamp: string;
 }
 
 export default function Dashboard({ onNavigate }: DashboardProps = {}) {
@@ -49,7 +50,7 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
     });
   }, [RPC_URL, CHAIN_ID]);
 
-  // Fetch user's vaults
+  // Fetch user's vaults with optimized caching
   const { data: userVaults, isLoading: isLoadingVaults } = useQuery({
     queryKey: ['userVaults', address],
     queryFn: async () => {
@@ -63,25 +64,35 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
       return vaults as `0x${string}`[];
     },
     enabled: !!address && !!publicClient,
-    refetchInterval: 10000, // Refetch every 10 seconds
+    staleTime: 30_000, // Consider data fresh for 30 seconds
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+    refetchInterval: 30_000, // Refetch every 30 seconds (reduced from 10s)
   });
 
-  // Fetch details for each vault
+  // Fetch details for each vault with optimized caching and parallel requests
   const vaultQueries = useQueries({
     queries: (userVaults || []).map((vaultAddr) => ({
       queryKey: ['vault', vaultAddr],
       queryFn: async (): Promise<VaultData | null> => {
         if (!publicClient) return null;
 
-        // Get vault details
-        const vault = await publicClient.readContract({
-          address: CONTRACTS.ADLV,
-          abi: ADLV_ABI.abi,
-          functionName: 'getVault',
-          args: [vaultAddr],
-        }) as { ipId: `0x${string}`; creator: string; totalLiquidity: bigint };
+        // Parallel fetch all vault data for better performance
+        const [vault, maxLoan] = await Promise.all([
+          publicClient.readContract({
+            address: CONTRACTS.ADLV,
+            abi: ADLV_ABI.abi,
+            functionName: 'getVault',
+            args: [vaultAddr],
+          }) as Promise<{ ipId: `0x${string}`; creator: string; totalLiquidity: bigint }>,
+          publicClient.readContract({
+            address: CONTRACTS.ADLV,
+            abi: ADLV_ABI.abi,
+            functionName: 'calculateMaxLoanAmount',
+            args: [vaultAddr],
+          }) as Promise<bigint>,
+        ]);
 
-        // Get CVS score
+        // Get CVS score after we have the ipId
         const cvs = await publicClient.readContract({
           address: CONTRACTS.IDO,
           abi: IDO_ABI.abi,
@@ -89,17 +100,11 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
           args: [vault.ipId],
         }) as bigint;
 
-        // Get max loan amount
-        const maxLoan = await publicClient.readContract({
-          address: CONTRACTS.ADLV,
-          abi: ADLV_ABI.abi,
-          functionName: 'calculateMaxLoanAmount',
-          args: [vaultAddr],
-        }) as bigint;
-
         return { address: vaultAddr, ...vault, cvs, maxLoan };
       },
       enabled: !!publicClient,
+      staleTime: 30_000, // Consider data fresh for 30 seconds
+      gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
     })),
   });
 
@@ -113,13 +118,6 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
   );
 
   // Event ABIs for parsing ADLV logs (real events from chain)
-  const evLicenseSold = useMemo(
-    () =>
-      parseAbiItem(
-        "event LicenseSold(address indexed vaultAddress, bytes32 indexed ipId, address indexed licensee, uint256 price, string licenseType)"
-      ),
-    []
-  );
   const evLoanIssued = useMemo(
     () =>
       parseAbiItem(
@@ -129,56 +127,64 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
   );
 
   const [chartData, setChartData] = useState<number[]>([]);
-  const [licenseSalesData, setLicenseSalesData] = useState<LicenseSaleLog[]>([]);
   const [activeLoansCount, setActiveLoansCount] = useState(0);
   const [totalRevenue, setTotalRevenue] = useState(0);
 
-  // Process license sales data from chain (real data)
-  const recentLicenses = useMemo(() => {
-    if (!licenseSalesData || licenseSalesData.length === 0) {
-      // Fallback to mock data if no chain data available
-      return [
-        { id: 'LIC-001', ipAsset: '0x742d...89Ac', buyer: '0x8a3f...12De', amount: '$1,200', date: '2 hours ago', status: 'completed', cvsImpact: '+85 pts' },
-        { id: 'LIC-002', ipAsset: '0x742d...89Ac', buyer: '0x9b2c...34Ef', amount: '$850', date: '5 hours ago', status: 'completed', cvsImpact: '+62 pts' },
-        { id: 'LIC-003', ipAsset: '0x742d...89Ac', buyer: '0x1c4d...56Gh', amount: '$2,400', date: '1 day ago', status: 'completed', cvsImpact: '+142 pts' },
-        { id: 'LIC-004', ipAsset: '0x742d...89Ac', buyer: '0x2e5f...78Jk', amount: '$1,650', date: '2 days ago', status: 'completed', cvsImpact: '+98 pts' },
-      ];
-    }
+  // Recent licenses from backend API (with full metadata)
+  const [recentLicenses, setRecentLicenses] = useState<Array<{
+    id: string;
+    ipAsset: string;
+    buyer: string;
+    amount: string;
+    date: string;
+    status: string;
+    cvsImpact: string;
+  }>>([]);
 
-    return licenseSalesData.slice(0, 10).map((log: LicenseSaleLog, index: number) => {
-      const blockNumber = Number(log.blockNumber || 0n);
-      const now = Date.now();
-      // Approximate: assume 2 seconds per block
-      const blockTime = blockNumber * 2000;
-      const diffMs = now - blockTime;
-      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-      const diffDays = Math.floor(diffHours / 24);
-      
-      let dateStr = '';
-      if (diffHours < 1) dateStr = 'Just now';
-      else if (diffHours < 24) dateStr = `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-      else dateStr = `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+  // Fetch recent license sales from backend
+  useEffect(() => {
+    const fetchRecentLicenses = async () => {
+      try {
+        const response = await fetch('http://localhost:3001/licenses/metadata');
+        const data = await response.json();
 
-      const price = log.args.price as bigint;
-      const amount = parseFloat(formatUnits(price || 0n, 18));
-      
-      const ipId = log.args.ipId as string || '0x0000...0000';
-      const buyer = log.args.licensee as string || '0x0000...0000';
+        if (data.success && data.licenses) {
+          const formatted = data.licenses.slice(0, 10).map((license: LicenseMetadata, index: number) => {
+            const cvsImpact = license.tierId === 'basic' ? '+25 pts' :
+                            license.tierId === 'commercial' ? '+80 pts' :
+                            license.tierId === 'enterprise' ? '+200 pts' : '+0 pts';
 
-      // Estimate CVS impact (10% of price)
-      const cvsImpact = `+${Math.floor(amount * 0.1)} pts`;
+            return {
+              id: `LIC-${String(index + 1).padStart(3, '0')}`,
+              ipAsset: license.organization || 'Unknown',
+              buyer: license.personalName || 'Anonymous',
+              amount: `${license.amount} STORY`,
+              date: formatRelativeTime(new Date(license.timestamp)),
+              status: 'completed',
+              cvsImpact,
+            };
+          });
+          setRecentLicenses(formatted);
+        }
+      } catch (error) {
+        console.error('Error fetching recent licenses:', error);
+        setRecentLicenses([]); // Empty array on error
+      }
+    };
 
-      return {
-        id: `LIC-${String(index + 1).padStart(3, '0')}`,
-        ipAsset: `${ipId.slice(0, 6)}...${ipId.slice(-4)}`,
-        buyer: `${buyer.slice(0, 6)}...${buyer.slice(-4)}`,
-        amount: `$${amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}`,
-        date: dateStr,
-        status: 'completed',
-        cvsImpact,
-      };
-    });
-  }, [licenseSalesData]);
+    fetchRecentLicenses();
+    const interval = setInterval(fetchRecentLicenses, 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Helper to format relative time
+  const formatRelativeTime = (date: Date): string => {
+    const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+    if (seconds < 60) return 'Just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
+    return `${Math.floor(seconds / 86400)} days ago`;
+  };
 
   // Calculate stats from chain data (real data)
   const stats = useMemo(() => {
@@ -222,48 +228,37 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
     ];
   }, [totalRevenue, activeLoansCount, totalCVS, totalMaxBorrowable]);
 
-  // Fetch real data from chain (same approach as LandingPage)
+  // Fetch loan data from chain
   useEffect(() => {
     const run = async () => {
       try {
         if (!publicClient) return;
-        
+
         const latest = await publicClient.getBlockNumber();
         const window = 10_000n;
         const fromBlock = latest > window ? latest - window : 0n;
-        
-        // Fetch license sales (real data from chain)
-        const soldLogs = await publicClient.getLogs({ 
-          address: ADLV_ADDRESS, 
-          event: evLicenseSold, 
-          fromBlock, 
-          toBlock: latest 
-        });
-        
-        setLicenseSalesData(soldLogs);
-        
-        // Calculate total revenue from real license sales
-        const revenue = soldLogs.reduce((sum, log) => {
-          const price = log.args.price as bigint;
-          return sum + parseFloat(formatUnits(price || 0n, 18));
-        }, 0);
-        setTotalRevenue(revenue);
-        
+
         // Fetch loans (real data from chain)
-        const loanLogs = await publicClient.getLogs({ 
-          address: ADLV_ADDRESS, 
-          event: evLoanIssued, 
-          fromBlock, 
-          toBlock: latest 
+        const loanLogs = await publicClient.getLogs({
+          address: ADLV_ADDRESS,
+          event: evLoanIssued,
+          fromBlock,
+          toBlock: latest
         });
         setActiveLoansCount(loanLogs.length);
-        
-        // Generate chart data from real license sales
-        if (soldLogs.length > 0) {
-          const data = soldLogs.slice(0, 30).reverse().map((log) => {
-            const price = log.args.price as bigint;
-            const amount = parseFloat(formatUnits(price || 0n, 18));
-            return 5000 + amount * 10; // Scale for visualization
+
+        // Calculate total revenue from backend license data
+        const revenue = recentLicenses.reduce((sum, license) => {
+          const amount = parseFloat(license.amount.replace(' STORY', '')) || 0;
+          return sum + amount;
+        }, 0);
+        setTotalRevenue(revenue);
+
+        // Generate chart data from backend license sales
+        if (recentLicenses.length > 0) {
+          const data = recentLicenses.slice(0, 30).reverse().map((license) => {
+            const amount = parseFloat(license.amount.replace(' STORY', '')) || 0;
+            return 5000 + amount * 100; // Scale for visualization
           });
           setChartData(data.length > 0 ? data : Array.from({ length: 30 }, (_, i) => 5000 + Math.sin(i / 3) * 2000 + Math.random() * 1000));
         } else {
@@ -272,7 +267,7 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
           );
           setChartData(data);
         }
-        
+
       } catch (error) {
         console.error('Error fetching chain data:', error);
       }
@@ -284,7 +279,7 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
     return () => {
       clearInterval(interval);
     };
-  }, [publicClient, ADLV_ADDRESS, evLicenseSold, evLoanIssued]);
+  }, [publicClient, ADLV_ADDRESS, evLoanIssued, recentLicenses]);
 
   const maxValue = Math.max(...chartData);
   const minValue = Math.min(...chartData);

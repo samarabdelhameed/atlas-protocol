@@ -14,23 +14,11 @@ import { useEffect, useMemo, useState } from "react";
 import { parseAbiItem, createPublicClient, http, formatUnits } from "viem";
 import { storyTestnet } from "../wagmi";
 import { CONTRACTS } from "../contracts/addresses";
-// Import subgraph hooks from the workspace package export
-import { useLicenseSales, useGlobalStats } from "@atlas-protocol/graphql-client";
+// Direct blockchain queries - no subgraph dependency
+import ADLV_ABI from "../contracts/abis/ADLV.json";
 
 interface LandingPageProps {
   onNavigate: (page: string) => void;
-}
-
-interface SaleData {
-  salePrice?: number;
-  amount?: string;
-  ipAsset?: {
-    name?: string;
-  };
-  licensee?: string;
-  cvsIncrement?: number;
-  cvsImpact?: string;
-  licenseType?: string;
 }
 
 export default function LandingPage({ onNavigate }: LandingPageProps) {
@@ -87,6 +75,16 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
     { type: 'VaultCreated' | 'LoanIssued'; actor: string; amount?: string }[]
   >([]);
 
+  // Global stats fetched directly from contracts
+  const [globalStats, setGlobalStats] = useState({
+    totalVaults: 0,
+    totalLoans: 0,
+    totalLicenses: 0,
+  });
+
+  // Track last fetched block for incremental updates
+  const [lastFetchedBlock, setLastFetchedBlock] = useState<bigint>(0n);
+
   // Poll chain logs periodically and map LicenseSold events to ticker items
   useEffect(() => {
     const run = async () => {
@@ -131,36 +129,86 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
     run();
   const timer = setInterval(run, prefersReducedMotion ? 120_000 : 60_000);
     return () => clearInterval(timer);
-  }, [publicClient, ADLV_ADDRESS, prefersReducedMotion, evLicenseSold]);
+  }, [publicClient, ADLV_ADDRESS, prefersReducedMotion, evLicenseSold, evVaultCreated, evLoanIssued]);
 
-  const { data: salesData } = useLicenseSales({ first: 20 });
-  const { data: globalStats } = useGlobalStats();
+  // Fetch global stats from contracts
+  useEffect(() => {
+    const fetchStats = async () => {
+      if (!publicClient || !ADLV_ADDRESS) return;
+
+      try {
+        // Fetch counters from ADLV contract
+        const [vaultCount, loanCount] = await Promise.all([
+          publicClient.readContract({
+            address: ADLV_ADDRESS,
+            abi: ADLV_ABI.abi,
+            functionName: 'vaultCounter',
+          }) as Promise<bigint>,
+          publicClient.readContract({
+            address: ADLV_ADDRESS,
+            abi: ADLV_ABI.abi,
+            functionName: 'loanCounter',
+          }) as Promise<bigint>,
+        ]);
+
+        // Count license sales from events - use incremental updates for efficiency
+        const latest = await publicClient.getBlockNumber();
+        const maxHistoricalBlocks = 100_000n; // Limit historical lookback
+
+        let fromBlock: bigint;
+        if (lastFetchedBlock === 0n) {
+          // First fetch: use reasonable historical window
+          fromBlock = latest > maxHistoricalBlocks ? latest - maxHistoricalBlocks : 0n;
+        } else {
+          // Subsequent fetches: only get new blocks since last fetch
+          fromBlock = lastFetchedBlock + 1n;
+        }
+
+        const licenseLogs = await publicClient.getLogs({
+          address: ADLV_ADDRESS,
+          event: evLicenseSold,
+          fromBlock,
+          toBlock: latest,
+        });
+
+        setLastFetchedBlock(latest);
+        setGlobalStats((prev) => ({
+          totalVaults: Number(vaultCount),
+          totalLoans: Number(loanCount),
+          // Increment licenses count instead of replacing
+          totalLicenses: lastFetchedBlock === 0n ? licenseLogs.length : prev.totalLicenses + licenseLogs.length,
+        }));
+      } catch (error) {
+        console.error('Error fetching global stats:', error);
+      }
+    };
+
+    fetchStats();
+    const timer = setInterval(fetchStats, 60_000); // Refresh every minute
+    return () => clearInterval(timer);
+  }, [publicClient, ADLV_ADDRESS, evLicenseSold, lastFetchedBlock]);
+
   const metrics = useMemo(() => {
-    if (!globalStats) return [];
-    try {
-      return [
-        {
-          label: "Total CVS Valued (TVV)",
-          value: Number(globalStats.totalCVS || 0).toLocaleString(),
-          icon: Lock,
-          color: "from-orange-500 to-amber-600",
-        },
-        {
-          label: "Data-Backed Loans (X-Chain)",
-          value: Number(globalStats.totalLoans || 0).toLocaleString(),
-          icon: DollarSign,
-          color: "from-amber-500 to-orange-600",
-        },
-        {
-          label: "GenAI Data Licenses Issued",
-          value: Number(globalStats.totalLicenses || 0).toLocaleString(),
-          icon: Database,
-          color: "from-orange-600 to-red-600",
-        },
-      ];
-    } catch {
-      return [];
-    }
+    return [
+      {
+        label: "IP Vaults Created",
+        value: globalStats.totalVaults.toLocaleString(),
+        icon: Lock,
+        color: "from-orange-500 to-amber-600",
+      },
+      {
+        label: "Data-Backed Loans (X-Chain)",
+        value: globalStats.totalLoans.toLocaleString(),
+        icon: DollarSign,
+        color: "from-amber-500 to-orange-600",
+      },
+      {
+        label: "GenAI Data Licenses Issued",
+        value: globalStats.totalLicenses.toLocaleString(),
+        icon: Database,
+        color: "from-orange-600 to-red-600",
+      },
+    ];
   }, [globalStats]);
 
   const features = [
@@ -187,20 +235,10 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
     },
   ];
 
+  // Use only chain-derived sales data (no subgraph dependency)
   const tickerItems = useMemo(() => {
-    if (chainSales.length > 0) return chainSales;
-    if (salesData && Array.isArray(salesData) && salesData.length > 0) {
-      return salesData.map((sale: SaleData) => {
-        const amountUsd = sale.salePrice
-          ? `$${Number(sale.salePrice).toLocaleString()}`
-          : sale.amount || "$";
-        const company = sale.ipAsset?.name || sale.licensee || "License Buyer";
-        const cvs = sale.cvsIncrement ? `+${sale.cvsIncrement}` : sale.cvsImpact || "+";
-        return { company, tier: sale.licenseType || "Standard", amount: amountUsd, cvs };
-      });
-    }
-    return [];
-  }, [chainSales, salesData]);
+    return chainSales.length > 0 ? chainSales : [];
+  }, [chainSales]);
 
   return (
     <div className="relative min-h-screen bg-black overflow-hidden">
@@ -314,7 +352,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                 {tickerItems.length > 0 ? (
                   prefersReducedMotion ? (
                     <div className="flex items-center gap-4 flex-wrap justify-center">
-                      {tickerItems.map((item, idx) => (
+                      {tickerItems.map((item: { company: string; tier: string; amount: string; cvs?: string }, idx: number) => (
                         <div
                           key={item.company + idx}
                           className="px-4 py-2 rounded-full border border-gray-700/60 bg-gray-800/40 text-gray-200 text-sm flex items-center gap-3"
@@ -336,7 +374,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                       className="flex items-center gap-6 whitespace-nowrap"
                       style={{ willChange: "transform" }}
                     >
-                      {[...tickerItems, ...tickerItems].map((item, idx) => (
+                      {[...tickerItems, ...tickerItems].map((item: { company: string; tier: string; amount: string; cvs?: string }, idx: number) => (
                         <div
                           key={item.company + idx}
                           className="px-4 py-2 rounded-full border border-gray-700/60 bg-gray-800/40 text-gray-200 text-sm flex items-center gap-3"
