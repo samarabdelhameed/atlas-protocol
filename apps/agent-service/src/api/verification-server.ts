@@ -48,13 +48,23 @@ export class VerificationServer {
       return;
     }
 
-    this.server = Bun.serve({
-      port: VAULT_API_PORT,
-      fetch: this.handleRequest.bind(this),
-    });
+    try {
+      this.server = Bun.serve({
+        port: VAULT_API_PORT,
+        fetch: this.handleRequest.bind(this),
+      });
 
-    console.log(`✅ World ID Verification Server running on port ${VAULT_API_PORT}`);
-    console.log(`   Endpoint: http://localhost:${VAULT_API_PORT}/verify-vault`);
+      console.log(`✅ World ID Verification Server running on port ${VAULT_API_PORT}`);
+      console.log(`   Endpoint: http://localhost:${VAULT_API_PORT}/verify-vault`);
+    } catch (error: any) {
+      if (error.code === 'EADDRINUSE') {
+        console.log(`⚠️  Port ${VAULT_API_PORT} is already in use. Verification server may already be running.`);
+        console.log(`   If you need to restart, please stop the existing process first.`);
+      } else {
+        console.error('❌ Failed to start verification server:', error);
+        throw error;
+      }
+    }
   }
 
   /**
@@ -135,20 +145,28 @@ export class VerificationServer {
         );
       }
 
-      // Verify World ID proof if provided
+      // Check if World ID verification is disabled (for testing)
+      const skipWorldId = process.env.SKIP_WORLD_ID === 'true';
+      
+      // Verify World ID proof if provided and not skipped
       let isVerified = false;
-      if (proof && signal) {
-      console.log(`🔍 Verifying World ID proof for creator: ${vaultData.creator}`);
+      
+      if (skipWorldId) {
+        console.log(`⚠️  World ID verification DISABLED (SKIP_WORLD_ID=true)`);
+        console.log(`   Allowing vault creation for: ${vaultData.creator}`);
+        isVerified = true;
+      } else if (proof && signal) {
+        console.log(`🔍 Verifying World ID proof for creator: ${vaultData.creator}`);
         isVerified = await this.verifyWorldIdProof(proof, signal);
 
-      if (!isVerified) {
-        console.log(`❌ World ID proof verification failed for creator: ${vaultData.creator}`);
-        return this.jsonResponse(
-          { error: 'World ID proof failed validation.', proof, signal },
-          401
-        );
-      }
-      console.log(`✅ World ID Verified. Proceeding with Vault deployment for Creator: ${vaultData.creator}`);
+        if (!isVerified) {
+          console.log(`❌ World ID proof verification failed for creator: ${vaultData.creator}`);
+          return this.jsonResponse(
+            { error: 'World ID proof failed validation.' },
+            401
+          );
+        }
+        console.log(`✅ World ID Verified. Proceeding with Vault deployment for Creator: ${vaultData.creator}`);
       } else {
         // If no proof provided, allow vault creation for development/testing
         // In production, this should require proof
@@ -156,11 +174,33 @@ export class VerificationServer {
         isVerified = true;
       }
 
+      // Convert IP ID to proper bytes32 format
+      let ipIdBytes32: string;
+      
+      console.log(`📝 Processing IP ID: ${vaultData.ipId}`);
+      console.log(`   Length: ${vaultData.ipId.length} characters`);
+      
+      if (vaultData.ipId.startsWith('0x') && vaultData.ipId.length === 66) {
+        // Already proper bytes32 (0x + 64 hex chars)
+        ipIdBytes32 = vaultData.ipId;
+        console.log(`   ✅ Already bytes32 format`);
+      } else if (vaultData.ipId.startsWith('0x') && vaultData.ipId.length === 42) {
+        // It's an Ethereum address (20 bytes), pad to 32 bytes
+        ipIdBytes32 = vaultData.ipId + '0'.repeat(24);
+        console.log(`   🔄 Converted address to bytes32: ${ipIdBytes32}`);
+      } else {
+        // Hash the string to get bytes32
+        const { keccak256, toUtf8Bytes } = await import('ethers');
+        ipIdBytes32 = keccak256(toUtf8Bytes(vaultData.ipId));
+        console.log(`   🔄 Hashed string to bytes32: ${ipIdBytes32}`);
+      }
+
       // Create vault on-chain via LoanManager
       try {
-        const result = await this.loanManager.createVault(vaultData.ipId);
+        const result = await this.loanManager.createVault(ipIdBytes32);
 
         console.log(`✅ Vault created successfully:`);
+        console.log(`   IP ID (bytes32): ${ipIdBytes32}`);
         console.log(`   Vault Address: ${result.vaultAddress}`);
         console.log(`   Transaction Hash: ${result.transactionHash}`);
 
@@ -168,6 +208,7 @@ export class VerificationServer {
           {
             success: true,
             message: 'Identity verified. Vault creation transaction initiated.',
+            ipId: ipIdBytes32,
             vaultAddress: result.vaultAddress,
             transactionHash: result.transactionHash,
           },
@@ -181,12 +222,13 @@ export class VerificationServer {
             vaultError.reason && vaultError.reason.includes('Vault already exists')) {
           // Try to get existing vault address
           try {
-            const existingVault = await this.loanManager.getVaultByIpId(vaultData.ipId);
+            const existingVault = await this.loanManager.getVaultByIpId(ipIdBytes32);
             if (existingVault) {
               return this.jsonResponse(
                 {
                   success: true,
                   message: 'Vault already exists for this IP Asset.',
+                  ipId: ipIdBytes32,
                   vaultAddress: existingVault,
                   alreadyExists: true,
                 },
