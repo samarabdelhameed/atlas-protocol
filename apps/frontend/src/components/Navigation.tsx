@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { motion } from "framer-motion";
 import { Globe, Vault, CreditCard, Brain, LayoutDashboard } from "lucide-react";
 import { ConnectKitButton } from "connectkit";
@@ -7,7 +8,7 @@ interface NavigationProps {
   onNavigate: (page: string) => void;
 }
 
-export default function Navigation({
+const Navigation = memo(function Navigation({
   currentPage,
   onNavigate,
 }: NavigationProps) {
@@ -31,8 +32,8 @@ export default function Navigation({
             className="flex items-center gap-3"
             whileHover={{ scale: 1.05 }}
           >
-            <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-lg flex items-center justify-center shadow-lg shadow-orange-500/50">
-              <span className="text-white font-bold text-xl">A</span>
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-lg shadow-orange-500/50 overflow-hidden">
+              <img src="/logo.png" alt="Atlas Protocol" className="w-full h-full object-contain" />
             </div>
             <div>
               <h1 className="text-white font-bold text-xl">Atlas Protocol</h1>
@@ -82,4 +83,6 @@ export default function Navigation({
       </div>
     </motion.nav>
   );
-}
+});
+
+export default Navigation;

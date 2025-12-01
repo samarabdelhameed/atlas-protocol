@@ -39,6 +39,16 @@ interface PurchaseDetails {
   vaultAddress: string;
 }
 
+interface LicenseMetadata {
+  personalName: string;
+  organization: string;
+  email: string;
+  tierId: string;
+  tierName: string;
+  amount: string;
+  timestamp: string;
+}
+
 export default function Licensing() {
   // Wallet and account
   const { address } = useAccount();
@@ -67,9 +77,8 @@ export default function Licensing() {
   // Helper to parse price string to Wei
   const parseLicensePrice = (priceString: string): bigint => {
     if (priceString === 'Custom') return 0n;
-    // "$1,500" → "1500" → 1500 * 10^18 Wei
-    const numericPrice = priceString.replace(/[$,]/g, '');
-    return parseUnits(numericPrice, 18);
+    // "1.5" → 1.5 * 10^18 Wei (STORY tokens)
+    return parseUnits(priceString, 18);
   };
 
   // Map frontend tier IDs to contract license types
@@ -152,7 +161,7 @@ export default function Licensing() {
     {
       id: "basic",
       name: "Basic Access",
-      price: "$500",
+      price: "0.1", // 0.1 STORY tokens
       period: "/month",
       color: "from-orange-500 to-amber-600",
       cvsImpact: "+25",
@@ -169,7 +178,7 @@ export default function Licensing() {
     {
       id: "commercial",
       name: "Commercial",
-      price: "$1,500",
+      price: "1.5", // 1.5 STORY tokens
       period: "/month",
       color: "from-amber-500 to-orange-600",
       cvsImpact: "+80",
@@ -228,40 +237,57 @@ export default function Licensing() {
     },
   ];
 
-  const [recentPurchases, setRecentPurchases] = useState([
-    {
-      company: "OpenAI Labs",
-      tier: "Enterprise",
-      date: "2 hours ago",
-      amount: "$5,000",
-      cvsImpact: "+200",
-      creator: "Alice Studio",
-    },
-    {
-      company: "AI Research Co",
-      tier: "Commercial",
-      date: "5 hours ago",
-      amount: "$1,500",
-      cvsImpact: "+80",
-      creator: "Bob AI Art",
-    },
-    {
-      company: "DataTech AI",
-      tier: "Commercial",
-      date: "1 day ago",
-      amount: "$1,500",
-      cvsImpact: "+80",
-      creator: "Carol Music",
-    },
-    {
-      company: "Neural Systems",
-      tier: "Basic",
-      date: "2 days ago",
-      amount: "$500",
-      cvsImpact: "+25",
-      creator: "David Stories",
-    },
-  ]);
+  // Recent purchases fetched from backend
+  const [recentPurchases, setRecentPurchases] = useState<Array<{
+    company: string;
+    tier: string;
+    date: string;
+    amount: string;
+    cvsImpact: string;
+    creator: string;
+  }>>([]);
+
+  // Fetch recent license purchases from backend
+  useEffect(() => {
+    const fetchRecentLicenses = async () => {
+      try {
+        const response = await fetch('http://localhost:3001/licenses/metadata');
+        const data = await response.json();
+
+        if (data.success && data.licenses) {
+          // Transform backend data to match display format
+          const formatted = data.licenses.map((license: LicenseMetadata) => {
+            const tier = tiers.find(t => t.id === license.tierId);
+            return {
+              company: license.organization,
+              tier: license.tierName,
+              date: formatRelativeTime(new Date(license.timestamp)),
+              amount: `${license.amount} STORY`,
+              cvsImpact: tier?.cvsImpact || '+0',
+              creator: license.personalName || 'Anonymous',
+            };
+          });
+          setRecentPurchases(formatted);
+        }
+      } catch (error) {
+        console.error('Error fetching recent licenses:', error);
+      }
+    };
+
+    fetchRecentLicenses();
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchRecentLicenses, 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Helper to format relative time
+  const formatRelativeTime = (date: Date): string => {
+    const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+    if (seconds < 60) return 'Just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
+    return `${Math.floor(seconds / 86400)} days ago`;
+  };
 
 
   const handlePurchase = (tier: LicenseTier) => {
@@ -475,7 +501,7 @@ export default function Licensing() {
                     <span
                       className={`text-5xl font-bold bg-gradient-to-r ${tier.color} bg-clip-text text-transparent`}
                     >
-                      {tier.price}
+                      {tier.price === 'Custom' ? 'Custom' : `${tier.price} STORY`}
                     </span>
                     <span className="text-gray-400 text-lg">{tier.period}</span>
                   </div>

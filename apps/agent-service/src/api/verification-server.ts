@@ -20,9 +20,20 @@ export interface VaultCreationData {
   creator: string;
 }
 
+interface LicenseMetadata {
+  personalName: string;
+  organization: string;
+  email: string;
+  tierId: string;
+  tierName: string;
+  amount: string;
+  timestamp: string;
+}
+
 export class VerificationServer {
   private loanManager: LoanManager;
   private server: any = null;
+  private licenseMetadata: LicenseMetadata[] = []; // In-memory storage
 
   constructor(loanManager: LoanManager) {
     this.loanManager = loanManager;
@@ -69,7 +80,7 @@ export class VerificationServer {
         status: 204,
         headers: {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type',
         },
       });
@@ -83,6 +94,11 @@ export class VerificationServer {
     // Handle POST /licenses/metadata
     if (req.method === 'POST' && url.pathname === '/licenses/metadata') {
       return await this.handleLicenseMetadata(req);
+    }
+
+    // Handle GET /licenses/metadata - retrieve recent licenses
+    if (req.method === 'GET' && url.pathname === '/licenses/metadata') {
+      return this.handleGetLicenseMetadata();
     }
 
     // Handle health check
@@ -101,7 +117,7 @@ export class VerificationServer {
    */
   private async handleVerifyVault(req: Request): Promise<Response> {
     try {
-      const body = await req.json();
+      const body = await req.json() as any;
       const { proof, signal, vaultData } = body;
 
       // Validate required fields
@@ -241,12 +257,70 @@ export class VerificationServer {
         return false;
       }
 
-      const result = await response.json();
+      const result = await response.json() as any;
       return result.success === true || result.verified === true;
     } catch (error) {
       console.error('Error calling World ID API:', error);
       return false;
     }
+  }
+
+  /**
+   * Handle license metadata submission
+   */
+  private async handleLicenseMetadata(req: Request): Promise<Response> {
+    try {
+      const body = await req.json() as any;
+      const { personalName, organization, email, tierId, tierName, amount } = body;
+
+      console.log(`📜 License metadata received:`);
+      console.log(`   Organization: ${organization}`);
+      console.log(`   Contact: ${email}`);
+      console.log(`   Tier: ${tierName} (${tierId})`);
+      console.log(`   Amount: ${amount}`);
+
+      // Store metadata in memory
+      const metadata: LicenseMetadata = {
+        personalName,
+        organization,
+        email,
+        tierId,
+        tierName,
+        amount,
+        timestamp: new Date().toISOString(),
+      };
+
+      this.licenseMetadata.unshift(metadata); // Add to beginning (most recent first)
+
+      // Keep only last 20 licenses
+      if (this.licenseMetadata.length > 20) {
+        this.licenseMetadata = this.licenseMetadata.slice(0, 20);
+      }
+
+      return this.jsonResponse({
+        success: true,
+        message: 'License metadata recorded successfully',
+        data: metadata,
+      }, 200);
+
+    } catch (error: any) {
+      console.error('❌ Error handling license metadata:', error);
+      return this.jsonResponse(
+        { error: 'Failed to process license metadata', details: error.message },
+        500
+      );
+    }
+  }
+
+  /**
+   * Handle GET request for license metadata
+   */
+  private handleGetLicenseMetadata(): Response {
+    return this.jsonResponse({
+      success: true,
+      licenses: this.licenseMetadata,
+      count: this.licenseMetadata.length,
+    }, 200);
   }
 
   /**
@@ -262,42 +336,3 @@ export class VerificationServer {
     });
   }
 }
-
-
-  /**
-   * Handle license metadata submission
-   */
-  private async handleLicenseMetadata(req: Request): Promise<Response> {
-    try {
-      const body = await req.json();
-      const { personalName, organization, email, tierId, tierName, amount } = body;
-
-      console.log(`📜 License metadata received:`);
-      console.log(`   Organization: ${organization}`);
-      console.log(`   Contact: ${email}`);
-      console.log(`   Tier: ${tierName} (${tierId})`);
-      console.log(`   Amount: ${amount}`);
-
-      // Store metadata (in production, save to database)
-      // For now, just log and return success
-
-      return this.jsonResponse({
-        success: true,
-        message: 'License metadata recorded successfully',
-        data: {
-          organization,
-          email,
-          tier: tierName,
-          amount,
-          timestamp: new Date().toISOString(),
-        },
-      });
-
-    } catch (error: any) {
-      console.error('❌ Error handling license metadata:', error);
-      return this.jsonResponse(
-        { error: 'Failed to process license metadata', details: error.message },
-        500
-      );
-    }
-  }

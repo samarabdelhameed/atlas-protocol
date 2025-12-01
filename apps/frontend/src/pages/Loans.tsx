@@ -566,7 +566,7 @@ export default function Loans() {
                   <div className="w-full bg-gray-700 rounded-full h-2">
                     <motion.div
                       initial={{ width: 0 }}
-                      animate={{ width: '85%' }}
+                      animate={{ width: currentCVS > 0 ? `${Math.min((currentCVS / 10000) * 100, 100)}%` : '0%' }}
                       transition={{ duration: 1, delay: 0.3 }}
                       className="h-full bg-gradient-to-r from-orange-500 to-amber-600 rounded-full"
                     />

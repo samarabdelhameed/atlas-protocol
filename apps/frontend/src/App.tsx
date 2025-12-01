@@ -1,11 +1,20 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Navigation from './components/Navigation';
-import LandingPage from './pages/LandingPage';
-import Dashboard from './pages/Dashboard';
-import VaultCreation from './pages/VaultCreation';
-import Loans from './pages/Loans';
-import Licensing from './pages/Licensing';
+
+// Lazy load page components for code splitting and better performance
+const LandingPage = lazy(() => import('./pages/LandingPage'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const VaultCreation = lazy(() => import('./pages/VaultCreation'));
+const Loans = lazy(() => import('./pages/Loans'));
+const Licensing = lazy(() => import('./pages/Licensing'));
+
+// Loading fallback component
+const PageLoader = () => (
+  <div className="min-h-screen bg-black flex items-center justify-center">
+    <div className="text-orange-500 text-xl">Loading...</div>
+  </div>
+);
 
 function App() {
   const [currentPage, setCurrentPage] = useState('landing');
@@ -43,7 +52,9 @@ function App() {
           exit={{ opacity: 0, y: -20 }}
           transition={{ duration: 0.3 }}
         >
-          {renderPage()}
+          <Suspense fallback={<PageLoader />}>
+            {renderPage()}
+          </Suspense>
         </motion.div>
       </AnimatePresence>
 
