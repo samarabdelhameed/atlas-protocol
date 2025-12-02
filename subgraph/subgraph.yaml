@@ -9,9 +9,9 @@ dataSources:
     name: AtlasADLV
     network: story-aeneid
     source:
-      address: "0x793402b59d2ca4c501EDBa328347bbaF69a59f7b" # Atlas ADLV Contract address (v3.0 - Latest with Lending Module)
+      address: "0xFe9E0Dd8893F71303ACF8164462d323905199669" # Atlas ADLV Contract address (v4.1 - FINAL)
       abi: AtlasADLV
-      startBlock: 11122612 # Latest deployment block (v3.0) - Update if needed
+      startBlock: 11719756 # Earliest vault creation block
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -26,7 +26,7 @@ dataSources:
           file: ./abis/AtlasADLV.json
       eventHandlers:
         # Vault Creation & CVS Initialization
-        - event: VaultCreated(indexed address,indexed bytes32,string,indexed address,uint256)
+        - event: VaultCreated(indexed address,indexed bytes32,indexed address,uint256)
           handler: handleVaultCreated
         # Core Handler 2: License Sale (for CVS calculation)
         - event: LicenseSold(indexed address,indexed bytes32,indexed address,uint256,string)
@@ -34,14 +34,10 @@ dataSources:
         # Core Handler 3: Loan Issuance (based on CVS)
         - event: LoanIssued(indexed address,indexed address,indexed uint256,uint256,uint256,uint256,uint256)
           handler: handleLoanIssued
-        # CVS Updates
-        - event: CVSUpdated(indexed address,uint256,uint256)
-          handler: handleCVSUpdated
         # Loan Management
         - event: LoanRepaid(indexed address,indexed address,indexed uint256,uint256)
           handler: handleLoanRepaid
-        - event: LoanDefaulted(indexed address,indexed address,indexed uint256)
-          handler: handleLoanDefaulted
+        # Note: CVSUpdated and LoanDefaulted events not in current contract version
         - event: LoanLiquidated(indexed address,indexed address,indexed uint256)
           handler: handleLoanLiquidated
         # Vault Deposits
@@ -53,28 +49,29 @@ dataSources:
   # ========================================
   # CVS Oracle - Story Protocol SPG Integration
   # ========================================
-  - kind: ethereum
-    name: CVSOracle
-    network: story-aeneid
-    source:
-      address: "0x0000000000000000000000000000000000000000" # CVS Oracle Contract address (update after deployment)
-      abi: CVSOracle
-      startBlock: 11122612
-    mapping:
-      kind: ethereum/events
-      apiVersion: 0.0.7
-      language: wasm/assemblyscript
-      entities:
-        - CVSUpdate
-        - IDOVault
-      abis:
-        - name: CVSOracle
-          file: ./abis/CVSOracle.json
-      eventHandlers:
-        # CVS Updates from Oracle
-        - event: CVSUpdated(indexed address,uint256,uint256,uint256,uint256)
-          handler: handleOracleCVSUpdated
-        # CVS Synced from SPG
-        - event: CVSSyncedFromSPG(indexed address,uint256,uint256)
-          handler: handleCVSSyncedFromSPG
-      file: ./src/mapping.ts
+  # NOTE: CVSOracle not deployed yet - commented out
+  # - kind: ethereum
+  #   name: CVSOracle
+  #   network: story-aeneid
+  #   source:
+  #     address: "0x0000000000000000000000000000000000000000" # CVS Oracle Contract address (update after deployment)
+  #     abi: CVSOracle
+  #     startBlock: 11122612
+  #   mapping:
+  #     kind: ethereum/events
+  #     apiVersion: 0.0.7
+  #     language: wasm/assemblyscript
+  #     entities:
+  #       - CVSUpdate
+  #       - IDOVault
+  #     abis:
+  #       - name: CVSOracle
+  #         file: ./abis/CVSOracle.json
+  #     eventHandlers:
+  #       # CVS Updates from Oracle
+  #       - event: CVSUpdated(indexed address,uint256,uint256,uint256,uint256)
+  #         handler: handleOracleCVSUpdated
+  #       # CVS Synced from SPG
+  #       - event: CVSSyncedFromSPG(indexed address,uint256,uint256)
+  #         handler: handleCVSSyncedFromSPG
+  #     file: ./src/mapping.ts

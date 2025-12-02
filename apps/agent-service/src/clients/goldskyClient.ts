@@ -45,6 +45,20 @@ export interface LicenseSale {
   };
 }
 
+// Types for Vaults
+export interface Vault {
+  id: string;
+  vaultAddress: string;
+  ipAsset: string;
+  creator: string;
+  currentCVS: string;
+  totalLiquidity: string;
+  totalLicenseRevenue: string;
+  totalLoansIssued: string;
+  activeLoansCount: string;
+  createdAt: string;
+}
+
 /**
  * Fetch the latest 5 IP Assets from Goldsky subgraph
  * Note: Uses lowercase 'ipassets' as per GraphQL schema convention
@@ -203,6 +217,55 @@ export async function fetchLatestLicenseSales(): Promise<LicenseSale[]> {
       return [];
     }
     console.error('❌ Error fetching latest License Sales from Goldsky:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Fetch vaults by creator address from Goldsky subgraph
+ */
+export async function fetchVaultsByCreator(creator: string): Promise<Vault[]> {
+  const endpoint = getSubgraphEndpoint();
+  console.log('🔍 Querying Goldsky endpoint for vaults by creator:', endpoint);
+  console.log('👤 Creator address:', creator);
+
+  try {
+    const query = gql`
+      query GetUserVaults($creator: String!) {
+        idovaults(
+          where: { creator: $creator }
+          orderBy: createdAt
+          orderDirection: desc
+        ) {
+          id
+          vaultAddress
+          ipAsset
+          creator
+          currentCVS
+          totalLiquidity
+          totalLicenseRevenue
+          totalLoansIssued
+          activeLoansCount
+          createdAt
+        }
+      }
+    `;
+
+    const response = await graphqlClient.request(query, { creator: creator.toLowerCase() });
+
+    console.log('✅ Goldsky Vaults Response:', JSON.stringify(response, null, 2));
+
+    const vaults = response.idovaults || [];
+    console.log(`📊 Found ${vaults.length} vault(s) for creator ${creator}`);
+
+    return vaults;
+  } catch (error: any) {
+    if (error.response?.status === 404) {
+      console.error('⚠️  Subgraph not deployed yet. Returning empty array.');
+      console.error('💡 Deploy subgraph first: cd subgraph && ./deploy-goldsky.sh');
+      return [];
+    }
+    console.error('❌ Error fetching vaults by creator from Goldsky:', error.message);
     throw error;
   }
 }
