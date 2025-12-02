@@ -6,7 +6,7 @@
  */
 
 import { graphqlClient, queries } from '@atlas-protocol/graphql-client';
-import type {IDOVault, IPAssetUsage, DataLicenseSale } from '@atlas-protocol/types';
+// import type {IDOVault, IPAssetUsage, DataLicenseSale } from '@atlas-protocol/types';
 
 export class CVSEngine {
   private pollingInterval: number;
@@ -290,36 +290,50 @@ export class CVSEngine {
 
   /**
    * Get global protocol statistics
+   * Returns null if subgraph data is unavailable
    */
   async getGlobalStats() {
-    const data = await graphqlClient.request(queries.GET_GLOBAL_STATS);
-    return data.globalStats;
+    try {
+      const data = await graphqlClient.request(queries.GET_GLOBAL_STATS);
+      return data.globalStats;
+    } catch (error) {
+      console.warn('⚠️  Global stats unavailable (subgraph may be indexing or entities not created)');
+      console.warn('   Analytics features will be limited until Story Protocol integration is complete');
+      return null;
+    }
   }
 
   /**
    * Get CVS leaderboard
+   * Returns empty array if IP assets are unavailable
    */
   async getCVSLeaderboard(limit: number = 10) {
-    const data = await graphqlClient.request(queries.GET_CVS_LEADERBOARD, {
-      first: limit,
-    });
+    try {
+      const data = await graphqlClient.request(queries.GET_CVS_LEADERBOARD, {
+        first: limit,
+      });
 
-    return data.ipAssets.map((asset: any) => ({
-      id: asset.id,
-      name: asset.name,
-      creator: asset.creator,
-      cvsScore: asset.cvsScore,
-      totalLicenseRevenue: asset.totalLicenseRevenue,
-      totalUsageCount: asset.totalUsageCount,
-      totalRemixes: asset.totalRemixes,
-      vault: asset.vault
-        ? {
-            currentCVS: asset.vault.currentCVS,
-            maxLoanAmount: asset.vault.maxLoanAmount,
-            interestRate: asset.vault.interestRate,
-          }
-        : null,
-    }));
+      return data.ipAssets.map((asset: any) => ({
+        id: asset.id,
+        name: asset.name,
+        creator: asset.creator,
+        cvsScore: asset.cvsScore,
+        totalLicenseRevenue: asset.totalLicenseRevenue,
+        totalUsageCount: asset.totalUsageCount,
+        totalRemixes: asset.totalRemixes,
+        vault: asset.vault
+          ? {
+              currentCVS: asset.vault.currentCVS,
+              maxLoanAmount: asset.vault.maxLoanAmount,
+              interestRate: asset.vault.interestRate,
+            }
+          : null,
+      }));
+    } catch (error) {
+      console.warn('⚠️  CVS leaderboard unavailable (IP assets not indexed yet)');
+      console.warn('   Leaderboard will populate once Story Protocol integration is complete');
+      return [];
+    }
   }
 }
 

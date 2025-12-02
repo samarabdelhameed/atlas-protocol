@@ -38,14 +38,16 @@ class AgentService {
     console.log('🚀 Initializing Atlas Agent Service...');
     console.log('═══════════════════════════════════════════');
     
-    // Initialize provider
+    // Initialize provider with error suppression for network detection issues
     this.provider = new ethers.JsonRpcProvider(
-      config.rpcUrl
+      config.rpcUrl,
+      undefined,
+      { staticNetwork: true } // Skip network detection to avoid retry spam
     );
 
     // Initialize contract services if addresses are configured
-    const adlvAddress = config.contracts.adlv && config.contracts.adlv !== '' ? config.contracts.adlv as `0x${string}` : null;
-    const idoAddress = config.contracts.ido && config.contracts.ido !== '' ? config.contracts.ido as `0x${string}` : null;
+    const adlvAddress = config.contracts.adlv ? config.contracts.adlv as `0x${string}` : null;
+    const idoAddress = config.contracts.ido ? config.contracts.ido as `0x${string}` : null;
     
     if (adlvAddress && idoAddress) {
       this.loanManager = new LoanManager(
@@ -226,6 +228,8 @@ class AgentService {
         console.log(`   Total Licenses: ${globalStats.totalLicenses || 0}`);
         console.log(`   Total Loans: ${globalStats.totalLoans || 0}`);
         console.log(`   Total Verified Users: ${globalStats.totalVerifiedUsers || 0}`);
+      } else {
+        console.log('ℹ️  Global stats unavailable (waiting for Story Protocol integration)');
       }
 
       const leaderboard = await cvsEngine.getCVSLeaderboard(5);
@@ -240,11 +244,14 @@ class AgentService {
             console.log(`      Max Loan: ${asset.vault.maxLoanAmount}`);
           }
         });
+      } else {
+        console.log('\nℹ️  CVS leaderboard unavailable (waiting for Story Protocol integration)');
       }
 
       console.log('\n═══════════════════════════════════════════\n');
     } catch (error) {
-      console.error('Error fetching stats:', error);
+      console.error('⚠️  Error fetching stats:', error);
+      console.log('   Continuing with limited analytics...\n');
     }
   }
 

@@ -7,6 +7,7 @@
 import { LoanManager } from '../services/loan-manager.js';
 import { config } from '../config/index.js';
 import { fetchVaultsByCreator } from '../clients/goldskyClient.js';
+import { padHex } from 'viem';
 
 // Constants for World ID verification
 const APP_ID = config.worldId.appId;
@@ -182,6 +183,9 @@ export class VerificationServer {
 
       console.log(`📝 Processing IP ID: ${vaultData.ipId}`);
       console.log(`   Length: ${vaultData.ipId.length} characters`);
+
+      // Convert IP ID to bytes32 format for responses
+      const ipIdBytes32 = padHex(vaultData.ipId as `0x${string}`, { size: 32 });
 
       // Create vault on-chain via LoanManager
       // LoanManager handles the ipId to bytes32 conversion internally
