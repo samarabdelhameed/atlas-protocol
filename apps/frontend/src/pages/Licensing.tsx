@@ -11,10 +11,13 @@ import {
   Activity,
 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useChainId } from 'wagmi';
 import { parseUnits } from 'viem';
 import { CONTRACTS } from '../contracts/addresses';
 import ADLV_ABI from '../contracts/abis/ADLV.json';
+
+// Story Aeneid Testnet Chain ID
+const STORY_CHAIN_ID = 1315;
 
 
 
@@ -50,8 +53,12 @@ interface LicenseMetadata {
 }
 
 export default function Licensing() {
+  // Backend URL configuration
+  const BACKEND_URL = import.meta.env.VITE_AGENT_API_URL || 'http://localhost:3001';
+
   // Wallet and account
   const { address } = useAccount();
+  const chainId = useChainId();
 
   // State management
   const [selectedTier, setSelectedTier] = useState<string | null>(null);
@@ -62,6 +69,7 @@ export default function Licensing() {
   const [formErrors, setFormErrors] = useState<{ name?: string; organization?: string; email?: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedVault, setSelectedVault] = useState('');
+  const [networkError, setNetworkError] = useState<string | null>(null);
 
   // Fetch user's vaults for dropdown
   const { data: userVaults } = useReadContract({
@@ -81,20 +89,66 @@ export default function Licensing() {
     return parseUnits(priceString, 18);
   };
 
-  // Map frontend tier IDs to contract license types
+  // Map frontend tier IDs to backend license types (for CVS calculation)
   const tierToLicenseType = {
-    'basic': 'BASIC',
-    'commercial': 'COMMERCIAL',
-    'enterprise': 'ENTERPRISE',
+    'basic': 'standard',        // 2% CVS increment
+    'commercial': 'commercial',  // 5% CVS increment
+    'enterprise': 'exclusive',   // 10% CVS increment
   } as const;
 
   // Contract write for sellLicense
   const { writeContract: purchaseLicense, data: txHash } = useWriteContract();
 
-  // Transaction monitoring
-  const { isLoading: isWaitingForTx } = useWaitForTransactionReceipt({
+  // Transaction monitoring with error handling
+  const { isLoading: isWaitingForTx, isError: isTxError, error: txError } = useWaitForTransactionReceipt({
     hash: txHash,
   });
+
+  // Network validation - check if user is on Story Aeneid Testnet
+  useEffect(() => {
+    if (address && chainId !== STORY_CHAIN_ID) {
+      setNetworkError(`Please switch to Story Aeneid Testnet (Chain ID: ${STORY_CHAIN_ID})`);
+    } else {
+      setNetworkError(null);
+    }
+  }, [address, chainId]);
+
+  // Helper function to submit metadata with retry logic
+  const submitMetadataWithRetry = async (metadata: any, maxRetries = 3): Promise<boolean> => {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const response = await fetch(`${BACKEND_URL}/licenses/metadata`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(metadata),
+        });
+
+        if (response.ok) {
+          console.log('✅ License metadata submitted successfully');
+          return true;
+        }
+
+        // If 4xx error (client error), don't retry
+        if (response.status >= 400 && response.status < 500) {
+          console.warn('⚠️ Metadata submission failed with client error:', response.status);
+          return false;
+        }
+
+        // 5xx errors - will retry
+        console.warn(`⚠️ Metadata submission failed (attempt ${i + 1}/${maxRetries}):`, response.status);
+      } catch (error) {
+        if (i === maxRetries - 1) {
+          console.error('❌ Failed to submit metadata after retries:', error);
+          return false;
+        }
+        // Wait before retry (exponential backoff: 1s, 2s, 4s)
+        const delay = Math.pow(2, i) * 1000;
+        console.log(`⏳ Retrying in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+    return false;
+  };
 
   // Handle transaction success
   useEffect(() => {
@@ -129,33 +183,47 @@ export default function Licensing() {
         ]);
       }
 
-      // Send metadata to backend (non-blocking)
+      // Send metadata to backend with retry logic (non-blocking)
       (async () => {
-        try {
-          const agentUrl = import.meta.env.VITE_AGENT_API_URL || 'http://localhost:3001';
-          await fetch(`${agentUrl}/licenses/metadata`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              personalName: buyerInfo.name,
-              organization: buyerInfo.organization,
-              email: buyerInfo.email,
-              tierId: pendingTier?.id,
-              tierName: pendingTier?.name,
-              amount: pendingTier?.price,
-              vaultAddress: selectedVault,
-              transactionHash: txHash,
-            }),
-          });
-        } catch (error) {
-          // Silent fail - metadata logging is not critical
-          console.warn('Backend metadata logging failed:', error);
-        } finally {
-          setIsSubmitting(false);
+        const success = await submitMetadataWithRetry({
+          personalName: buyerInfo.name,
+          organization: buyerInfo.organization,
+          email: buyerInfo.email,
+          tierId: pendingTier?.id,
+          tierName: pendingTier?.name,
+          amount: pendingTier?.price,
+          vaultAddress: selectedVault,
+          transactionHash: txHash,
+        });
+
+        if (!success) {
+          // Metadata logging failed after retries - not critical but log it
+          console.warn('⚠️ License metadata could not be logged to backend');
         }
+
+        setIsSubmitting(false);
       })();
     }
   }, [txHash, isWaitingForTx, pendingTier, buyerInfo, selectedVault]);
+
+  // Handle transaction errors
+  useEffect(() => {
+    if (isTxError && txError) {
+      console.error('❌ Transaction failed:', txError);
+
+      // Show error to user
+      const errorMessage = txError.message || 'Transaction failed. Please try again.';
+      setFormErrors({ email: errorMessage });
+
+      // Close modal and reset state
+      setShowBuyerModal(false);
+      setIsSubmitting(false);
+      setPendingTier(null);
+
+      // Alert user about the error
+      alert(`Transaction failed: ${errorMessage}`);
+    }
+  }, [isTxError, txError]);
 
   const tiers = [
     {
@@ -251,7 +319,7 @@ export default function Licensing() {
   useEffect(() => {
     const fetchRecentLicenses = async () => {
       try {
-        const response = await fetch('http://localhost:3001/licenses/metadata');
+        const response = await fetch(`${BACKEND_URL}/licenses/metadata`);
         const data = await response.json();
 
         if (data.success && data.licenses) {
@@ -347,8 +415,12 @@ export default function Licensing() {
     const errors: { name?: string; organization?: string; email?: string } = {};
     if (!buyerInfo.name.trim()) errors.name = "Required";
     if (!buyerInfo.organization.trim()) errors.organization = "Required";
-    const emailOk = /^\S+@\S+\.\S+$/.test(buyerInfo.email);
+
+    // RFC 5322 compliant email regex
+    const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+    const emailOk = emailRegex.test(buyerInfo.email);
     if (!buyerInfo.email.trim() || !emailOk) errors.email = "Invalid email";
+
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -429,7 +501,17 @@ export default function Licensing() {
             Choose Your Plan
           </h2>
 
-          {address && (
+          {address && networkError && (
+            <div className="mb-8 max-w-md mx-auto">
+              <div className="px-4 py-3 bg-red-500/10 border border-red-500/30 rounded-xl">
+                <p className="text-red-400 text-sm font-medium">
+                  ⚠️ {networkError}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {address && !networkError && (
             <div className="mb-8 max-w-md mx-auto">
               <label className="block text-gray-300 text-sm font-medium mb-2">
                 Select Vault to Sell License From
@@ -536,7 +618,7 @@ export default function Licensing() {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => handlePurchase(tier)}
-                    disabled={!address || !selectedVault || isSubmitting || isWaitingForTx}
+                    disabled={!address || !!networkError || !selectedVault || isSubmitting || isWaitingForTx}
                     className={`w-full py-4 rounded-2xl font-bold text-lg transition-all duration-300 ${
                       tier.popular
                         ? "bg-gradient-to-b from-orange-950/40 to-transparent border-2 border-orange-500 text-white shadow-[0_0_30px_rgba(249,115,22,0.4)] hover:shadow-[0_0_50px_rgba(249,115,22,0.6)]"
@@ -545,6 +627,8 @@ export default function Licensing() {
                   >
                     {!address
                       ? 'Connect Wallet'
+                      : networkError
+                      ? 'Wrong Network'
                       : !selectedVault
                       ? 'Select Vault First'
                       : isWaitingForTx
