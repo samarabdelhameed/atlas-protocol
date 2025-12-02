@@ -6,6 +6,7 @@
 
 import { LoanManager } from '../services/loan-manager.js';
 import { config } from '../config/index.js';
+import { fetchVaultsByCreator } from '../clients/goldskyClient.js';
 
 // Constants for World ID verification
 const APP_ID = config.worldId.appId;
@@ -109,6 +110,11 @@ export class VerificationServer {
     // Handle GET /licenses/metadata - retrieve recent licenses
     if (req.method === 'GET' && url.pathname === '/licenses/metadata') {
       return this.handleGetLicenseMetadata();
+    }
+
+    // Handle GET /api/vaults/:address - retrieve vaults by creator address
+    if (req.method === 'GET' && url.pathname.startsWith('/api/vaults/')) {
+      return await this.handleGetVaultsByCreator(req, url);
     }
 
     // Handle health check
@@ -346,6 +352,47 @@ export class VerificationServer {
       licenses: this.licenseMetadata,
       count: this.licenseMetadata.length,
     }, 200);
+  }
+
+  /**
+   * Handle GET request for vaults by creator address
+   */
+  private async handleGetVaultsByCreator(req: Request, url: URL): Promise<Response> {
+    try {
+      // Extract address from URL path (e.g., /api/vaults/0x123...)
+      const pathParts = url.pathname.split('/');
+      const address = pathParts[pathParts.length - 1];
+
+      if (!address || address.length < 10) {
+        return this.jsonResponse({
+          error: 'Invalid address parameter',
+          vaults: [],
+          count: 0,
+        }, 400);
+      }
+
+      console.log(`🔍 Fetching vaults for creator: ${address}`);
+
+      // Fetch vaults from Goldsky subgraph
+      const vaults = await fetchVaultsByCreator(address);
+
+      console.log(`✅ Found ${vaults.length} vault(s) for creator ${address}`);
+
+      // Return just the vault addresses (matching Dashboard expectation)
+      return this.jsonResponse({
+        vaults: vaults.map(v => v.vaultAddress),
+        count: vaults.length,
+      }, 200);
+
+    } catch (error: any) {
+      console.error('❌ Error fetching vaults by creator:', error);
+      return this.jsonResponse({
+        error: 'Failed to fetch vaults',
+        details: error.message || 'Unknown error',
+        vaults: [],
+        count: 0,
+      }, 500);
+    }
   }
 
   /**

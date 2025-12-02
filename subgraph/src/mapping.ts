@@ -12,9 +12,9 @@ import {
   VaultCreated,
   LicenseSold,
   LoanIssued,
-  CVSUpdated,
+  // CVSUpdated, // Not in current contract version
   LoanRepaid,
-  LoanDefaulted,
+  // LoanDefaulted, // Not in current contract version
   LoanLiquidated,
   Deposited,
   Withdrawn,
@@ -197,22 +197,24 @@ export function handleLoanIssued(event: LoanIssued): void {
 // ========================================
 // CVS Update Handler (from ADLV)
 // ========================================
-
+// NOTE: CVSUpdated event not in current contract version
+/*
 export function handleCVSUpdated(event: CVSUpdated): void {
   let vault = IDOVault.load(event.params.vaultAddress.toHex());
-  
+
   if (vault) {
     vault.currentCVS = event.params.newCVS;
     vault.lastCVSUpdate = event.block.timestamp;
     vault.updatedAt = event.block.timestamp;
-    
+
     // Recalculate loan terms
     vault.maxLoanAmount = calculateMaxLoanAmount(event.params.newCVS);
     vault.interestRate = calculateInterestRate(event.params.newCVS);
-    
+
     vault.save();
   }
 }
+*/
 
 // ========================================
 // CVS Oracle Event Handlers (from CVSOracle contract)
@@ -316,14 +318,16 @@ export function handleLoanRepaid(event: LoanRepaid): void {
   }
 }
 
+// NOTE: LoanDefaulted event not in current contract version
+/*
 export function handleLoanDefaulted(event: LoanDefaulted): void {
   let loanId = event.params.vaultAddress.toHex() + "-" + event.params.loanId.toString();
   let loan = Loan.load(loanId);
-  
+
   if (loan) {
     loan.status = "Defaulted";
     loan.save();
-    
+
     // Update vault
     let vault = IDOVault.load(event.params.vaultAddress.toHex());
     if (vault) {
@@ -333,6 +337,7 @@ export function handleLoanDefaulted(event: LoanDefaulted): void {
     }
   }
 }
+*/
 
 export function handleLoanLiquidated(event: LoanLiquidated): void {
   let loanId = event.params.vaultAddress.toHex() + "-" + event.params.loanId.toString();

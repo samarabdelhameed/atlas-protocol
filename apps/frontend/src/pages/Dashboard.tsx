@@ -54,16 +54,28 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
   const { data: userVaults, isLoading: isLoadingVaults } = useQuery({
     queryKey: ['userVaults', address],
     queryFn: async () => {
-      if (!publicClient || !address) return [];
-      const vaults = await publicClient.readContract({
-        address: CONTRACTS.ADLV,
-        abi: ADLV_ABI.abi,
-        functionName: 'getUserVaults',
-        args: [address],
-      });
-      return vaults as `0x${string}`[];
+      if (!address) return [];
+
+      try {
+        // Fetch vaults from backend API (queries Goldsky subgraph)
+        const backendUrl = import.meta.env.VITE_BACKEND_ENDPOINT || 'http://localhost:3001';
+        const response = await fetch(`${backendUrl}/api/vaults/${address}`);
+
+        if (!response.ok) {
+          console.error('Failed to fetch vaults from API:', response.status);
+          return [];
+        }
+
+        const data = await response.json();
+        console.log(`✅ Fetched ${data.count} vault(s) from API for ${address}`);
+
+        return (data.vaults || []) as `0x${string}`[];
+      } catch (error) {
+        console.error('Error fetching vaults:', error);
+        return [];
+      }
     },
-    enabled: !!address && !!publicClient,
+    enabled: !!address,
     staleTime: 30_000, // Consider data fresh for 30 seconds
     gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
     refetchInterval: 30_000, // Refetch every 30 seconds (reduced from 10s)
