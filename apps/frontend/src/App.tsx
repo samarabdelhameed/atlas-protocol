@@ -8,6 +8,8 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const VaultCreation = lazy(() => import('./pages/VaultCreation'));
 const Loans = lazy(() => import('./pages/Loans'));
 const Licensing = lazy(() => import('./pages/Licensing'));
+const MyLicensesPage = lazy(() => import('./pages/MyLicensesPage'));
+const IPIntelligencePage = lazy(() => import('./pages/IPIntelligencePage'));
 
 // Loading fallback component
 const PageLoader = () => (
@@ -18,22 +20,33 @@ const PageLoader = () => (
 
 function App() {
   const [currentPage, setCurrentPage] = useState('landing');
-  
+  const [selectedIPAsset, setSelectedIPAsset] = useState<string | null>(null);
+
+  const handleNavigate = (page: string, ipAssetId?: string) => {
+    setCurrentPage(page);
+    if (ipAssetId) {
+      setSelectedIPAsset(ipAssetId);
+    }
+  };
 
   const renderPage = () => {
     switch (currentPage) {
       case 'landing':
-        return <LandingPage onNavigate={setCurrentPage} />;
+        return <LandingPage onNavigate={handleNavigate} />;
       case 'dashboard':
-        return <Dashboard onNavigate={setCurrentPage} />;
+        return <Dashboard onNavigate={handleNavigate} />;
       case 'vault':
-        return <VaultCreation onNavigate={setCurrentPage} />;
+        return <VaultCreation onNavigate={handleNavigate} />;
       case 'loans':
-        return <Loans onNavigate={setCurrentPage} />;
+        return <Loans onNavigate={handleNavigate} />;
       case 'licensing':
-        return <Licensing onNavigate={setCurrentPage} />;
+        return <Licensing onNavigate={handleNavigate} />;
+      case 'my-licenses':
+        return <MyLicensesPage onNavigate={handleNavigate} />;
+      case 'ip-intelligence':
+        return <IPIntelligencePage ipAssetId={selectedIPAsset} onNavigate={handleNavigate} />;
       default:
-        return <LandingPage onNavigate={setCurrentPage} />;
+        return <LandingPage onNavigate={handleNavigate} />;
     }
   };
 
@@ -41,7 +54,7 @@ function App() {
     <div className="relative min-h-screen bg-black overflow-x-hidden">
       <Navigation
         currentPage={currentPage}
-        onNavigate={setCurrentPage}
+        onNavigate={handleNavigate}
       />
 
       <AnimatePresence mode="wait">

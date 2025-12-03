@@ -8,6 +8,8 @@ import { LoanManager } from '../services/loan-manager.js';
 import { config } from '../config/index.js';
 import { fetchVaultsByCreator } from '../clients/goldskyClient.js';
 import { padHex } from 'viem';
+import * as AuthService from './auth-service.js';
+import * as LicenseDataService from './license-data-service.js';
 
 // Constants for World ID verification
 const APP_ID = config.worldId.appId;
@@ -93,7 +95,7 @@ export class VerificationServer {
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         },
       });
     }
@@ -116,6 +118,30 @@ export class VerificationServer {
     // Handle GET /api/vaults/:address - retrieve vaults by creator address
     if (req.method === 'GET' && url.pathname.startsWith('/api/vaults/')) {
       return await this.handleGetVaultsByCreator(req, url);
+    }
+
+    // ========================================
+    // License Holder API Routes
+    // ========================================
+
+    // Handle POST /api/auth/challenge - Generate authentication challenge
+    if (req.method === 'POST' && url.pathname === '/api/auth/challenge') {
+      return await this.handleAuthChallenge(req);
+    }
+
+    // Handle POST /api/auth/verify - Verify signature and issue JWT
+    if (req.method === 'POST' && url.pathname === '/api/auth/verify') {
+      return await this.handleAuthVerify(req);
+    }
+
+    // Handle GET /api/licenses/:address - Get user's licenses
+    if (req.method === 'GET' && url.pathname.startsWith('/api/licenses/')) {
+      return await this.handleGetUserLicenses(req, url);
+    }
+
+    // Handle GET /api/ip-data/:ipId - Get IP asset data (requires auth)
+    if (req.method === 'GET' && url.pathname.startsWith('/api/ip-data/')) {
+      return await this.handleGetIPAssetData(req, url);
     }
 
     // Handle health check
@@ -395,6 +421,154 @@ export class VerificationServer {
         details: error.message || 'Unknown error',
         vaults: [],
         count: 0,
+      }, 500);
+    }
+  }
+
+  // ========================================
+  // License Holder API Handlers
+  // ========================================
+
+  /**
+   * Handle POST /api/auth/challenge - Generate authentication challenge
+   */
+  private async handleAuthChallenge(req: Request): Promise<Response> {
+    try {
+      const body = await req.json() as { address: string };
+
+      if (!body.address) {
+        return this.jsonResponse({ error: 'Address is required' }, 400);
+      }
+
+      const challenge = AuthService.generateChallenge(body.address);
+
+      return this.jsonResponse(challenge, 200);
+    } catch (error: any) {
+      console.error('❌ Error generating auth challenge:', error);
+      return this.jsonResponse({
+        error: 'Failed to generate challenge',
+        details: error.message,
+      }, 500);
+    }
+  }
+
+  /**
+   * Handle POST /api/auth/verify - Verify signature and issue JWT
+   */
+  private async handleAuthVerify(req: Request): Promise<Response> {
+    try {
+      const body = await req.json() as { address: string; signature: string };
+
+      console.log(`📥 Received verify request:`, {
+        address: body.address,
+        signatureType: typeof body.signature,
+        signatureLength: body.signature?.length,
+        signatureStart: body.signature?.substring(0, 10),
+      });
+
+      if (!body.address || !body.signature) {
+        return this.jsonResponse({
+          error: 'Address and signature are required',
+        }, 400);
+      }
+
+      const authToken = await AuthService.verifySignature(body.address, body.signature);
+
+      if (!authToken) {
+        return this.jsonResponse({
+          error: 'Invalid signature or expired challenge',
+        }, 401);
+      }
+
+      return this.jsonResponse(authToken, 200);
+    } catch (error: any) {
+      console.error('❌ Error verifying signature:', error);
+      return this.jsonResponse({
+        error: 'Failed to verify signature',
+        details: error.message,
+      }, 500);
+    }
+  }
+
+  /**
+   * Handle GET /api/licenses/:address - Get user's licenses
+   */
+  private async handleGetUserLicenses(req: Request, url: URL): Promise<Response> {
+    try {
+      const pathParts = url.pathname.split('/');
+      const address = pathParts[pathParts.length - 1];
+
+      if (!address || address.length < 10) {
+        return this.jsonResponse({ error: 'Invalid address parameter' }, 400);
+      }
+
+      console.log(`📄 Fetching licenses for user: ${address}`);
+
+      const licenses = await LicenseDataService.getUserLicenses(address);
+
+      return this.jsonResponse({
+        licenses,
+        count: licenses.length,
+      }, 200);
+    } catch (error: any) {
+      console.error('❌ Error fetching user licenses:', error);
+      return this.jsonResponse({
+        error: 'Failed to fetch licenses',
+        details: error.message,
+      }, 500);
+    }
+  }
+
+  /**
+   * Handle GET /api/ip-data/:ipId - Get IP asset data (requires auth)
+   */
+  private async handleGetIPAssetData(req: Request, url: URL): Promise<Response> {
+    try {
+      // Extract and verify JWT token
+      const authHeader = req.headers.get('Authorization');
+      const token = AuthService.extractToken(authHeader);
+
+      if (!token) {
+        return this.jsonResponse({
+          error: 'Authentication required',
+          message: 'Please provide a valid Bearer token',
+        }, 401);
+      }
+
+      const userAddress = AuthService.verifyToken(token);
+
+      if (!userAddress) {
+        return this.jsonResponse({
+          error: 'Invalid or expired token',
+        }, 401);
+      }
+
+      // Extract IP asset ID from URL
+      const pathParts = url.pathname.split('/');
+      const ipAssetId = pathParts[pathParts.length - 1];
+
+      if (!ipAssetId || ipAssetId.length < 10) {
+        return this.jsonResponse({ error: 'Invalid IP asset ID' }, 400);
+      }
+
+      console.log(`🔍 Fetching IP asset data for ${ipAssetId} (user: ${userAddress})`);
+
+      // Get IP asset data with license verification
+      const data = await LicenseDataService.getIPAssetDataForLicensee(
+        ipAssetId,
+        userAddress
+      );
+
+      if ('error' in data) {
+        return this.jsonResponse(data, 403);
+      }
+
+      return this.jsonResponse(data, 200);
+    } catch (error: any) {
+      console.error('❌ Error fetching IP asset data:', error);
+      return this.jsonResponse({
+        error: 'Failed to fetch IP asset data',
+        details: error.message,
       }, 500);
     }
   }

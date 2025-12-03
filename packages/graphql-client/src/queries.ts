@@ -68,7 +68,7 @@ export const GET_IP_ASSET = gql`
 
 export const GET_IP_ASSETS = gql`
   query GetIPAssets($first: Int = 10, $skip: Int = 0, $orderBy: String = "timestamp", $orderDirection: String = "desc") {
-    ipAssets(first: $first, skip: $skip, orderBy: $orderBy, orderDirection: $orderDirection) {
+    ipassets(first: $first, skip: $skip, orderBy: $orderBy, orderDirection: $orderDirection) {
       id
       ipId
       name
@@ -399,7 +399,7 @@ export const GET_GLOBAL_STATS = gql`
 
 export const GET_CVS_LEADERBOARD = gql`
   query GetCVSLeaderboard($first: Int = 10) {
-    ipAssets(first: $first, orderBy: cvsScore, orderDirection: desc) {
+    ipassets(first: $first, orderBy: cvsScore, orderDirection: desc) {
       id
       name
       creator

@@ -49,29 +49,28 @@ dataSources:
   # ========================================
   # CVS Oracle - Story Protocol SPG Integration
   # ========================================
-  # NOTE: CVSOracle not deployed yet - commented out
-  # - kind: ethereum
-  #   name: CVSOracle
-  #   network: story-aeneid
-  #   source:
-  #     address: "0x0000000000000000000000000000000000000000" # CVS Oracle Contract address (update after deployment)
-  #     abi: CVSOracle
-  #     startBlock: 11122612
-  #   mapping:
-  #     kind: ethereum/events
-  #     apiVersion: 0.0.7
-  #     language: wasm/assemblyscript
-  #     entities:
-  #       - CVSUpdate
-  #       - IDOVault
-  #     abis:
-  #       - name: CVSOracle
-  #         file: ./abis/CVSOracle.json
-  #     eventHandlers:
-  #       # CVS Updates from Oracle
-  #       - event: CVSUpdated(indexed address,uint256,uint256,uint256,uint256)
-  #         handler: handleOracleCVSUpdated
-  #       # CVS Synced from SPG
-  #       - event: CVSSyncedFromSPG(indexed address,uint256,uint256)
-  #         handler: handleCVSSyncedFromSPG
-  #     file: ./src/mapping.ts
+  - kind: ethereum
+    name: CVSOracle
+    network: story-aeneid
+    source:
+      address: "0xaeb3c7b93cAA4AE11717C3F233f54977F4767312" # CVS Oracle Contract address (deployed)
+      abi: CVSOracle
+      startBlock: 11784870 # CVS Oracle deployment block
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - CVSUpdate
+        - IDOVault
+      abis:
+        - name: CVSOracle
+          file: ./abis/CVSOracle.json
+      eventHandlers:
+        # CVS Updates from Oracle
+        - event: CVSUpdated(indexed address,uint256,uint256,uint256,uint256)
+          handler: handleOracleCVSUpdated
+        # CVS Synced from SPG
+        - event: CVSSyncedFromSPG(indexed address,uint256,uint256)
+          handler: handleCVSSyncedFromSPG
+      file: ./src/mapping.ts
