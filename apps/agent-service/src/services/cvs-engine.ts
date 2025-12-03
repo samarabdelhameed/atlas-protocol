@@ -313,7 +313,7 @@ export class CVSEngine {
         first: limit,
       });
 
-      return data.ipAssets.map((asset: any) => ({
+      return data.ipassets.map((asset: any) => ({
         id: asset.id,
         name: asset.name,
         creator: asset.creator,

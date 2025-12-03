@@ -10,7 +10,8 @@
     "build": "bun build index.ts --outdir dist --target bun"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/jsonwebtoken": "^9.0.10"
   },
   "peerDependencies": {
     "typescript": "^5.9.3"
@@ -24,6 +25,7 @@
     "@worldcoin/idkit": "^2.4.2",
     "better-sqlite3": "^12.5.0",
     "ethers": "^6.15.0",
+    "jsonwebtoken": "^9.0.2",
     "typescript": "^5.9.3",
     "viem": "^2.39.0"
   }
