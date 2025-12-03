@@ -9,9 +9,9 @@ dataSources:
     name: AtlasADLV
     network: story-aeneid
     source:
-      address: "0xFe9E0Dd8893F71303ACF8164462d323905199669" # Atlas ADLV Contract address (v4.1 - FINAL)
+      address: "0x9c7ccfb831ed4d521599a3b97df0174c91bb2aac" # Atlas ADLV Contract address (v5.0 - CVS Oracle Integrated) - lowercase
       abi: AtlasADLV
-      startBlock: 11719756 # Earliest vault creation block
+      startBlock: 11797000 # Actual deployment block
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -53,9 +53,9 @@ dataSources:
     name: CVSOracle
     network: story-aeneid
     source:
-      address: "0xaeb3c7b93cAA4AE11717C3F233f54977F4767312" # CVS Oracle Contract address (deployed)
+      address: "0x4a875fd309c95dbfbca6dfc3575517ea7d5f6ec7" # CVS Oracle Contract address (v5.0) - lowercase
       abi: CVSOracle
-      startBlock: 11784870 # CVS Oracle deployment block
+      startBlock: 11797551 # Actual deployment block
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7

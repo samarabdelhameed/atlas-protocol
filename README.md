@@ -284,13 +284,15 @@ bun run dev
 
 ## 🔗 Quick Links
 
-### Deployed & Verified Contracts ✅
-- **IDO Contract:** [`0x21aD95c76B71f0adCdD37fB2217Dc9d554437e6F`](https://aeneid.storyscan.io/address/0x21aD95c76B71f0adCdD37fB2217Dc9d554437e6F) ✅ Verified
-- **ADLV Contract:** [`0xdd0fF1a826FCAC7e3EBAE6E978A4BB043D27eC13`](https://aeneid.storyscan.io/address/0xdd0fF1a826FCAC7e3EBAE6E978A4BB043D27eC13) ✅ Verified
+### Deployed & Verified Contracts ✅ (v5.0 - CVS Oracle Integrated)
+- **IDO Contract:** [`0xFb1EC26171848c330356ff1C9e2a1228066Da324`](https://aeneid.storyscan.io/address/0xFb1EC26171848c330356ff1C9e2a1228066Da324) ✅ Fresh Deployment
+- **ADLV Contract:** [`0x9c7cCfB831Ed4D521599a3B97df0174C91bB2AAC`](https://aeneid.storyscan.io/address/0x9c7cCfB831Ed4D521599a3B97df0174C91bB2AAC) ✅ Fresh Deployment
+- **CVS Oracle:** [`0x4a875fD309C95DBFBcA6dFC3575517Ea7d5F6eC7`](https://aeneid.storyscan.io/address/0x4a875fD309C95DBFBcA6dFC3575517Ea7d5F6eC7) ✅ NEW!
+- **Lending Module:** [`0x3154484F0CdBa14F2A2A3Ba8D2125a5c088a5E4f`](https://aeneid.storyscan.io/address/0x3154484F0CdBa14F2A2A3Ba8D2125a5c088a5E4f)
+- **Loan NFT:** [`0x69D6C3E0D2BAE75Cbad6de75e8a367C607Ae8bC1`](https://aeneid.storyscan.io/address/0x69D6C3E0D2BAE75Cbad6de75e8a367C607Ae8bC1)
 
-### Live Test Vaults
-- **Vault 1:** `0xcca596ff570d007f0f12b9c7155e4277ffa48876` (0.001125 IP)
-- **Vault 2:** `0x28c709329c48b9f20e2a3513fd0bb24cc982a453` (2.75 IP, 2 licenses) ✅ Active
+### Deployment Block
+- **Block:** 11797578 (2025-12-03)
 
 ### Network & Explorer
 - **Network:** Story Aeneid Testnet
@@ -314,22 +316,23 @@ bun run dev
 
 ### ✅ Verified Contracts on Story Aeneid Testnet
 
-#### IDO Contract (IP Data Oracle)
-- **Address:** [`0x21aD95c76B71f0adCdD37fB2217Dc9d554437e6F`](https://aeneid.storyscan.io/address/0x21aD95c76B71f0adCdD37fB2217Dc9d554437e6F)
-- **Status:** ✅ **Verified** (Exact Match)
+#### IDO Contract (IP Data Oracle) - v5.0
+- **Address:** [`0xFb1EC26171848c330356ff1C9e2a1228066Da324`](https://aeneid.storyscan.io/address/0xFb1EC26171848c330356ff1C9e2a1228066Da324)
+- **Status:** ✅ **Deployed** (v5.0 - CVS Oracle Integrated)
 - **Compiler:** v0.8.30+commit.737f2a01
-- **Owner:** ADLV Contract (0xdd0fF1a826FCAC7e3EBAE6E978A4BB043D27eC13)
-- **Function:** Manages CVS scores and license revenue tracking
+- **Owner:** ADLV Contract (0x9c7cCfB831Ed4D521599a3B97df0174C91bB2AAC)
+- **CVS Oracle:** 0x4a875fD309C95DBFBcA6dFC3575517Ea7d5F6eC7 (Integrated)
+- **Function:** Manages CVS scores and license revenue tracking with oracle integration
 - **Features:**
-  - ✅ Contract source code verified
+  - ✅ Real-time CVS updates from Story Protocol
+  - ✅ Oracle-based collateral scoring
   - ✅ Read/Write contract functions available
-  - ✅ Constructor arguments visible
 
-#### ADLV Contract (Automated Data Licensing Vault with Story Protocol)
-- **Address:** [`0xdd0fF1a826FCAC7e3EBAE6E978A4BB043D27eC13`](https://aeneid.storyscan.io/address/0xdd0fF1a826FCAC7e3EBAE6E978A4BB043D27eC13)
-- **Status:** ✅ **Verified** (Exact Match)
+#### ADLV Contract (Automated Data Licensing Vault) - v5.0
+- **Address:** [`0x9c7cCfB831Ed4D521599a3B97df0174C91bB2AAC`](https://aeneid.storyscan.io/address/0x9c7cCfB831Ed4D521599a3B97df0174C91bB2AAC)
+- **Status:** ✅ **Deployed** (v5.0 - CVS Oracle Integrated)
 - **Compiler:** v0.8.30+commit.737f2a01
-- **IDO Reference:** IDO Contract (0x21aD95c76B71f0adCdD37fB2217Dc9d554437e6F)
+- **IDO Reference:** IDO Contract (0xFb1EC26171848c330356ff1C9e2a1228066Da324)
 - **Function:** Manages vaults, loans, and revenue distribution with Story Protocol integration
 - **Features:**
   - ✅ Contract source code verified
