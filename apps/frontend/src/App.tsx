@@ -21,11 +21,15 @@ const PageLoader = () => (
 function App() {
   const [currentPage, setCurrentPage] = useState('landing');
   const [selectedIPAsset, setSelectedIPAsset] = useState<string | null>(null);
+  const [selectedVault, setSelectedVault] = useState<string | null>(null);
 
-  const handleNavigate = (page: string, ipAssetId?: string) => {
+  const handleNavigate = (page: string, data?: string) => {
     setCurrentPage(page);
-    if (ipAssetId) {
-      setSelectedIPAsset(ipAssetId);
+    // Handle different data types based on the page
+    if (page === 'ip-intelligence' && data) {
+      setSelectedIPAsset(data);
+    } else if (page === 'licensing' && data) {
+      setSelectedVault(data);
     }
   };
 
@@ -40,7 +44,7 @@ function App() {
       case 'loans':
         return <Loans onNavigate={handleNavigate} />;
       case 'licensing':
-        return <Licensing onNavigate={handleNavigate} />;
+        return <Licensing onNavigate={handleNavigate} preSelectedVault={selectedVault || undefined} />;
       case 'my-licenses':
         return <MyLicensesPage onNavigate={handleNavigate} />;
       case 'ip-intelligence':

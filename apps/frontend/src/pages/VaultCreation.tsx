@@ -915,7 +915,7 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                   <h2 className="text-3xl font-bold text-white mb-3">
                     {vaultExistsError ? "Vault Already Exists" : "Vault Deployment Error"}
                   </h2>
-                  <p className={`mb-4 ${vaultExistsError ? 'text-yellow-400' : 'text-red-400'}`}>
+                  <p className={`mb-4 max-w-2xl mx-auto break-words whitespace-pre-wrap ${vaultExistsError ? 'text-yellow-400' : 'text-red-400'}`}>
                     {vaultCreationError}
                   </p>
 
@@ -1069,8 +1069,8 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                     Creating vault on-chain... This may take a few moments.
                   </p>
                   {vaultCreationError && (
-                    <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl mb-4">
-                      <p className="text-red-400 text-sm">
+                    <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl mb-4 max-w-2xl mx-auto">
+                      <p className="text-red-400 text-sm break-words whitespace-pre-wrap">
                         {vaultCreationError}
                       </p>
                     </div>
@@ -1078,7 +1078,17 @@ export default function VaultCreation({ onNavigate }: VaultCreationProps = {}) {
                 </>
               )}
 
-              <div className="flex gap-4 justify-center">
+              <div className="flex gap-4 justify-center flex-wrap">
+                {vaultAddress && !isDeploying && (
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => onNavigate?.("licensing", vaultAddress)}
+                    className="px-8 py-3 bg-gradient-to-r from-orange-500 to-amber-600 text-white rounded-2xl font-bold shadow-[0_0_30px_rgba(249,115,22,0.6)] hover:shadow-[0_0_50px_rgba(249,115,22,0.8)] transition-all duration-300"
+                  >
+                    Buy License Now
+                  </motion.button>
+                )}
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}

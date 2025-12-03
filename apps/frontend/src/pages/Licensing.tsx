@@ -53,7 +53,12 @@ interface LicenseMetadata {
   timestamp: string;
 }
 
-export default function Licensing() {
+interface LicensingProps {
+  onNavigate?: (page: string) => void;
+  preSelectedVault?: string;
+}
+
+export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
   // Backend URL configuration
   const BACKEND_URL = import.meta.env.VITE_AGENT_API_URL || 'http://localhost:3001';
 
@@ -69,7 +74,7 @@ export default function Licensing() {
   const [buyerInfo, setBuyerInfo] = useState({ name: '', organization: '', email: '' });
   const [formErrors, setFormErrors] = useState<{ name?: string; organization?: string; email?: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedVault, setSelectedVault] = useState('');
+  const [selectedVault, setSelectedVault] = useState(preSelectedVault || '');
   const [networkError, setNetworkError] = useState<string | null>(null);
 
   // Fetch user's vaults from API (Goldsky subgraph)
