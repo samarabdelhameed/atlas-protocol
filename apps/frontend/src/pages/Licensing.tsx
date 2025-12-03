@@ -11,7 +11,8 @@ import {
   Activity,
 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useChainId } from 'wagmi';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useChainId } from 'wagmi';
+import { useQuery } from '@tanstack/react-query';
 import { parseUnits } from 'viem';
 import { CONTRACTS } from '../contracts/addresses';
 import ADLV_ABI from '../contracts/abis/ADLV.json';
@@ -71,15 +72,31 @@ export default function Licensing() {
   const [selectedVault, setSelectedVault] = useState('');
   const [networkError, setNetworkError] = useState<string | null>(null);
 
-  // Fetch user's vaults for dropdown
-  const { data: userVaults } = useReadContract({
-    address: CONTRACTS.ADLV,
-    abi: ADLV_ABI.abi,
-    functionName: 'getUserVaults',
-    args: [address],
-    query: {
-      enabled: !!address,
+  // Fetch user's vaults from API (Goldsky subgraph)
+  const { data: userVaults } = useQuery({
+    queryKey: ['userVaults', address],
+    queryFn: async () => {
+      if (!address) return [];
+
+      try {
+        const response = await fetch(`${BACKEND_URL}/api/vaults/${address}`);
+
+        if (!response.ok) {
+          console.error('Failed to fetch vaults from API:', response.status);
+          return [];
+        }
+
+        const data = await response.json();
+        console.log(`✅ Fetched ${data.count} vault(s) from API for ${address}`);
+
+        return (data.vaults || []) as `0x${string}`[];
+      } catch (error) {
+        console.error('Error fetching vaults:', error);
+        return [];
+      }
     },
+    enabled: !!address,
+    staleTime: 30_000, // Consider data fresh for 30 seconds
   });
 
   // Helper to parse price string to Wei
