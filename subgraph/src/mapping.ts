@@ -1,6 +1,7 @@
 import { BigInt, Address } from "@graphprotocol/graph-ts";
 import {
   IDOVault,
+  IPAsset,
   DataLicenseSale,
   Loan,
   Deposit,
@@ -30,34 +31,69 @@ import {
 
 export function handleVaultCreated(event: VaultCreated): void {
   let vault = new IDOVault(event.params.vaultAddress.toHex());
-  
+
   vault.vaultAddress = event.params.vaultAddress;
   vault.creator = event.params.creator;
-  vault.ipAsset = event.params.ipId.toHex();
-  
+
+  // Create or load IPAsset entity
+  let ipAssetId = event.params.ipId.toHex();
+  let ipAsset = IPAsset.load(ipAssetId);
+
+  if (!ipAsset) {
+    ipAsset = new IPAsset(ipAssetId);
+    ipAsset.ipId = event.params.ipId;
+
+    // Extract the actual address from bytes32 (remove leading zeros)
+    // bytes32 format: 0x000000000000000000000000<actual_address>
+    let actualAddress = "0x" + ipAssetId.slice(-40);  // Last 40 chars (20 bytes)
+    ipAsset.name = `IP Asset ${actualAddress.slice(0, 6)}...${actualAddress.slice(-4)}`;
+    ipAsset.description = "IP Asset registered via ADLV vault creation";
+    ipAsset.creator = event.params.creator;
+    ipAsset.ipHash = actualAddress;  // Store the clean address
+    ipAsset.timestamp = event.block.timestamp;
+    ipAsset.blockNumber = event.block.number;
+
+    // Licensing fields (default values)
+    ipAsset.commercialUse = true;
+    ipAsset.derivatives = true;
+    ipAsset.royaltyPercent = BigInt.fromI32(0);
+    ipAsset.mintingFee = BigInt.fromI32(0);
+
+    // Initialize CVS metrics
+    ipAsset.totalUsageCount = BigInt.fromI32(0);
+    ipAsset.totalLicenseRevenue = BigInt.fromI32(0);
+    ipAsset.totalRemixes = BigInt.fromI32(0);
+    ipAsset.cvsScore = event.params.initialCVS;
+
+    ipAsset.save();
+  }
+
+  // Link vault to IPAsset entity (not hex string)
+  vault.ipAsset = ipAsset.id;
+
   // Initialize CVS
   vault.currentCVS = event.params.initialCVS;
   vault.initialCVS = event.params.initialCVS;
   vault.lastCVSUpdate = event.block.timestamp;
-  
+
   // Initialize vault metrics
   vault.totalLiquidity = BigInt.fromI32(0);
   vault.availableLiquidity = BigInt.fromI32(0);
   vault.totalLoansIssued = BigInt.fromI32(0);
   vault.activeLoansCount = BigInt.fromI32(0);
-  
+
   // Calculate initial loan terms based on CVS
   vault.maxLoanAmount = calculateMaxLoanAmount(event.params.initialCVS);
   vault.interestRate = calculateInterestRate(event.params.initialCVS);
   vault.collateralRatio = BigInt.fromI32(150); // 150% default
-  
+
   vault.totalLicenseRevenue = BigInt.fromI32(0);
   vault.totalLoanRepayments = BigInt.fromI32(0);
   vault.utilizationRate = BigInt.fromI32(0).toBigDecimal();
-  
+
   vault.createdAt = event.block.timestamp;
   vault.updatedAt = event.block.timestamp;
-  
+
   vault.save();
 }
 
@@ -100,7 +136,7 @@ export function handleLicenseSale(event: LicenseSold): void {
   sale.transactionHash = event.transaction.hash;
   
   sale.save();
-  
+
   // Update vault metrics
   let vault = IDOVault.load(event.params.vaultAddress.toHex());
   if (vault) {
@@ -108,14 +144,23 @@ export function handleLicenseSale(event: LicenseSold): void {
     vault.currentCVS = vault.currentCVS.plus(sale.cvsIncrement);
     vault.lastCVSUpdate = event.block.timestamp;
     vault.updatedAt = event.block.timestamp;
-    
+
     // Recalculate loan terms based on new CVS
     vault.maxLoanAmount = calculateMaxLoanAmount(vault.currentCVS);
     vault.interestRate = calculateInterestRate(vault.currentCVS);
-    
+
     vault.save();
   }
-  
+
+  // Update IPAsset metrics
+  let ipAsset = IPAsset.load(event.params.ipId.toHex());
+  if (ipAsset) {
+    ipAsset.totalLicenseRevenue = ipAsset.totalLicenseRevenue.plus(event.params.price);
+    ipAsset.totalUsageCount = ipAsset.totalUsageCount.plus(BigInt.fromI32(1));
+    ipAsset.cvsScore = ipAsset.cvsScore.plus(sale.cvsIncrement);
+    ipAsset.save();
+  }
+
   updateGlobalStats("license");
   
   // Update global stats timestamp
@@ -444,7 +489,7 @@ function calculateRequiredCVS(loanAmount: BigInt): BigInt {
 
 function updateGlobalStats(type: string): void {
   let stats = GlobalStats.load("global");
-  
+
   if (!stats) {
     stats = new GlobalStats("global");
     stats.totalIPAssets = BigInt.fromI32(0);
@@ -453,6 +498,7 @@ function updateGlobalStats(type: string): void {
     stats.totalIDOPools = BigInt.fromI32(0);
     stats.totalBridgeTransactions = BigInt.fromI32(0);
     stats.totalVerifiedUsers = BigInt.fromI32(0);
+    stats.totalMultiAssetVaults = BigInt.fromI32(0);
     stats.lastUpdated = BigInt.fromI32(0);
   }
   
