@@ -167,7 +167,7 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
               id: `LIC-${String(index + 1).padStart(3, '0')}`,
               ipAsset: license.organization || 'Unknown',
               buyer: license.personalName || 'Anonymous',
-              amount: `${license.amount} STORY`,
+              amount: `${license.amount} IP`,
               date: formatRelativeTime(new Date(license.timestamp)),
               status: 'completed',
               cvsImpact,
@@ -205,8 +205,8 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
       {
         label: 'My Total CVS',
         value: userCVS > 0 ? 
-          (userCVS < 0.01 ? userCVS.toFixed(4) : userCVS.toLocaleString(undefined, { maximumFractionDigits: 2 })) + ' STORY' 
-          : '0 STORY',
+          (userCVS < 0.01 ? userCVS.toFixed(4) : userCVS.toLocaleString(undefined, { maximumFractionDigits: 2 })) + ' IP' 
+          : '0 IP',
         change: userCVS > 0 ? `${userVaults?.length || 0} vault${(userVaults?.length || 0) !== 1 ? 's' : ''}` : 'No vaults',
         icon: TrendingUp,
         positive: userCVS > 0,
@@ -214,7 +214,7 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
       },
       {
         label: 'Data Licensing Yield',
-        value: revenue > 0 ? `${revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} STORY` : '0 STORY',
+        value: revenue > 0 ? `${revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} IP` : '0 IP',
         change: recentLicenses.length > 0 ? `${recentLicenses.length} sale${recentLicenses.length !== 1 ? 's' : ''}` : 'No sales',
         icon: DollarSign,
         positive: revenue > 0,
@@ -231,8 +231,8 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
       {
         label: 'Max Borrowable',
         value: totalMaxBorrowable > 0 ? 
-          (totalMaxBorrowable < 0.01 ? totalMaxBorrowable.toFixed(4) : totalMaxBorrowable.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })) + ' STORY' 
-          : '0 STORY',
+          (totalMaxBorrowable < 0.01 ? totalMaxBorrowable.toFixed(4) : totalMaxBorrowable.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })) + ' IP' 
+          : '0 IP',
         change: userVaults && userVaults.length > 0 ? `From ${userVaults.length} vault${userVaults.length !== 1 ? 's' : ''}` : 'No vaults',
         icon: Activity,
         positive: totalMaxBorrowable > 0,
@@ -263,7 +263,7 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
 
         // Calculate total revenue from backend license data
         const revenue = recentLicenses.reduce((sum, license) => {
-          const amount = parseFloat(license.amount.replace(' STORY', '')) || 0;
+          const amount = parseFloat(license.amount.replace(' IP', '')) || 0;
           return sum + amount;
         }, 0);
         setTotalRevenue(revenue);
@@ -276,7 +276,7 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
         if (recentLicenses.length > 0) {
           // Extract real values from licenses
           const realValues = recentLicenses.slice(0, points).reverse().map((license) => {
-            const amount = parseFloat(license.amount.replace(' STORY', '')) || 0;
+            const amount = parseFloat(license.amount.replace(' IP', '')) || 0;
             return 5000 + amount * 100;
           });
           
@@ -396,7 +396,7 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
                 </div>
                 <div className="text-sm text-green-400 flex items-center gap-1 justify-end">
                   <Sparkles className="w-4 h-4" />
-                  {address ? 'My CVS (STORY)' : 'Live CVS'}
+                  {address ? 'My CVS (IP)' : 'Live CVS'}
                 </div>
               </motion.div>
             </div>
@@ -474,7 +474,7 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
               <div className="flex justify-between items-center mb-2">
                 <span className="text-gray-400 text-sm">Max Liquidity (CVS Limit)</span>
                 <span className="text-white font-bold">
-                  {totalMaxBorrowable > 0 ? (totalMaxBorrowable < 0.01 ? totalMaxBorrowable.toFixed(4) : totalMaxBorrowable.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : '0'} STORY
+                  {totalMaxBorrowable > 0 ? (totalMaxBorrowable < 0.01 ? totalMaxBorrowable.toFixed(4) : totalMaxBorrowable.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : '0'} IP
                 </span>
               </div>
               <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
@@ -486,7 +486,7 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
                   className="h-full bg-gradient-to-r from-orange-500 to-amber-600"
                 />
               </div>
-              <p className="text-gray-500 text-xs mt-1">Based on current CVS: {totalCVS > 0 ? (totalCVS < 0.01 ? totalCVS.toFixed(4) : totalCVS.toLocaleString(undefined, { maximumFractionDigits: 2 })) : '0'} STORY</p>
+              <p className="text-gray-500 text-xs mt-1">Based on current CVS: {totalCVS > 0 ? (totalCVS < 0.01 ? totalCVS.toFixed(4) : totalCVS.toLocaleString(undefined, { maximumFractionDigits: 2 })) : '0'} IP</p>
             </div>
 
             <div className="space-y-4">
@@ -626,14 +626,14 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
                 <div className="text-3xl font-bold text-white">
                   {totalCVS < 0.01 ? totalCVS.toFixed(4) : totalCVS.toFixed(2)}
                 </div>
-                <div className="text-sm text-gray-400">Total CVS (STORY)</div>
+                <div className="text-sm text-gray-400">Total CVS (IP)</div>
               </div>
               <div className="bg-gray-800/50 border border-gray-700 rounded-2xl p-6">
                 <div className="text-3xl mb-2">💰</div>
                 <div className="text-3xl font-bold text-white">
                   {totalMaxBorrowable < 0.01 ? totalMaxBorrowable.toFixed(4) : totalMaxBorrowable.toFixed(2)}
                 </div>
-                <div className="text-sm text-gray-400">Max Borrowable (STORY)</div>
+                <div className="text-sm text-gray-400">Max Borrowable (IP)</div>
               </div>
             </div>
 
@@ -665,7 +665,7 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
                           {(() => {
                             const val = Number(formatUnits(v.cvs || 0n, 18));
                             return val < 0.01 ? val.toFixed(4) : val.toFixed(2);
-                          })()} STORY
+                          })()} IP
                         </span>
                       </div>
                       <div className="flex justify-between">
@@ -674,7 +674,7 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
                           {(() => {
                             const val = Number(formatUnits(v.maxLoan || 0n, 18));
                             return val < 0.01 ? val.toFixed(4) : val.toFixed(2);
-                          })()} STORY
+                          })()} IP
                         </span>
                       </div>
                     </div>

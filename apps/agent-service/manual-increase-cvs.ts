@@ -70,7 +70,7 @@ async function main() {
     chain: {
       id: 1315,
       name: 'Story Aeneid Testnet',
-      nativeCurrency: { name: 'Story', symbol: 'STORY', decimals: 18 },
+      nativeCurrency: { name: 'Story', symbol: 'IP', decimals: 18 },
       rpcUrls: {
         default: { http: [RPC_URL] },
         public: { http: [RPC_URL] },

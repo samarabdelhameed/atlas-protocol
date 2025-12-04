@@ -66,7 +66,7 @@ export default function IPAssetCard({
       <div className="grid grid-cols-3 gap-2 mb-4">
         <div className="bg-cyan-500/10 rounded-lg p-2.5 border border-cyan-500/20">
           <div className="text-cyan-400 text-xs mb-1 font-medium">CVS Score</div>
-          <div className="text-white font-bold text-base truncate" title={`${(Number(cvsScore) / 1e18).toFixed(4)} STORY`}>
+          <div className="text-white font-bold text-base truncate" title={`${(Number(cvsScore) / 1e18).toFixed(4)} IP`}>
             {(() => {
               const cvsInStory = Number(cvsScore) / 1e18;
               return cvsInStory >= 1000000
@@ -85,7 +85,7 @@ export default function IPAssetCard({
         </div>
         <div className="bg-green-500/10 rounded-lg p-2.5 border border-green-500/20">
           <div className="text-green-400 text-xs mb-1 font-medium">Revenue</div>
-          <div className="text-white font-bold text-base truncate" title={`${(Number(totalRevenue) / 1e18).toFixed(4)} STORY`}>
+          <div className="text-white font-bold text-base truncate" title={`${(Number(totalRevenue) / 1e18).toFixed(4)} IP`}>
             {(Number(totalRevenue) / 1e18).toFixed(2)}
           </div>
         </div>

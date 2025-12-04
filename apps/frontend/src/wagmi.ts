@@ -4,7 +4,7 @@ import { defineChain } from "viem";
 export const storyTestnet = defineChain({
   id: 1315,
   name: "Story Testnet",
-  nativeCurrency: { name: "STORY", symbol: "STORY", decimals: 18 },
+  nativeCurrency: { name: "IP", symbol: "IP", decimals: 18 },
   rpcUrls: {
     default: {
       http: [

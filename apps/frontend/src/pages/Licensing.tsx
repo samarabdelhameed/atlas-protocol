@@ -19,7 +19,7 @@ import ADLV_ABI from '../contracts/abis/ADLV.json';
 import IPAssetCard from '../components/IPAssetCard';
 
 // Story Aeneid Testnet Chain ID
-const STORY_CHAIN_ID = 1315;
+const IP_CHAIN_ID = 1315;
 
 
 
@@ -128,7 +128,7 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
   // Helper to parse price string to Wei
   const parseLicensePrice = (priceString: string): bigint => {
     if (priceString === 'Custom') return 0n;
-    // "1.5" → 1.5 * 10^18 Wei (STORY tokens)
+    // "1.5" → 1.5 * 10^18 Wei (IP tokens)
     return parseUnits(priceString, 18);
   };
 
@@ -149,8 +149,8 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
 
   // Network validation - check if user is on Story Aeneid Testnet
   useEffect(() => {
-    if (address && chainId !== STORY_CHAIN_ID) {
-      setNetworkError(`Please switch to Story Aeneid Testnet (Chain ID: ${STORY_CHAIN_ID})`);
+    if (address && chainId !== IP_CHAIN_ID) {
+      setNetworkError(`Please switch to Story Aeneid Testnet (Chain ID: ${IP_CHAIN_ID})`);
     } else {
       setNetworkError(null);
     }
@@ -274,7 +274,7 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
     {
       id: "basic",
       name: "Basic Access",
-      price: "0.1", // 0.1 STORY tokens
+      price: "0.1", // 0.1 IP tokens
       period: "/month",
       color: "from-orange-500 to-amber-600",
       cvsImpact: "+25",
@@ -291,7 +291,7 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
     {
       id: "commercial",
       name: "Commercial",
-      price: "1.5", // 1.5 STORY tokens
+      price: "1.5", // 1.5 IP tokens
       period: "/month",
       color: "from-amber-500 to-orange-600",
       cvsImpact: "+80",
@@ -349,12 +349,12 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
           const totalWei = marketplaceData.assets.reduce((acc: number, curr: any) => acc + Number(curr.totalRevenue || 0), 0);
           const totalStory = totalWei / 1e18;
           return totalStory >= 1000000
-            ? `${(totalStory / 1000000).toFixed(2)}M STORY`
+            ? `${(totalStory / 1000000).toFixed(2)}M IP`
             : totalStory >= 1000
-            ? `${(totalStory / 1000).toFixed(2)}K STORY`
-            : `${totalStory.toFixed(2)} STORY`;
+            ? `${(totalStory / 1000).toFixed(2)}K IP`
+            : `${totalStory.toFixed(2)} IP`;
         })()
-        : "0 STORY",
+        : "0 IP",
       icon: Activity,
       color: "from-green-500 to-emerald-600",
     },
@@ -387,7 +387,7 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
               company: license.buyer_organization || license.organization || 'Unknown',
               tier: license.tier_name || tier?.name || 'Unknown',
               date: timestamp ? formatRelativeTime(new Date(timestamp)) : 'Recently',
-              amount: license.amount || '0 STORY',
+              amount: license.amount || '0 IP',
               cvsImpact: tier?.cvsImpact || '+0',
               creator: license.buyer_name || license.personalName || 'Anonymous',
             };
@@ -668,7 +668,7 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
                     <span
                       className={`text-5xl font-bold bg-gradient-to-r ${tier.color} bg-clip-text text-transparent`}
                     >
-                      {tier.price === 'Custom' ? 'Custom' : `${tier.price} STORY`}
+                      {tier.price === 'Custom' ? 'Custom' : `${tier.price} IP`}
                     </span>
                     <span className="text-gray-400 text-lg">{tier.period}</span>
                   </div>
