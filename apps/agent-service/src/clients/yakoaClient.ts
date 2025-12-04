@@ -55,11 +55,35 @@ export async function fetchOriginalityScore(tokenId: string): Promise<YakoaScore
   const network = process.env.YAKOA_NETWORK || 'story-aeneid'; // Story Protocol Aeneid testnet
 
   if (!apiKey) {
-    throw new Error('YAKOA_API_KEY not set in environment variables. Get your key from https://docs.yakoa.io');
+    console.warn('⚠️ YAKOA_API_KEY not set. Using default originality score of 0 (Graceful Degradation).');
+    console.warn('💡 To get real scores, sign up at https://docs.yakoa.io and set YAKOA_API_KEY in .env');
+    
+    return {
+      score: 0,
+      confidence: 0,
+      verified: false,
+      timestamp: Date.now(),
+      details: {
+        infringements: 0,
+        authorizations: 0,
+        status: 'unknown_no_api_key'
+      }
+    };
   }
 
   if (!subdomain) {
-    throw new Error('YAKOA_SUBDOMAIN not set in environment variables. You will receive your subdomain when you sign up at https://docs.yakoa.io');
+    console.warn('⚠️ YAKOA_SUBDOMAIN not set. Using default originality score of 0.');
+    return {
+      score: 0,
+      confidence: 0,
+      verified: false,
+      timestamp: Date.now(),
+      details: {
+        infringements: 0,
+        authorizations: 0,
+        status: 'unknown_no_subdomain'
+      }
+    };
   }
 
   try {

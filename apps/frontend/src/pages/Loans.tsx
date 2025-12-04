@@ -3,12 +3,15 @@ import { DollarSign, Clock, CheckCircle2, AlertTriangle, Shield, Zap, Loader2, X
 import { useEffect, useMemo, useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { createPublicClient, http, isAddress, formatUnits, parseUnits } from 'viem';
-import { useQueries } from '@tanstack/react-query';
+import { useQuery, useQueries } from '@tanstack/react-query';
 import { CONTRACTS } from '../contracts/addresses';
 import ADLV_JSON from '../contracts/abis/ADLV.json';
 import IDO_JSON from '../contracts/abis/IDO.json';
 import LendingModule_ABI from '../contracts/abis/LendingModule.json';
 
+// Debug: Check ABI issueLoan parameters
+const issueLoanABI = ADLV_JSON.abi.find((item: any) => item.name === 'issueLoan');
+console.log('🔍 issueLoan ABI inputs:', issueLoanABI?.inputs?.length, issueLoanABI?.inputs?.map((i: any) => i.name));
 
 interface LoanData {
   id: bigint;
@@ -24,9 +27,11 @@ interface LoanData {
 }
 
 interface VaultData {
+  address: `0x${string}`;
   ipId: `0x${string}`;
   creator: `0x${string}`;
   cvs: bigint;
+  maxLoan: bigint;
 }
 
 interface EnrichedLoanData extends LoanData {
@@ -39,8 +44,8 @@ interface EnrichedLoanData extends LoanData {
 export default function Loans() {
   const { address } = useAccount();
   const [loanAmount, setLoanAmount] = useState('');
-  const [selectedChain, setSelectedChain] = useState('Story');
-  const [selectedChainId, setSelectedChainId] = useState<number>(0); // 0 = Story (ETH)
+  const [selectedChain, setSelectedChain] = useState('Story Testnet');
+  const [selectedChainId, setSelectedChainId] = useState<number>(1315); // Story Aeneid Testnet
   const [duration, setDuration] = useState('30');
   const [loanExecuted, setLoanExecuted] = useState(false);
   const [selectedVault, setSelectedVault] = useState('');
@@ -50,19 +55,20 @@ export default function Loans() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [successTxHash, setSuccessTxHash] = useState<string>('');
 
-  // Chain ID mapping for Owlto Bridge
+  // Chain ID mapping for Owlto Bridge (TESTNET)
   const CHAIN_ID_MAP = {
-    story: 0,      // Story Protocol (ETH)
-    base: 8453,    // Base (USDC)
-    arbitrum: 42161, // Arbitrum (USDC)
-    optimism: 10,  // Optimism (USDC)
-    polygon: 137,  // Polygon (USDC)
+    story: 1315,     // Story Aeneid Testnet
+    'base-sepolia': 84532,    // Base Sepolia Testnet
+    'arbitrum-sepolia': 421614, // Arbitrum Sepolia Testnet
+    'optimism-sepolia': 11155420,  // Optimism Sepolia Testnet
+    'polygon-amoy': 80002,  // Polygon Amoy Testnet
   } as const;
 
   // Update chain selector handler
-  const handleChainSelect = (chain: string) => {
-    setSelectedChain(chain);
-    setSelectedChainId(CHAIN_ID_MAP[chain.toLowerCase() as keyof typeof CHAIN_ID_MAP] || 0);
+  const handleChainSelect = (chainId: string, chainName: string) => {
+    setSelectedChain(chainName);
+    setSelectedChainId(CHAIN_ID_MAP[chainId.toLowerCase() as keyof typeof CHAIN_ID_MAP] || 0);
+    console.log('🔗 Chain selected:', { chainId, chainName, numericId: CHAIN_ID_MAP[chainId.toLowerCase() as keyof typeof CHAIN_ID_MAP] });
   };
 
   // Env-driven chain setup
@@ -81,40 +87,44 @@ export default function Loans() {
     });
   }, [RPC_URL, CHAIN_ID]);
 
-  // Fetch user's vaults for dropdown
-  const { data: userVaults } = useReadContract({
-    address: CONTRACTS.ADLV,
-    abi: ADLV_JSON.abi,
-    functionName: 'getUserVaults',
-    args: [address],
-    query: {
-      enabled: !!address,
+  // Fetch user's vaults from API
+  const { data: userVaults } = useQuery({
+    queryKey: ['userVaults', address],
+    queryFn: async () => {
+      if (!address) return [];
+      const backendUrl = import.meta.env.VITE_BACKEND_ENDPOINT || 'http://localhost:3001';
+      const response = await fetch(`${backendUrl}/api/vaults/${address}`);
+      if (!response.ok) return [];
+      const data = await response.json();
+      
+      return (data.vaults || [])
+        .filter((v: any) => v && v.address)
+        .map((v: any) => ({
+          address: v.address as `0x${string}`,
+          ipId: (v.ipId || v.ipAsset) as `0x${string}`,
+          creator: v.creator,
+          cvs: BigInt(v.cvs || v.currentCVS || '0'),
+          maxLoan: BigInt(v.cvs || v.currentCVS || '0') / 2n,
+        }));
     },
+    enabled: !!address,
   });
 
   // Calculate collateral (150%)
   const collateral = loanAmount ? parseUnits((Number(loanAmount) * 1.5).toString(), 18) : 0n;
 
   // Issue loan with wagmi hooks - Using LendingModule with cross-chain support
-  const { writeContract: issueLoan, data: txHash } = useWriteContract();
+  const { writeContract: issueLoan, data: txHash, error: writeError, isPending } = useWriteContract();
 
-  const { isLoading: isWaiting } = useWaitForTransactionReceipt({
+  const { isLoading: isWaiting, data: txReceipt, isSuccess: txSuccess, isError: txError } = useWaitForTransactionReceipt({
     hash: txHash,
   });
 
-  // Handle transaction success/error
-  useEffect(() => {
-    if (txHash && !isWaiting) {
-      setLoanExecuted(true);
-      setLoanAmount('');
-      setTimeout(() => setLoanExecuted(false), 3000);
-    }
-  }, [txHash, isWaiting]);
-
-  // Fetch user's loan IDs
-  const { data: loanIds, isLoading: loadingIds } = useReadContract({
-    address: CONTRACTS.LendingModule,
-    abi: LendingModule_ABI.abi,
+  // Fetch user's loan IDs from ADLV (not LendingModule)
+  // ADLV tracks borrowerLoans mapping when loans are issued
+  const { data: loanIds, isLoading: loadingIds, refetch: refetchLoanIds } = useReadContract({
+    address: CONTRACTS.ADLV,
+    abi: ADLV_JSON.abi,
     functionName: 'getBorrowerLoans',
     args: [address],
     query: {
@@ -123,6 +133,14 @@ export default function Loans() {
     },
   });
 
+  // Debug: Log loan IDs
+  useEffect(() => {
+    console.log('🔍 Loan IDs for user:', address, loanIds);
+    if (loanIds && Array.isArray(loanIds)) {
+      console.log('   Total loans:', loanIds.length);
+    }
+  }, [loanIds, address]);
+
   // Fetch individual loan details in parallel
   const loanQueries = useQueries({
     queries: ((loanIds as bigint[]) || []).map((loanId: bigint) => ({
@@ -130,10 +148,10 @@ export default function Loans() {
       queryFn: async () => {
         if (!publicClient) return null;
 
-        // Fetch loan details
+        // Fetch loan details from ADLV (where loans are stored)
         const loan = await publicClient.readContract({
-          address: CONTRACTS.LendingModule,
-          abi: LendingModule_ABI.abi,
+          address: CONTRACTS.ADLV,
+          abi: ADLV_JSON.abi,
           functionName: 'getLoan',
           args: [loanId],
         }) as LoanData;
@@ -154,21 +172,19 @@ export default function Loans() {
           args: [vault.ipId],
         }) as bigint;
 
-        // Fetch accrued interest
+        // Calculate accrued interest using ADLV's formula
+        const now = BigInt(Math.floor(Date.now() / 1000));
+        const elapsedTime = now - loan.startTime;
+        const loanDuration = loan.endTime - loan.startTime;
         const interest = await publicClient.readContract({
-          address: CONTRACTS.LendingModule,
-          abi: LendingModule_ABI.abi,
-          functionName: 'calculateAccruedInterest',
-          args: [loanId],
+          address: CONTRACTS.ADLV,
+          abi: ADLV_JSON.abi,
+          functionName: 'calculateInterest',
+          args: [loan.loanAmount, loan.interestRate, elapsedTime, loanDuration],
         }) as bigint;
 
-        // Fetch liquidation risk
-        const isLiquidatable = await publicClient.readContract({
-          address: CONTRACTS.LendingModule,
-          abi: LendingModule_ABI.abi,
-          functionName: 'isLoanLiquidatable',
-          args: [loanId],
-        }) as boolean;
+        // Check liquidation risk (loan is liquidatable if CVS drops below 2x loan amount)
+        const isLiquidatable = currentCVS < (loan.loanAmount * 2n);
 
         return {
           ...loan,
@@ -185,9 +201,17 @@ export default function Loans() {
 
   // Transform loan data for UI
   const activeLoans = useMemo(() => {
-    return loanQueries
-      .filter(q => q.data && (q.data as EnrichedLoanData).status === 0) // 0 = ACTIVE status
-      .map(q => {
+    console.log('🔍 Processing loan queries:', loanQueries.length);
+    loanQueries.forEach((q, i) => {
+      console.log(`   Query ${i}:`, q.data ? `status=${(q.data as EnrichedLoanData).status}` : 'no data');
+    });
+
+    const filtered = loanQueries
+      .filter(q => q.data && (q.data as EnrichedLoanData).status === 0); // 0 = ACTIVE status
+
+    console.log('   Active loans after filter:', filtered.length);
+
+    return filtered.map(q => {
         const loan = q.data as EnrichedLoanData;
         const now = Math.floor(Date.now() / 1000);
         const timeRemaining = Number(loan.endTime) - now;
@@ -259,6 +283,38 @@ export default function Loans() {
     }
   }, [repayTxHash, isRepaying, loanQueries]);
 
+  // Handle loan issuance transaction success/failure
+  useEffect(() => {
+    if (txHash && !isWaiting && txReceipt) {
+      console.log('📋 Transaction receipt:', txReceipt);
+
+      // Check if transaction succeeded or reverted
+      if (txReceipt.status === 'success') {
+        console.log('✅ Loan transaction SUCCEEDED');
+        setLoanExecuted(true);
+        setLoanAmount('');
+        setError('');
+
+        // Refetch loan data to show the new loan
+        refetchLoanIds();
+
+        setTimeout(() => setLoanExecuted(false), 3000);
+      } else {
+        console.error('❌ Loan transaction REVERTED');
+        setError('Transaction failed: The transaction was reverted. Please check your collateral, CVS requirements, and vault liquidity.');
+        setLoanExecuted(false);
+      }
+    }
+  }, [txHash, isWaiting, txReceipt, refetchLoanIds]);
+
+  // Handle loan issuance write errors
+  useEffect(() => {
+    if (writeError) {
+      console.error('❌ Write contract error:', writeError);
+      setError(`Transaction failed: ${writeError.message}`);
+    }
+  }, [writeError]);
+
   // Handler for repaying loan
   const handleRepayLoan = (loanId: string) => {
     const loan = activeLoans.find(l => l.id === loanId);
@@ -289,61 +345,83 @@ export default function Loans() {
   useEffect(() => {
     const run = async () => {
       setError('');
-      if (!publicClient || !ADLV_ADDRESS || !IDO_ADDRESS) return;
-      if (!selectedVault || !isAddress(selectedVault)) return;
+      if (!selectedVault || !userVaults) return;
+
       try {
-        // getVault to obtain ipId
-        const vault = await publicClient.readContract({
-          address: ADLV_ADDRESS,
-          abi: ADLV_JSON.abi,
-          functionName: 'getVault',
-          args: [selectedVault],
-        }) as VaultData;
-        const ipId: `0x${string}` = vault?.ipId as `0x${string}`;
-        // CVS
-        const cvs = (await publicClient.readContract({
-          address: IDO_ADDRESS,
-          abi: IDO_JSON.abi,
-          functionName: 'getCVS',
-          args: [ipId],
-        })) as bigint;
-        setCurrentCVS(Number(formatUnits(cvs, 18)));
-        // Max loan
-        const maxLoan = (await publicClient.readContract({
-          address: ADLV_ADDRESS,
-          abi: ADLV_JSON.abi,
-          functionName: 'calculateMaxLoanAmount',
-          args: [selectedVault],
-        })) as bigint;
-        setMaxBorrowable(Number(formatUnits(maxLoan, 18)));
-        // Collateral ratio (bps)
-        const cr = (await publicClient.readContract({
-          address: ADLV_ADDRESS,
-          abi: ADLV_JSON.abi,
-          functionName: 'defaultCollateralRatio',
-        })) as bigint;
-        setCollateralBps(Number(cr));
-        // APR from CVS (bps)
-        const apr = (await publicClient.readContract({
-          address: ADLV_ADDRESS,
-          abi: ADLV_JSON.abi,
-          functionName: 'calculateInterestRate',
-          args: [cvs],
-        })) as bigint;
-        setAprBps(Number(apr));
+        // Find selected vault in API data
+        const vault = userVaults.find((v: any) => v.address.toLowerCase() === selectedVault.toLowerCase());
+
+        if (vault) {
+          // Use data from API
+          const cvsVal = Number(formatUnits(vault.cvs, 18));
+          setCurrentCVS(cvsVal);
+
+          // Calculate max borrowable = 50% of CVS - existing active loans for this vault
+          const maxLoanFromCVS = Number(formatUnits(vault.maxLoan, 18));
+
+          // Calculate total outstanding loans for this vault
+          const activeLoansForVault = loanQueries
+            .map(q => q.data)
+            .filter((loan): loan is EnrichedLoanData => 
+              loan !== null && 
+              loan !== undefined && 
+              loan.vault.toLowerCase() === selectedVault.toLowerCase() && 
+              loan.status === 0 // 0 = Active
+            );
+
+          const totalOutstanding = activeLoansForVault.reduce(
+            (sum, loan) => sum + Number(formatUnits(loan.loanAmount, 18)),
+            0
+          );
+
+          // Remaining borrowing capacity
+          const remainingCapacity = Math.max(0, maxLoanFromCVS - totalOutstanding);
+
+          console.log('📊 Borrowing capacity:', {
+            cvs: cvsVal,
+            maxFromCVS: maxLoanFromCVS,
+            totalOutstanding,
+            remainingCapacity,
+            activeLoans: activeLoansForVault.length,
+          });
+
+          setMaxBorrowable(remainingCapacity);
+
+          // These can still be fetched from contract or hardcoded for now
+          // Collateral ratio (bps)
+          if (publicClient && ADLV_ADDRESS) {
+             const cr = (await publicClient.readContract({
+              address: ADLV_ADDRESS,
+              abi: ADLV_JSON.abi,
+              functionName: 'defaultCollateralRatio',
+            })) as bigint;
+            setCollateralBps(Number(cr));
+
+            // APR from CVS (bps)
+            const apr = (await publicClient.readContract({
+              address: ADLV_ADDRESS,
+              abi: ADLV_JSON.abi,
+              functionName: 'calculateInterestRate',
+              args: [vault.cvs],
+            })) as bigint;
+            setAprBps(Number(apr));
+          }
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load vault metrics');
       }
     };
     void run();
-  }, [publicClient, ADLV_ADDRESS, IDO_ADDRESS, selectedVault]);
+  }, [publicClient, ADLV_ADDRESS, selectedVault, userVaults, loanQueries]);
 
+  // All loans are issued in STORY tokens on Story Protocol
+  // Owlto Bridge converts STORY → native token on destination chain (if cross-chain selected)
   const chains = [
-    { id: 'story', name: 'Story', currency: 'ETH', color: 'from-orange-400 to-amber-600' },
-    { id: 'base', name: 'Base', currency: 'USDC', color: 'from-blue-500 to-indigo-600' },
-    { id: 'arbitrum', name: 'Arbitrum', currency: 'USDC', color: 'from-cyan-400 to-cyan-600' },
-    { id: 'optimism', name: 'Optimism', currency: 'USDC', color: 'from-red-500 to-pink-600' },
-    { id: 'polygon', name: 'Polygon', currency: 'USDC', color: 'from-purple-500 to-violet-600' },
+    { id: 'story', name: 'Story Testnet', currency: 'STORY', color: 'from-orange-400 to-amber-600' },
+    { id: 'base-sepolia', name: 'Base Sepolia', currency: 'USDC', color: 'from-blue-500 to-indigo-600' },
+    { id: 'arbitrum-sepolia', name: 'Arbitrum Sepolia', currency: 'USDC', color: 'from-cyan-400 to-cyan-600' },
+    { id: 'optimism-sepolia', name: 'Optimism Sepolia', currency: 'USDC', color: 'from-red-500 to-pink-600' },
+    { id: 'polygon-amoy', name: 'Polygon Amoy', currency: 'USDC', color: 'from-purple-500 to-violet-600' },
   ];
 
   const collateralRatio = collateralBps / 100;
@@ -398,22 +476,32 @@ export default function Loans() {
                 className="w-full px-4 py-3 bg-gray-900/50 border border-gray-700 rounded-xl text-white focus:border-orange-500 focus:outline-none transition-colors"
               >
                 <option value="">Choose a vault...</option>
-                {(userVaults as readonly `0x${string}`[] | undefined)?.map((vault: `0x${string}`) => (
-                  <option key={vault} value={vault}>
-                    {vault.slice(0, 6)}...{vault.slice(-4)}
+                {userVaults?.map((vault: VaultData) => (
+                  <option key={vault.address} value={vault.address}>
+                    {vault.address.slice(0, 6)}...{vault.address.slice(-4)} (CVS: {(Number(vault.cvs) / 1e18).toFixed(2)} STORY)
                   </option>
                 ))}
               </select>
             </div>
             <div>
               <label className="block text-gray-300 text-sm font-medium mb-2">
-                Drawdown Amount (USDC)
+                Loan Amount (STORY)
               </label>
               <div className="relative">
                 <input
                   type="number"
                   value={loanAmount}
-                  onChange={(e) => setLoanAmount(e.target.value)}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (val > maxBorrowable) {
+                      setLoanAmount(maxBorrowable.toString());
+                      setError(`Maximum loan amount is ${maxBorrowable.toFixed(4)} STORY (50% of your CVS)`);
+                    } else {
+                      setLoanAmount(e.target.value);
+                      setError('');
+                    }
+                  }}
+                  max={maxBorrowable}
                   placeholder="0.00"
                   className="w-full px-4 py-4 bg-gray-900/50 border border-gray-700 rounded-xl text-white text-2xl font-bold placeholder-gray-500 focus:border-orange-500 focus:outline-none transition-colors"
                 />
@@ -425,8 +513,13 @@ export default function Loans() {
                 </button>
               </div>
               <div className="mt-2 flex justify-between items-center text-sm">
-                <span className="text-gray-400">Max Drawdown Limit (200% Collateral)</span>
-                <span className="text-amber-400 font-bold">{maxBorrowable ? `$${maxBorrowable.toLocaleString()}` : '—'}</span>
+                <span className="text-gray-400">Max Borrowable (50% of CVS)</span>
+                <span className="text-amber-400 font-bold">
+                  {maxBorrowable > 0 ? `${maxBorrowable < 0.01 ? maxBorrowable.toFixed(4) : maxBorrowable.toLocaleString(undefined, { maximumFractionDigits: 2 })} STORY` : '—'}
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-gray-500">
+                Required collateral: {loanAmount ? `${(parseFloat(loanAmount) * 1.5).toFixed(4)} STORY (150%)` : '—'}
               </div>
             </div>
 
@@ -440,7 +533,7 @@ export default function Loans() {
                       key={chain.id}
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      onClick={() => handleChainSelect(chain.name)}
+                      onClick={() => handleChainSelect(chain.id, chain.name)}
                       className={`relative p-4 rounded-xl border-2 transition-all ${
                         selectedChain === chain.name
                           ? 'border-orange-500 bg-orange-500/10'
@@ -463,9 +556,9 @@ export default function Loans() {
                 </div>
                 <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl">
                   <p className="text-xs text-blue-300">
-                    {selectedChainId === 0
-                      ? '💰 You will receive ETH on Story Protocol (same chain as your collateral)'
-                      : `🌉 You will receive USDC on ${selectedChain} via Owlto Bridge • Collateral stays on Story`}
+                    {selectedChainId === 1315
+                      ? '💰 You will receive STORY on Story Testnet (same chain as your collateral)'
+                      : `🌉 You will receive ${chains.find(c => c.id === selectedChain.toLowerCase())?.currency || 'tokens'} on ${selectedChain} via Owlto Bridge • Collateral stays on Story Testnet`}
                   </p>
                 </div>
               </div>
@@ -506,13 +599,21 @@ export default function Loans() {
                   <div className="flex justify-between items-center">
                     <span className="text-gray-300">Required CVS Collateral</span>
                     <span className="text-amber-400 font-bold">
-                      {currentCVS && loanAmount ? (parseFloat(loanAmount) * collateralRatio / 100).toFixed(0) : '—'} CVS
+                      {(() => {
+                        if (!currentCVS || !loanAmount) return '—';
+                        const val = parseFloat(loanAmount) * collateralRatio / 100;
+                        return `${val < 0.01 ? val.toFixed(4) : val.toFixed(2)} CVS`;
+                      })()}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-gray-300">Total Repayment</span>
                     <span className="text-white font-bold">
-                      {estimatedAPR !== '—' ? (parseFloat(loanAmount) * (1 + parseFloat(estimatedAPR) / 100 * parseInt(duration) / 365)).toFixed(2) : '—'}
+                      {(() => {
+                        if (estimatedAPR === '—') return '—';
+                        const val = parseFloat(loanAmount) * (1 + parseFloat(estimatedAPR) / 100 * parseInt(duration) / 365);
+                        return val < 0.01 ? val.toFixed(4) : val.toFixed(2);
+                      })()}
                     </span>
                   </div>
                 </motion.div>
@@ -524,22 +625,66 @@ export default function Loans() {
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                disabled={!loanAmount || !selectedVault || !selectedChain || isWaiting}
-                onClick={() => issueLoan?.({
-                  address: CONTRACTS.LendingModule,
-                  abi: LendingModule_ABI.abi,
-                  functionName: 'issueLoan',
-                  args: [
-                    selectedVault as `0x${string}`,
-                    parseUnits(loanAmount || '0', 18),
-                    BigInt(parseInt(duration) * 24 * 60 * 60),
-                    BigInt(selectedChainId),
-                  ],
-                  value: collateral,
-                })}
+                disabled={!loanAmount || !selectedVault || !selectedChain || isWaiting || isPending || !address}
+                onClick={() => {
+                  try {
+                    // Clear previous errors
+                    setError('');
+
+                    // Validate inputs
+                    if (!address) {
+                      setError('Please connect your wallet first');
+                      return;
+                    }
+                    if (!selectedVault) {
+                      setError('Please select a vault');
+                      return;
+                    }
+                    if (!loanAmount || parseFloat(loanAmount) <= 0) {
+                      setError('Please enter a valid loan amount');
+                      return;
+                    }
+                    if (parseFloat(loanAmount) > maxBorrowable) {
+                      setError(`Loan amount exceeds maximum of ${maxBorrowable.toFixed(4)} STORY`);
+                      return;
+                    }
+
+                    console.log('🚀 Issuing loan:', {
+                      wallet: address,
+                      vault: selectedVault,
+                      amount: loanAmount,
+                      collateral: collateral.toString(),
+                      duration: parseInt(duration) * 24 * 60 * 60,
+                      chainId: selectedChainId,
+                      issueLoanAvailable: !!issueLoan,
+                    });
+
+                    if (!issueLoan) {
+                      console.error('❌ issueLoan function not available');
+                      setError('Contract write function not initialized');
+                      return;
+                    }
+
+                    issueLoan({
+                      address: CONTRACTS.ADLV,
+                      abi: ADLV_JSON.abi,
+                      functionName: 'issueLoan',
+                      args: [
+                        selectedVault as `0x${string}`,
+                        parseUnits(loanAmount || '0', 18),
+                        BigInt(parseInt(duration) * 24 * 60 * 60),
+                        BigInt(selectedChainId),
+                      ],
+                      value: collateral,
+                    });
+                  } catch (err: any) {
+                    console.error('❌ Error in onClick:', err);
+                    setError(`Error: ${err.message || 'Unknown error'}`);
+                  }
+                }}
                 className="w-full py-4 bg-gradient-to-b from-orange-950/40 to-transparent border-2 border-orange-500 text-white rounded-2xl font-bold text-lg shadow-[0_0_30px_rgba(249,115,22,0.4)] hover:shadow-[0_0_50px_rgba(249,115,22,0.6)] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isWaiting ? 'Processing...' : loanExecuted ? '✓ Loan Executed Successfully!' : 'Execute Liquidity Drawdown'}
+                {isPending ? 'Waiting for approval...' : isWaiting ? 'Processing...' : loanExecuted ? '✓ Loan Executed Successfully!' : 'Execute Liquidity Drawdown'}
               </motion.button>
               {txHash && (
                 <div className="mt-2 text-xs text-amber-400">
@@ -561,7 +706,9 @@ export default function Loans() {
                 <div>
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-gray-400 text-sm">Active Vault CVS Score</span>
-                    <span className="text-white font-bold">{currentCVS.toLocaleString()}</span>
+                    <span className="text-white font-bold">
+                      {currentCVS > 0 ? (currentCVS < 0.01 ? currentCVS.toFixed(4) : currentCVS.toLocaleString(undefined, { maximumFractionDigits: 2 })) : '0'}
+                    </span>
                   </div>
                   <div className="w-full bg-gray-700 rounded-full h-2">
                     <motion.div
@@ -575,10 +722,10 @@ export default function Loans() {
 
                 <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700">
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-gray-400 text-sm">Max Drawdown Limit</span>
-                    <span className="text-amber-400 font-bold">${maxBorrowable}</span>
+                    <span className="text-gray-400 text-sm">Max Borrowable</span>
+                    <span className="text-amber-400 font-bold">{maxBorrowable.toFixed(4)} STORY</span>
                   </div>
-                  <p className="text-gray-500 text-xs">200% CVS Collateral Required</p>
+                  <p className="text-gray-500 text-xs">50% of CVS • Requires 150% Collateral</p>
                 </div>
 
                 <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700">
@@ -619,8 +766,8 @@ export default function Loans() {
               <div className="text-gray-400 text-sm">Total Outstanding Principal</div>
               <div className="text-2xl font-bold text-white">
                 {totalOutstanding > 0
-                  ? `${totalOutstanding.toFixed(4)} ETH`
-                  : '$0'}
+                  ? `${totalOutstanding.toFixed(4)} STORY`
+                  : '0 STORY'}
               </div>
             </div>
           </div>
@@ -717,7 +864,9 @@ export default function Loans() {
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div className="p-3 bg-gray-900/50 rounded-lg border border-gray-700/50">
                     <div className="text-gray-400 text-xs mb-1">Current CVS</div>
-                    <div className="text-white font-bold">{loan.currentCVS.toLocaleString()}</div>
+                    <div className="text-white font-bold">
+                      {loan.currentCVS < 0.01 ? loan.currentCVS.toFixed(4) : loan.currentCVS.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </div>
                   </div>
                   <div className="p-3 bg-gray-900/50 rounded-lg border border-gray-700/50">
                     <div className="text-gray-400 text-xs mb-1">Collateral Ratio</div>
@@ -794,11 +943,11 @@ export default function Loans() {
                         Repaying...
                       </span>
                     ) : (
-                      `Repay ${loan.totalRepayment} ETH`
+                      `Repay ${loan.totalRepayment} STORY`
                     )}
                   </motion.button>
                   <div className="text-xs text-gray-400 text-center">
-                    Collateral locked: {loan.collateral} ETH
+                    Collateral locked: {loan.collateral} STORY
                   </div>
                 </div>
               </motion.div>
