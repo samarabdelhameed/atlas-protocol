@@ -1,0 +1,30 @@
+{
+  "name": "@atlas-protocol/sdk",
+  "version": "1.0.0",
+  "description": "Atlas Protocol SDK - Access global IP usage intelligence data",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch"
+  },
+  "keywords": [
+    "atlas",
+    "story-protocol",
+    "ip",
+    "licensing",
+    "usage-analytics",
+    "web3"
+  ],
+  "author": "Atlas Protocol",
+  "license": "MIT",
+  "peerDependencies": {
+    "ethers": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  }
+}
