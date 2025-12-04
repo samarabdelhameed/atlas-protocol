@@ -1,11 +1,11 @@
-import Database from 'better-sqlite3';
+import { Database } from 'bun:sqlite';
 import { readFileSync, mkdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { config } from '../config/index.js';
 import type { LicenseMetadata, LicenseRecord, LicenseAnalytics } from './types.js';
 
 class LicenseDatabase {
-  public db: Database.Database;
+  public db: Database;
 
   constructor(dbPath: string = config.database.path) {
     // Ensure data directory exists
@@ -26,7 +26,7 @@ class LicenseDatabase {
       this.db = new Database(dbPath);
 
       // Enable WAL mode for better concurrency
-      this.db.pragma('journal_mode = WAL');
+      this.db.exec('PRAGMA journal_mode = WAL;');
 
       this.initialize();
 

@@ -21,6 +21,8 @@
   "devDependencies": {
     "turbo": "latest",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.5.0"
   }
 }
-

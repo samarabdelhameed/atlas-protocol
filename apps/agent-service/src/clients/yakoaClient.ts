@@ -1,93 +1,124 @@
 /**
- * Yakoa Client - Fetch Originality Score for IP Assets
- * 
- * Yakoa provides originality verification for IP assets
- * Originality Score ranges from 0-100 (higher = more original)
+ * Yakoa Client - Fetch Token Authorization and Infringement Data
+ *
+ * Yakoa provides IP verification, authorization tracking, and infringement detection
+ * API Documentation: https://docs.yakoa.io/reference/get-started
  */
 
 export interface YakoaScore {
-  score: number; // 0-100
+  score: number; // 0-100 (calculated based on infringement status)
   confidence: number; // 0-100
-  verified: boolean;
+  verified: boolean; // True if no infringements detected
   timestamp: number;
   details?: {
-    similarity?: number;
-    uniqueness?: number;
-    originality?: number;
+    infringements?: number; // Number of detected infringements
+    authorizations?: number; // Number of brand authorizations
+    status?: string; // Token status
   };
 }
 
 /**
- * Fetch originality score from Yakoa API
- * 
- * @param ipAssetId - IP Asset ID (bytes32 hex string or address)
- * @returns Originality score (0-100)
+ * Yakoa API Response Structure
+ * Based on official API documentation
  */
-export async function fetchOriginalityScore(ipAssetId: string): Promise<YakoaScore> {
+interface YakoaTokenResponse {
+  token_id: string;
+  network: string;
+  metadata?: {
+    name?: string;
+    description?: string;
+    image?: string;
+  };
+  infringements?: Array<{
+    brand_id: string;
+    detected_at: string;
+    status: string;
+  }>;
+  authorizations?: Array<{
+    brand_id: string;
+    authorized_at: string;
+  }>;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Fetch originality score from Yakoa API
+ *
+ * @param tokenId - Token ID or IP Asset ID
+ * @returns Originality score based on infringement analysis
+ */
+export async function fetchOriginalityScore(tokenId: string): Promise<YakoaScore> {
   const apiKey = process.env.YAKOA_API_KEY;
-  const apiUrl = process.env.YAKOA_API_URL || 'https://api.yakoa.com/v1/verify';
-  
+  const subdomain = process.env.YAKOA_SUBDOMAIN;
+  const network = process.env.YAKOA_NETWORK || 'story-aeneid'; // Story Protocol Aeneid testnet
+
   if (!apiKey) {
-    throw new Error('YAKOA_API_KEY not set in environment variables. Please set YAKOA_API_KEY in .env file');
+    throw new Error('YAKOA_API_KEY not set in environment variables. Get your key from https://docs.yakoa.io');
+  }
+
+  if (!subdomain) {
+    throw new Error('YAKOA_SUBDOMAIN not set in environment variables. You will receive your subdomain when you sign up at https://docs.yakoa.io');
   }
 
   try {
-    console.log(`🔍 Fetching Yakoa score for IP Asset: ${ipAssetId}`);
-    
-    // Yakoa API endpoint - adjust based on actual API documentation
-    const response = await fetch(`${apiUrl}?asset=${ipAssetId}`, {
+    console.log(`🔍 Fetching Yakoa data for Token: ${tokenId}`);
+
+    // Yakoa API endpoint for getting token data
+    // Format: https://{subdomain}.ip-api-sandbox.yakoa.io/{network}/token/{token_id}
+    const baseUrl = `https://${subdomain}.ip-api-sandbox.yakoa.io`;
+    const endpoint = `${baseUrl}/${network}/token/${tokenId}`;
+
+    console.log(`📡 Yakoa API Endpoint: ${endpoint}`);
+
+    const response = await fetch(endpoint, {
       method: 'GET',
       headers: {
-        'x-api-key': apiKey,
-        'Content-Type': 'application/json',
+        'X-API-KEY': apiKey,
+        'accept': 'application/json',
       },
     });
 
     if (!response.ok) {
-      throw new Error(`Yakoa API error: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`Yakoa API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
-    // Define expected API response structure
-    interface YakoaApiResponse {
-      score?: number;
-      originalityScore?: number;
-      originality?: number;
-      confidence?: number;
-      confidenceScore?: number;
-      verified?: boolean;
-      isVerified?: boolean;
-      timestamp?: number;
-      similarity?: number;
-      similarityScore?: number;
-      uniqueness?: number;
-      uniquenessScore?: number;
-    }
+    const data = await response.json() as YakoaTokenResponse;
 
-    const data = await response.json() as YakoaApiResponse;
-    
     console.log('✅ Yakoa Response:', JSON.stringify(data, null, 2));
-    
-    // Parse response based on Yakoa API format
-    // Adjust field names based on actual API response
+
+    // Calculate originality score based on infringements
+    // 100 = no infringements, decreases based on number of issues
+    const infringementCount = data.infringements?.length || 0;
+    const authorizationCount = data.authorizations?.length || 0;
+
+    // Score calculation:
+    // - Start at 100
+    // - Subtract 20 points per infringement (minimum 0)
+    // - Add bonus if authorized (up to 10 points)
+    let calculatedScore = 100 - (infringementCount * 20);
+    if (authorizationCount > 0) {
+      calculatedScore = Math.min(100, calculatedScore + 10);
+    }
+    calculatedScore = Math.max(0, calculatedScore);
+
     const score: YakoaScore = {
-      score: data.score || data.originalityScore || data.originality || 0,
-      confidence: data.confidence || data.confidenceScore || 90,
-      verified: data.verified || data.isVerified || false,
-      timestamp: data.timestamp || Date.now(),
+      score: calculatedScore,
+      confidence: infringementCount === 0 ? 95 : 75, // Higher confidence when no issues
+      verified: infringementCount === 0, // Verified if no infringements
+      timestamp: data.updated_at ? new Date(data.updated_at).getTime() : Date.now(),
       details: {
-        similarity: data.similarity || data.similarityScore,
-        uniqueness: data.uniqueness || data.uniquenessScore,
-        originality: data.originality || data.originalityScore,
+        infringements: infringementCount,
+        authorizations: authorizationCount,
+        status: data.status || 'unknown',
       },
     };
-    
-    if (score.score === 0) {
-      throw new Error('Invalid Yakoa score received (0). Check API response format.');
-    }
-    
+
     return score;
   } catch (error: any) {
-    console.error('❌ Error fetching Yakoa score:', error.message);
+    console.error('❌ Error fetching Yakoa data:', error.message);
     throw error; // Throw error instead of returning fallback
   }
 }

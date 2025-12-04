@@ -57,7 +57,8 @@ export const config = {
   // Yakoa Configuration
   yakoa: {
     apiKey: process.env.YAKOA_API_KEY || '',
-    apiUrl: process.env.YAKOA_API_URL || 'https://api.yakoa.com/v1/verify',
+    subdomain: process.env.YAKOA_SUBDOMAIN || '',
+    network: process.env.YAKOA_NETWORK || 'story-aeneid',
   },
 
   // Database Configuration
