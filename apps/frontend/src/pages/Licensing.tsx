@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { parseUnits } from 'viem';
 import { CONTRACTS } from '../contracts/addresses';
 import ADLV_ABI from '../contracts/abis/ADLV.json';
+import IPAssetCard from '../components/IPAssetCard';
 
 // Story Aeneid Testnet Chain ID
 const STORY_CHAIN_ID = 1315;
@@ -75,33 +76,24 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
   const [formErrors, setFormErrors] = useState<{ name?: string; organization?: string; email?: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedVault, setSelectedVault] = useState(preSelectedVault || '');
+  const [selectedIpId, setSelectedIpId] = useState('');
   const [networkError, setNetworkError] = useState<string | null>(null);
+  const [purchaseStep, setPurchaseStep] = useState<'browse' | 'confirm' | 'success'>('browse');
 
-  // Fetch user's vaults from API (Goldsky subgraph)
-  const { data: userVaults } = useQuery({
-    queryKey: ['userVaults', address],
+  // Fetch marketplace data (all IP assets)
+  const { data: marketplaceData, isLoading: isLoadingMarketplace } = useQuery({
+    queryKey: ['marketplace'],
     queryFn: async () => {
-      if (!address) return [];
-
       try {
-        const response = await fetch(`${BACKEND_URL}/api/vaults/${address}`);
-
-        if (!response.ok) {
-          console.error('Failed to fetch vaults from API:', response.status);
-          return [];
-        }
-
-        const data = await response.json();
-        console.log(`✅ Fetched ${data.count} vault(s) from API for ${address}`);
-
-        return (data.vaults || []) as `0x${string}`[];
+        const response = await fetch(`${BACKEND_URL}/api/marketplace`);
+        if (!response.ok) throw new Error('Failed to fetch marketplace');
+        return response.json();
       } catch (error) {
-        console.error('Error fetching vaults:', error);
-        return [];
+        console.error('Error fetching marketplace:', error);
+        return { assets: [], count: 0 };
       }
     },
-    enabled: !!address,
-    staleTime: 30_000, // Consider data fresh for 30 seconds
+    staleTime: 30_000,
   });
 
   // Helper to parse price string to Wei
@@ -216,6 +208,8 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
           amount: pendingTier?.price,
           vaultAddress: selectedVault,
           transactionHash: txHash,
+          ipId: selectedIpId,
+          licenseeAddress: address,
         });
 
         if (!success) {
@@ -309,19 +303,21 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
   const dataMetrics = [
     {
       label: "Total IP Assets",
-      value: "12,453",
+      value: marketplaceData?.count?.toLocaleString() || "0",
       icon: Database,
       color: "from-orange-500 to-amber-600",
     },
     {
-      label: "Human-Verified Creators",
-      value: "3,842",
+      label: "Active Creators",
+      value: marketplaceData?.assets ? new Set(marketplaceData.assets.map((a: any) => a.creator)).size.toLocaleString() : "0",
       icon: Users,
       color: "from-orange-600 to-red-600",
     },
     {
-      label: "Goldsky Indexed Events",
-      value: "847K",
+      label: "Total Revenue",
+      value: marketplaceData?.assets ? 
+        `${marketplaceData.assets.reduce((acc: number, curr: any) => acc + Number(curr.totalRevenue || 0), 0).toLocaleString()} STORY` 
+        : "0 STORY",
       icon: Activity,
       color: "from-green-500 to-emerald-600",
     },
@@ -470,15 +466,13 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
           </motion.div>
 
           <h1 className="text-5xl font-bold text-white mb-4">
-            GenAI Data Licensing Portal
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600">
+              IP Asset Marketplace
+            </span>
           </h1>
           <p className="text-xl text-gray-400 max-w-3xl mx-auto">
-            <span className="text-orange-400 font-semibold">
-              Human-verified IP data
-            </span>{" "}
-            for compliant AI training • Powered by{" "}
-            <span className="text-amber-400 font-semibold">World ID</span> &{" "}
-            <span className="text-green-400 font-semibold">abv.dev</span>
+            Purchase usage analytics licenses for IP assets •{" "}
+            <span className="text-cyan-400 font-semibold">Story Protocol</span> integrated
           </p>
         </motion.div>
 
@@ -513,53 +507,83 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
           })}
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="mb-12"
-        >
-          <h2 className="text-3xl font-bold text-white text-center mb-8">
-            Choose Your Plan
-          </h2>
+        {/* Marketplace Grid - Browse State */}
+        {purchaseStep === 'browse' && (
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="mb-12"
+          >
+            <h2 className="text-3xl font-bold text-white text-center mb-8">
+              Browse IP Assets
+            </h2>
 
-          {address && networkError && (
-            <div className="mb-8 max-w-md mx-auto">
-              <div className="px-4 py-3 bg-red-500/10 border border-red-500/30 rounded-xl">
-                <p className="text-red-400 text-sm font-medium">
-                  ⚠️ {networkError}
-                </p>
+            {isLoadingMarketplace ? (
+              <div className="text-center text-cyan-400 py-20">
+                <div className="animate-spin w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+                Loading marketplace...
               </div>
-            </div>
-          )}
+            ) : marketplaceData?.assets?.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {marketplaceData.assets.map((asset: any) => (
+                  <IPAssetCard
+                    key={asset.vaultAddress}
+                    vaultAddress={asset.vaultAddress}
+                    ipId={asset.ipId}
+                    metadata={asset.metadata}
+                    cvsScore={asset.cvsScore}
+                    totalLicensesSold={asset.totalLicensesSold}
+                    totalRevenue={asset.totalRevenue}
+                    onBuyLicense={(vaultAddress, ipId) => {
+                      setSelectedVault(vaultAddress);
+                      setSelectedIpId(ipId);
+                      setPurchaseStep('confirm');
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center text-gray-500 py-20">
+                <Database className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                <p>No IP assets available yet</p>
+              </div>
+            )}
+          </motion.div>
+        )}
 
-          {address && !networkError && (
-            <div className="mb-8 max-w-md mx-auto">
-              <label className="block text-gray-300 text-sm font-medium mb-2">
-                Select Vault to Sell License From
-              </label>
-              <select
-                value={selectedVault}
-                onChange={(e) => setSelectedVault(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-900/50 border border-gray-700 rounded-xl text-white focus:border-orange-500 focus:outline-none transition-colors"
+        {/* License Tier Selection - Confirm State */}
+        {purchaseStep === 'confirm' && selectedVault && (
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-12"
+          >
+            <div className="text-center mb-8">
+              <button
+                onClick={() => setPurchaseStep('browse')}
+                className="text-cyan-400 hover:text-cyan-300 mb-4 inline-flex items-center gap-2"
               >
-                <option value="">Choose a vault...</option>
-                {Array.isArray(userVaults) && userVaults.map((vault) => {
-                  const vaultAddress = vault as string;
-                  return (
-                    <option key={vaultAddress} value={vaultAddress}>
-                      {vaultAddress.slice(0, 6)}...{vaultAddress.slice(-4)}
-                    </option>
-                  );
-                })}
-              </select>
-              {!selectedVault && (
-                <p className="text-amber-400 text-xs mt-2">
-                  ⚠️ Select a vault before purchasing a license
-                </p>
-              )}
+                ← Back to Marketplace
+              </button>
+              <h2 className="text-3xl font-bold text-white">
+                Choose Your License Plan
+              </h2>
+              <p className="text-gray-400 mt-2">
+                Vault: {selectedVault.slice(0, 10)}...{selectedVault.slice(-8)}
+              </p>
             </div>
-          )}
+
+            {address && networkError && (
+              <div className="mb-8 max-w-md mx-auto">
+                <div className="px-4 py-3 bg-red-500/10 border border-red-500/30 rounded-xl">
+                  <p className="text-red-400 text-sm font-medium">
+                    ⚠️ {networkError}
+                  </p>
+                </div>
+              </div>
+            )}
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {tiers.map((tier, index) => (
@@ -664,6 +688,7 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
             ))}
           </div>
         </motion.div>
+        )}
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -970,15 +995,27 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
               </div>
             </div>
 
-            <button
-              onClick={() => {
-                setSelectedTier(null);
-                setPurchaseDetails(null);
-              }}
-              className="w-full py-3 bg-gradient-to-b from-orange-950/40 to-transparent border-2 border-orange-500 text-white rounded-2xl font-bold shadow-[0_0_30px_rgba(249,115,22,0.4)] hover:shadow-[0_0_50px_rgba(249,115,22,0.6)] transition-all duration-300"
-            >
-              Close
-            </button>
+            <div className="flex gap-4">
+              <button
+                onClick={() => {
+                  setPurchaseStep('browse');
+                  setSelectedTier(null);
+                  setPurchaseDetails(null);
+                }}
+                className="flex-1 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-2xl font-bold hover:shadow-[0_0_30px_rgba(6,182,212,0.4)] transition-all duration-300"
+              >
+                Browse More IP Assets
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedTier(null);
+                  setPurchaseDetails(null);
+                }}
+                className="flex-1 py-3 bg-gradient-to-b from-orange-950/40 to-transparent border-2 border-orange-500 text-white rounded-2xl font-bold shadow-[0_0_30px_rgba(249,115,22,0.4)] hover:shadow-[0_0_50px_rgba(249,115,22,0.6)] transition-all duration-300"
+              >
+                Close
+              </button>
+            </div>
           </motion.div>
         </motion.div>
       )}

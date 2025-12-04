@@ -50,6 +50,7 @@ export interface Vault {
   id: string;
   vaultAddress: string;
   ipAsset: string;
+  ipId?: string;
   creator: string;
   currentCVS: string;
   totalLiquidity: string;
@@ -57,6 +58,7 @@ export interface Vault {
   totalLoansIssued: string;
   activeLoansCount: string;
   createdAt: string;
+  timestamp?: string;
 }
 
 /**
@@ -269,6 +271,54 @@ export async function fetchVaultsByCreator(creator: string): Promise<Vault[]> {
     throw error;
   }
 }
+
+/**
+ * Fetch all vaults with IP data for marketplace display
+ * Returns comprehensive data including IP IDs, CVS scores, and revenue
+ */
+export async function fetchAllVaultsWithIPData(): Promise<Vault[]> {
+  const endpoint = getSubgraphEndpoint();
+  console.log('🔍 Querying Goldsky endpoint for all vaults:', endpoint);
+
+  try {
+    const query = gql`
+      query GetAllVaultsWithIPData {
+        idovaults(
+          first: 100
+        ) {
+          id
+          vaultAddress
+          ipAsset
+          creator
+          currentCVS
+          totalLiquidity
+          totalLicenseRevenue
+          totalLoansIssued
+          activeLoansCount
+          createdAt
+        }
+      }
+    `;
+
+    const response = await graphqlClient.request(query);
+
+    console.log('✅ Goldsky All Vaults Response received');
+
+    const vaults = response.idovaults || [];
+    console.log(`📊 Found ${vaults.length} total vault(s) for marketplace`);
+
+    return vaults;
+  } catch (error: any) {
+    if (error.response?.status === 404) {
+      console.error('⚠️  Subgraph not deployed yet. Returning empty array.');
+      console.error('💡 Deploy subgraph first: cd subgraph && ./deploy-goldsky.sh');
+      return [];
+    }
+    console.error('❌ Error fetching all vaults from Goldsky:', error.message);
+    return [];
+  }
+}
+
 
 /**
  * Test function to verify Goldsky connection

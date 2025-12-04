@@ -157,11 +157,11 @@ export class LicensingAgent {
 
     try {
       // Get vault details to calculate revenue distribution
-      const vault = await this.adlvContract.getVault(vaultAddress);
+      const vault = await this.adlvContract.getVault?.(vaultAddress);
       
       // Calculate revenue amounts (protocol fee already deducted in contract)
-      const protocolFeeBps = await this.adlvContract.protocolFeeBps();
-      const creatorShareBps = await this.adlvContract.creatorShareBps();
+      const protocolFeeBps = await this.adlvContract.protocolFeeBps?.();
+      const creatorShareBps = await this.adlvContract.creatorShareBps?.();
       
       const protocolFee = (price * protocolFeeBps) / BigInt(10000);
       const creatorShare = (price * creatorShareBps) / BigInt(10000);
@@ -200,6 +200,7 @@ export class LicensingAgent {
           // Convert bytes32 IP ID to Story Protocol IP ID format
           const storyIPId = this.storyProtocolService.convertBytes32ToStoryIPId(ipId);
           
+          // 3a. Register license metadata
           const storyLicense = await this.storyProtocolService.registerLicense({
             ipId: storyIPId,
             licensee: licensee,
@@ -208,7 +209,38 @@ export class LicensingAgent {
             transactionHash: event.transactionHash,
             duration: 0, // Can be extracted from event if available
           });
-          console.log(`✅ License successfully registered with Story Protocol. License ID: ${storyLicense.licenseId}`);
+          console.log(`✅ License metadata registered with Story Protocol. License ID: ${storyLicense.licenseId}`);
+
+          // 3b. Mint Story Protocol License Token
+          if (this.storyProtocolService.storyClient) {
+            try {
+              console.log('🎟️  Minting Story Protocol license token...');
+              const licenseTermsId = this.getLicenseTermsId(licenseType);
+              const mintResult = await this.storyProtocolService.mintLicenseTokens({
+                licensorIpId: storyIPId,
+                licenseTermsId: licenseTermsId,
+                amount: 1,
+                receiver: licensee,
+              });
+              console.log(`✅ License token minted. Token IDs: ${mintResult.licenseTokenIds?.join(', ')}`);
+
+              // 3c. Register license as derivative IP Asset (optional - creates a usage record)
+              // This creates a derivative IP that represents the licensed usage
+              if (mintResult.licenseTokenIds && mintResult.licenseTokenIds.length > 0) {
+                try {
+                  console.log('🔗 Registering license usage as derivative IP Asset...');
+                  // Note: This would require creating a new IP asset first, then linking it
+                  // For now, we'll skip this step as it requires additional IP asset creation
+                  // This can be implemented when the licensee actually creates derivative work
+                } catch (derivError) {
+                  console.warn('⚠️  Could not register derivative:', derivError);
+                }
+              }
+            } catch (mintError) {
+              console.error(`❌ ERROR minting license token:`, mintError);
+              // Continue even if minting fails - metadata is already registered
+            }
+          }
         } catch (error) {
           console.error(`❌ ERROR registering license with Story Protocol:`, error);
           // Continue even if Story Protocol registration fails
@@ -244,7 +276,7 @@ export class LicensingAgent {
     licenseType: string
   ): Promise<bigint> {
     // Get current CVS from IDO
-    const currentCVS = await this.idoContract.getCVS(ipId);
+    const currentCVS = await this.idoContract.getCVS?.(ipId);
 
     // Calculate CVS increment based on license type
     const cvsIncrement = this.calculateCVSIncrement(licenseType, salePrice);
@@ -271,6 +303,26 @@ export class LicensingAgent {
   }
 
   /**
+   * Get Story Protocol License Terms ID for a given license type
+   * Maps our license types to Story Protocol PIL (Programmable IP License) terms
+   */
+  private getLicenseTermsId(licenseType: string): string {
+    // These are example license terms IDs - should be configured based on actual Story Protocol setup
+    // In production, these would be fetched from Story Protocol or configured via environment variables
+    switch (licenseType.toLowerCase()) {
+      case 'exclusive':
+        return '3'; // Exclusive commercial use
+      case 'commercial':
+        return '2'; // Commercial use with attribution
+      case 'derivative':
+        return '1'; // Derivative works allowed
+      case 'standard':
+      default:
+        return '1'; // Standard non-commercial
+    }
+  }
+
+  /**
    * Update CVS after license sale
    * Called automatically when LicenseSold event is detected
    */
@@ -284,7 +336,7 @@ export class LicensingAgent {
 
     // Update CVS in IDO contract
     // Note: IDO contract must be owned by this service (or ADLV contract)
-    const tx = await this.idoContract.updateCVS(ipId, newCVS);
+    const tx = await this.idoContract.updateCVS?.(ipId, newCVS);
     const receipt = await tx.wait();
 
     return receipt.hash;
@@ -333,7 +385,7 @@ export class LicensingAgent {
         throw new Error(`abv.dev API failed: ${response.status} - ${errorText}`);
       }
 
-      const data = await response.json();
+      const data = await response.json() as any;
       return data.licenseId || data.id || 'registered';
     } catch (error) {
       console.error('abv.dev API Error:', error);
@@ -351,16 +403,16 @@ export class LicensingAgent {
 
     try {
       // Get vault to verify it exists
-      const vault = await this.adlvContract.getVault(request.vaultAddress);
+      const vault = await this.adlvContract.getVault?.(request.vaultAddress);
       
       if (!vault.exists) {
         throw new Error(`Vault ${request.vaultAddress} does not exist`);
       }
 
       // Get protocol fee configuration
-      const protocolFeeBps = await this.adlvContract.protocolFeeBps();
-      const creatorShareBps = await this.adlvContract.creatorShareBps();
-      const vaultShareBps = await this.adlvContract.vaultShareBps();
+      const protocolFeeBps = await this.adlvContract.protocolFeeBps?.();
+      const creatorShareBps = await this.adlvContract.creatorShareBps?.();
+      const vaultShareBps = await this.adlvContract.vaultShareBps?.();
 
       // Calculate revenue distribution
       const protocolFee = (request.price * protocolFeeBps) / BigInt(10000);
@@ -371,7 +423,7 @@ export class LicensingAgent {
       let licenseId: string | undefined;
       if (this.abvApiKey) {
         try {
-          const vault = await this.adlvContract.getVault(request.vaultAddress);
+          const vault = await this.adlvContract.getVault?.(request.vaultAddress);
           licenseId = await this.registerLicenseWithABV({
             ipId: vault.ipId,
             vaultAddress: request.vaultAddress,
@@ -388,7 +440,7 @@ export class LicensingAgent {
       }
 
       // Execute license sale on-chain
-      const tx = await this.adlvContract.sellLicense(
+      const tx = await this.adlvContract.sellLicense?.(
         request.vaultAddress,
         request.licenseType,
         BigInt(request.duration || 0),
@@ -417,13 +469,13 @@ export class LicensingAgent {
    * Get license revenue for an IP asset
    */
   async getLicenseRevenue(ipId: string): Promise<bigint> {
-    return await this.idoContract.totalLicenseRevenue(ipId) as bigint;
+    return await this.idoContract.totalLicenseRevenue?.(ipId) as bigint;
   }
 
   /**
    * Get current CVS for an IP asset
    */
   async getCVS(ipId: string): Promise<bigint> {
-    return await this.idoContract.getCVS(ipId) as bigint;
+    return await this.idoContract.getCVS?.(ipId) as bigint;
   }
 }

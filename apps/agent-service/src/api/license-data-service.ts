@@ -11,6 +11,7 @@
 import { graphqlClient } from '@atlas-protocol/graphql-client';
 import { gql } from 'graphql-request';
 import { fetchOriginalityScore } from '../clients/yakoaClient';
+import { licenseDb } from '../db/database.js';
 
 export interface LicenseInfo {
   id: string;
@@ -135,6 +136,13 @@ export async function hasActiveLicense(
   userAddress: string,
   ipAssetId: string
 ): Promise<boolean> {
+  // Check SQLite database first (includes expiration)
+  const hasValidLicense = licenseDb.hasActiveLicense(userAddress, ipAssetId);
+
+  if (hasValidLicense) {
+    return true;
+  }
+
   try {
     const query = gql`
       query CheckLicense($licensee: String!, $ipAsset: String!) {

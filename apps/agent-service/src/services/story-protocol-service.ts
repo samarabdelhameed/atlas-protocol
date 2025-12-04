@@ -10,6 +10,9 @@
 
 import { JsonRpcProvider, Wallet, Contract } from 'ethers';
 import { config } from '../config/index.js';
+import { StoryClient, type StoryConfig } from '@story-protocol/core-sdk';
+import { http } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
 
 // Story Protocol contract addresses (Story Protocol Testnet)
 // These should be updated based on actual Story Protocol deployment
@@ -71,6 +74,7 @@ export class StoryProtocolService {
   private signer: Wallet | null = null;
   private apiKey: string;
   private rpcUrl: string;
+  public storyClient: StoryClient | null = null;
 
   constructor(rpcUrl?: string) {
     this.rpcUrl = rpcUrl || config.storyProtocol.rpcUrl || config.rpcUrl;
@@ -80,6 +84,19 @@ export class StoryProtocolService {
     // Initialize signer if private key is provided
     if (config.privateKey) {
       this.signer = new Wallet(config.privateKey, this.provider);
+
+      // Initialize Story Protocol SDK (Viem based)
+      try {
+        const account = privateKeyToAccount(config.privateKey as `0x${string}`);
+        const storyConfig: StoryConfig = {
+          account: account,
+          transport: http(this.rpcUrl),
+          chainId: '1315' as any, // Story Aeneid Testnet
+        };
+        this.storyClient = StoryClient.newClient(storyConfig);
+      } catch (e) {
+        console.error('Failed to initialize Story SDK client:', e);
+      }
     }
 
     console.log('✅ StoryProtocolService initialized');
@@ -121,7 +138,7 @@ export class StoryProtocolService {
           throw new Error(`Story Protocol API failed: ${response.status} - ${errorText}`);
         }
 
-        const data = await response.json();
+        const data = await response.json() as any;
         console.log(`✅ IP Asset registered: ${data.ipId}`);
 
         return {
@@ -324,7 +341,7 @@ export class StoryProtocolService {
           throw new Error(`Story Protocol API failed: ${response.status}`);
         }
 
-        const data = await response.json();
+        const data = await response.json() as any;
         return data.licenses || [];
       }
 
@@ -362,6 +379,46 @@ export class StoryProtocolService {
       return parts[3]; // Return the tokenId part
     }
     return storyIPId; // Fallback
+  }
+
+  /**
+   * Mint License Tokens using Story SDK
+   */
+  async mintLicenseTokens(params: {
+    licensorIpId: string;
+    licenseTemplate?: string;
+    licenseTermsId: string | bigint;
+    amount: number;
+    receiver: string;
+  }) {
+    if (!this.storyClient) throw new Error('Story SDK not initialized');
+    
+    // Default PIL template if not provided
+    const licenseTemplate = params.licenseTemplate || '0x2E896b0b2Fdb7457499B56AAaA4AE55BCB4Cd316';
+
+    return this.storyClient.license.mintLicenseTokens({
+      licensorIpId: params.licensorIpId as `0x${string}`,
+      licenseTemplate: licenseTemplate as `0x${string}`,
+      licenseTermsId: BigInt(params.licenseTermsId),
+      amount: BigInt(params.amount),
+      receiver: params.receiver as `0x${string}`,
+    });
+  }
+
+  /**
+   * Register Derivative IP using Story SDK
+   */
+  async registerDerivative(params: {
+    childIpId: string;
+    parentIpIds: string[];
+    licenseTermsIds: (string | bigint)[];
+  }) {
+    if (!this.storyClient) throw new Error('Story SDK not initialized');
+    return this.storyClient.ipAsset.registerDerivative({
+      childIpId: params.childIpId as `0x${string}`,
+      parentIpIds: params.parentIpIds as `0x${string}`[],
+      licenseTermsIds: params.licenseTermsIds.map(id => BigInt(id)),
+    });
   }
 
   /**

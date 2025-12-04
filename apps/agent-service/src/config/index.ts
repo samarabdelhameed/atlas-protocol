@@ -53,5 +53,29 @@ export const config = {
     id: parseInt(process.env.CHAIN_ID || '8453'), // Base mainnet
     name: process.env.CHAIN_NAME || 'Base',
   },
+
+  // Yakoa Configuration
+  yakoa: {
+    apiKey: process.env.YAKOA_API_KEY || '',
+    apiUrl: process.env.YAKOA_API_URL || 'https://api.yakoa.com/v1/verify',
+  },
+
+  // Database Configuration
+  database: {
+    path: process.env.DB_PATH || './data/licenses.db',
+  },
+
+  // JWT Configuration
+  jwt: {
+    secret: process.env.JWT_SECRET || 'default-dev-secret-change-in-production',
+    expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+  },
+
+  // Story Protocol License Terms
+  storyLicenseTerms: {
+    standard: process.env.STORY_PROTOCOL_LICENSE_TERMS_ID_STANDARD || '1',
+    commercial: process.env.STORY_PROTOCOL_LICENSE_TERMS_ID_COMMERCIAL || '2',
+    exclusive: process.env.STORY_PROTOCOL_LICENSE_TERMS_ID_EXCLUSIVE || '3',
+  },
 };
 

@@ -10,6 +10,7 @@ import { fetchVaultsByCreator } from '../clients/goldskyClient.js';
 import { padHex } from 'viem';
 import * as AuthService from './auth-service.js';
 import * as LicenseDataService from './license-data-service.js';
+import { licenseDb } from '../db/database.js';
 
 // Constants for World ID verification
 const APP_ID = config.worldId.appId;
@@ -24,20 +25,11 @@ export interface VaultCreationData {
   creator: string;
 }
 
-interface LicenseMetadata {
-  personalName: string;
-  organization: string;
-  email: string;
-  tierId: string;
-  tierName: string;
-  amount: string;
-  timestamp: string;
-}
+
 
 export class VerificationServer {
   private loanManager: LoanManager;
   private server: any = null;
-  private licenseMetadata: LicenseMetadata[] = []; // In-memory storage
 
   constructor(loanManager: LoanManager) {
     this.loanManager = loanManager;
@@ -142,6 +134,40 @@ export class VerificationServer {
     // Handle GET /api/ip-data/:ipId - Get IP asset data (requires auth)
     if (req.method === 'GET' && url.pathname.startsWith('/api/ip-data/')) {
       return await this.handleGetIPAssetData(req, url);
+    }
+
+    // ========================================
+    // IP Asset Marketplace API Routes
+    // ========================================
+
+    // Handle GET /api/ip-metadata/:ipId - Get IP metadata from Story Protocol
+    if (req.method === 'GET' && url.pathname.startsWith('/api/ip-metadata/')) {
+      return await this.handleGetIPMetadata(req, url);
+    }
+
+    // Handle POST /api/ip-metadata/bulk - Bulk IP metadata fetch
+    if (req.method === 'POST' && url.pathname === '/api/ip-metadata/bulk') {
+      return await this.handleBulkIPMetadata(req);
+    }
+
+    // Handle GET /api/marketplace - Get all IP assets for marketplace
+    if (req.method === 'GET' && url.pathname === '/api/marketplace') {
+      return await this.handleGetMarketplace();
+    }
+
+    // Handle GET /api/admin/licenses - Admin dashboard
+    if (req.method === 'GET' && url.pathname === '/api/admin/licenses') {
+      return await this.handleAdminGetLicenses(req, url);
+    }
+
+    // Handle GET /api/admin/analytics - Admin analytics
+    if (req.method === 'GET' && url.pathname === '/api/admin/analytics') {
+      return await this.handleAdminAnalytics();
+    }
+
+    // Handle GET /api/usage-data/:ipId - Global usage analytics (requires license)
+    if (req.method === 'GET' && url.pathname.startsWith('/api/usage-data/')) {
+      return await this.handleGetUsageData(req, url);
     }
 
     // Handle health check
@@ -332,56 +358,189 @@ export class VerificationServer {
   private async handleLicenseMetadata(req: Request): Promise<Response> {
     try {
       const body = await req.json() as any;
-      const { personalName, organization, email, tierId, tierName, amount } = body;
+      const {
+        personalName, organization, email,
+        tierId, tierName, amount,
+        vaultAddress, transactionHash, ipId, licenseeAddress
+      } = body;
 
-      console.log(`📜 License metadata received:`);
-      console.log(`   Organization: ${organization}`);
-      console.log(`   Contact: ${email}`);
-      console.log(`   Tier: ${tierName} (${tierId})`);
-      console.log(`   Amount: ${amount}`);
+      // Calculate expiration (30 days from now)
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30);
 
-      // Store metadata in memory
-      const metadata: LicenseMetadata = {
-        personalName,
-        organization,
-        email,
-        tierId,
-        tierName,
-        amount,
-        timestamp: new Date().toISOString(),
+      // Map tier to license type
+      const tierToLicenseType: Record<string, string> = {
+        'basic': 'standard',
+        'commercial': 'commercial',
+        'enterprise': 'exclusive',
       };
 
-      this.licenseMetadata.unshift(metadata); // Add to beginning (most recent first)
+      // Store in SQLite database
+      const licenseId = licenseDb.insertLicense({
+        transactionHash: transactionHash || `tx_${Date.now()}`, // Fallback for testing
+        vaultAddress: vaultAddress || '0x0000000000000000000000000000000000000000',
+        ipId: ipId || '0x0',
+        licenseeAddress: licenseeAddress || '0x0000000000000000000000000000000000000000',
+        buyerName: personalName,
+        buyerOrganization: organization,
+        buyerEmail: email,
+        tierId,
+        tierName,
+        licenseType: tierToLicenseType[tierId] || 'standard',
+        amount,
+        expiresAt: expiresAt.toISOString(),
+      });
 
-      // Keep only last 20 licenses
-      if (this.licenseMetadata.length > 20) {
-        this.licenseMetadata = this.licenseMetadata.slice(0, 20);
-      }
+      console.log(`✅ License #${licenseId} stored in database`);
 
       return this.jsonResponse({
         success: true,
         message: 'License metadata recorded successfully',
-        data: metadata,
+        licenseId: Number(licenseId),
       }, 200);
-
     } catch (error: any) {
-      console.error('❌ Error handling license metadata:', error);
-      return this.jsonResponse(
-        { error: 'Failed to process license metadata', details: error.message },
-        500
-      );
+      console.error('❌ Error storing license metadata:', error);
+      return this.jsonResponse({
+        error: 'Failed to store license metadata',
+        details: error.message,
+      }, 500);
+    }
+  }
+
+  private handleGetLicenseMetadata(): Response {
+    try {
+      // Get recent licenses (last 20)
+      const stmt = licenseDb.db.prepare(`
+        SELECT * FROM license_metadata
+        ORDER BY purchased_at DESC
+        LIMIT 20
+      `);
+      const licenses = stmt.all();
+
+      return this.jsonResponse({
+        success: true,
+        licenses,
+        count: licenses.length,
+      }, 200);
+    } catch (error: any) {
+      return this.jsonResponse({
+        error: 'Failed to fetch licenses',
+        details: error.message,
+      }, 500);
+    }
+  }
+
+  private async handleAdminGetLicenses(req: Request, url: URL): Promise<Response> {
+    try {
+      // Parse query params for filters
+      const params = url.searchParams;
+      const filters = {
+        ipId: params.get('ipId') || undefined,
+        vaultAddress: params.get('vaultAddress') || undefined,
+        startDate: params.get('startDate') || undefined,
+        endDate: params.get('endDate') || undefined,
+        isActive: params.get('isActive') === 'true' ? true : undefined,
+      };
+
+      const licenses = licenseDb.getAllLicenses(filters);
+
+      return this.jsonResponse({
+        success: true,
+        licenses,
+        count: licenses.length,
+        filters,
+      }, 200);
+    } catch (error: any) {
+      return this.jsonResponse({
+        error: 'Failed to fetch admin licenses',
+        details: error.message,
+      }, 500);
+    }
+  }
+
+  private handleAdminAnalytics(): Response {
+    try {
+      const analytics = licenseDb.getAnalytics();
+
+      return this.jsonResponse({
+        success: true,
+        analytics,
+        totalVaults: analytics.length,
+        totalRevenue: analytics.reduce((sum: number, a: any) => sum + parseFloat(a.total_revenue || '0'), 0),
+        totalLicenses: analytics.reduce((sum: number, a: any) => sum + (a.total_licenses || 0), 0),
+      }, 200);
+    } catch (error: any) {
+      return this.jsonResponse({
+        error: 'Failed to fetch analytics',
+        details: error.message,
+      }, 500);
     }
   }
 
   /**
-   * Handle GET request for license metadata
+   * Handle GET /api/usage-data/:ipId - Get global usage analytics
+   * Requires active license for the IP asset
    */
-  private handleGetLicenseMetadata(): Response {
-    return this.jsonResponse({
-      success: true,
-      licenses: this.licenseMetadata,
-      count: this.licenseMetadata.length,
-    }, 200);
+  private async handleGetUsageData(req: Request, url: URL): Promise<Response> {
+    try {
+      // Extract and verify JWT token
+      const authHeader = req.headers.get('Authorization');
+      const token = AuthService.extractToken(authHeader);
+
+      if (!token) {
+        return this.jsonResponse({
+          error: 'Authentication required',
+          message: 'Please provide a valid Bearer token',
+        }, 401);
+      }
+
+      const userAddress = AuthService.verifyToken(token);
+
+      if (!userAddress) {
+        return this.jsonResponse({
+          error: 'Invalid or expired token',
+        }, 401);
+      }
+
+      // Extract IP asset ID from URL
+      const pathParts = url.pathname.split('/');
+      const ipAssetId = pathParts[pathParts.length - 1];
+
+      if (!ipAssetId || ipAssetId.length < 10) {
+        return this.jsonResponse({ error: 'Invalid IP asset ID' }, 400);
+      }
+
+      console.log(`📊 Fetching usage data for ${ipAssetId} (user: ${userAddress})`);
+
+      // Verify user has active license for this IP asset
+      const hasLicense = await LicenseDataService.hasActiveLicense(userAddress, ipAssetId);
+
+      if (!hasLicense) {
+        return this.jsonResponse({
+          error: 'Access denied',
+          message: 'You must have an active license for this IP asset to view usage data',
+        }, 403);
+      }
+
+      // Import and fetch usage data
+      const { getUsageData } = await import('../services/usage-data-service.js');
+      const usageData = await getUsageData(ipAssetId);
+
+      if (!usageData) {
+        return this.jsonResponse({
+          error: 'Usage data not found',
+          message: 'No usage data available for this IP asset',
+        }, 404);
+      }
+
+      return this.jsonResponse(usageData, 200);
+    } catch (error: any) {
+      console.error('❌ Error fetching usage data:', error);
+      return this.jsonResponse({
+        error: 'Failed to fetch usage data',
+        details: error.message,
+      }, 500);
+    }
   }
 
   /**
@@ -568,6 +727,141 @@ export class VerificationServer {
       console.error('❌ Error fetching IP asset data:', error);
       return this.jsonResponse({
         error: 'Failed to fetch IP asset data',
+        details: error.message,
+      }, 500);
+    }
+  }
+
+  // ========================================
+  // IP Asset Marketplace Handlers
+  // ========================================
+
+  /**
+   * Handle GET /api/ip-metadata/:ipId - Get single IP metadata
+   */
+  private async handleGetIPMetadata(req: Request, url: URL): Promise<Response> {
+    try {
+      const pathParts = url.pathname.split('/');
+      const ipId = pathParts[pathParts.length - 1];
+
+      if (!ipId || !ipId.startsWith('0x')) {
+        return this.jsonResponse({ error: 'Invalid IP ID format' }, 400);
+      }
+
+      console.log(`📦 Fetching metadata for IP: ${ipId}`);
+
+      // Import the IP metadata service dynamically
+      const { fetchIPMetadata } = await import('../services/ip-metadata-service.js');
+      const metadata = await fetchIPMetadata(ipId as `0x${string}`);
+
+      if (!metadata) {
+        return this.jsonResponse({ error: 'IP metadata not found' }, 404);
+      }
+
+      return this.jsonResponse({ ipId, metadata }, 200);
+    } catch (error: any) {
+      console.error('❌ Error fetching IP metadata:', error);
+      return this.jsonResponse({
+        error: 'Failed to fetch IP metadata',
+        details: error.message,
+      }, 500);
+    }
+  }
+
+  /**
+   * Handle POST /api/ip-metadata/bulk - Bulk IP metadata fetch
+   */
+  private async handleBulkIPMetadata(req: Request): Promise<Response> {
+    try {
+      const body = await req.json() as { ipIds: string[] };
+
+      if (!Array.isArray(body.ipIds) || body.ipIds.length === 0) {
+        return this.jsonResponse({ error: 'Invalid ipIds array' }, 400);
+      }
+
+      if (body.ipIds.length > 50) {
+        return this.jsonResponse({ error: 'Maximum 50 IPs per request' }, 400);
+      }
+
+      console.log(`📦 Fetching metadata for ${body.ipIds.length} IPs`);
+
+      // Import the IP metadata service dynamically
+      const { fetchBulkIPMetadata } = await import('../services/ip-metadata-service.js');
+      const metadataMap = await fetchBulkIPMetadata(body.ipIds as `0x${string}`[]);
+
+      // Convert Map to object for JSON serialization
+      const response: Record<string, any> = {};
+      metadataMap.forEach((metadata, ipId) => {
+        response[ipId] = metadata;
+      });
+
+      return this.jsonResponse({ metadata: response, count: metadataMap.size }, 200);
+    } catch (error: any) {
+      console.error('❌ Error fetching bulk IP metadata:', error);
+      return this.jsonResponse({
+        error: 'Failed to fetch bulk IP metadata',
+        details: error.message,
+      }, 500);
+    }
+  }
+
+  /**
+   * Handle GET /api/marketplace - Get all IP assets with enriched metadata
+   */
+  private async handleGetMarketplace(): Promise<Response> {
+    try {
+      console.log('🏪 Fetching marketplace data...');
+
+      // Import Goldsky client dynamically
+      const { fetchAllVaultsWithIPData } = await import('../clients/goldskyClient.js');
+      const vaults = await fetchAllVaultsWithIPData();
+
+      if (vaults.length === 0) {
+        return this.jsonResponse({ assets: [], count: 0 }, 200);
+      }
+
+      // Extract unique IP IDs
+      const ipIds = [...new Set(vaults.map(v => v.ipAsset || v.ipId).filter(Boolean))].filter((id): id is string => !!id);
+
+      console.log(`📦 Found ${vaults.length} vaults with ${ipIds.length} unique IP assets`);
+
+      // Fetch metadata for all IPs in parallel
+      const { fetchBulkIPMetadata } = await import('../services/ip-metadata-service.js');
+      const metadataMap = await fetchBulkIPMetadata(ipIds as `0x${string}`[]);
+
+      // Merge vault data with IP metadata
+      const assets = vaults.map(vault => ({
+        // Vault data from subgraph
+        vaultAddress: vault.vaultAddress,
+        ipId: vault.ipAsset || vault.ipId,
+        creator: vault.creator,
+        cvsScore: vault.currentCVS || '0',
+        totalLicensesSold: 0, // TODO: Add to subgraph schema
+        totalRevenue: vault.totalLicenseRevenue || '0',
+        createdAt: vault.createdAt || vault.timestamp,
+
+        // IP metadata from Story Protocol
+        metadata: metadataMap.get(vault.ipAsset as `0x${string}` || vault.ipId as `0x${string}`) || {
+          name: `IP Asset ${(vault.ipAsset || vault.ipId || '').slice(0, 10)}...`,
+          description: 'No description available',
+          creator: vault.creator as `0x${string}`,
+        },
+      }));
+
+      // Sort by CVS score (highest first)
+      assets.sort((a, b) => Number(b.cvsScore || 0) - Number(a.cvsScore || 0));
+
+      console.log(`✅ Returning ${assets.length} marketplace assets`);
+
+      return this.jsonResponse({
+        assets,
+        count: assets.length,
+        timestamp: Date.now(),
+      }, 200);
+    } catch (error: any) {
+      console.error('❌ Error fetching marketplace data:', error);
+      return this.jsonResponse({
+        error: 'Failed to fetch marketplace data',
         details: error.message,
       }, 500);
     }

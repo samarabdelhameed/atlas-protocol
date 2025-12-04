@@ -47,7 +47,23 @@ export async function fetchOriginalityScore(ipAssetId: string): Promise<YakoaSco
       throw new Error(`Yakoa API error: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
+    // Define expected API response structure
+    interface YakoaApiResponse {
+      score?: number;
+      originalityScore?: number;
+      originality?: number;
+      confidence?: number;
+      confidenceScore?: number;
+      verified?: boolean;
+      isVerified?: boolean;
+      timestamp?: number;
+      similarity?: number;
+      similarityScore?: number;
+      uniqueness?: number;
+      uniquenessScore?: number;
+    }
+
+    const data = await response.json() as YakoaApiResponse;
     
     console.log('✅ Yakoa Response:', JSON.stringify(data, null, 2));
     
