@@ -63,16 +63,31 @@ export default function IPAssetCard({
       </p>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <div className="bg-cyan-500/10 rounded-lg p-3 border border-cyan-500/20">
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        <div className="bg-cyan-500/10 rounded-lg p-2.5 border border-cyan-500/20">
           <div className="text-cyan-400 text-xs mb-1 font-medium">CVS Score</div>
-          <div className="text-white font-bold text-lg">
-            {Number(cvsScore).toLocaleString()}
+          <div className="text-white font-bold text-base truncate" title={`${(Number(cvsScore) / 1e18).toFixed(4)} STORY`}>
+            {(() => {
+              const cvsInStory = Number(cvsScore) / 1e18;
+              return cvsInStory >= 1000000
+                ? `${(cvsInStory / 1000000).toFixed(1)}M`
+                : cvsInStory >= 1000
+                ? `${(cvsInStory / 1000).toFixed(1)}K`
+                : cvsInStory >= 1
+                ? cvsInStory.toFixed(2)
+                : cvsInStory.toFixed(4);
+            })()}
           </div>
         </div>
-        <div className="bg-orange-500/10 rounded-lg p-3 border border-orange-500/20">
-          <div className="text-orange-400 text-xs mb-1 font-medium">Licenses Sold</div>
-          <div className="text-white font-bold text-lg">{totalLicensesSold}</div>
+        <div className="bg-orange-500/10 rounded-lg p-2.5 border border-orange-500/20">
+          <div className="text-orange-400 text-xs mb-1 font-medium">Licenses</div>
+          <div className="text-white font-bold text-base">{totalLicensesSold}</div>
+        </div>
+        <div className="bg-green-500/10 rounded-lg p-2.5 border border-green-500/20">
+          <div className="text-green-400 text-xs mb-1 font-medium">Revenue</div>
+          <div className="text-white font-bold text-base truncate" title={`${(Number(totalRevenue) / 1e18).toFixed(4)} STORY`}>
+            {(Number(totalRevenue) / 1e18).toFixed(2)}
+          </div>
         </div>
       </div>
 

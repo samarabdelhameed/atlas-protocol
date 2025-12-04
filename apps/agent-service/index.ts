@@ -8,6 +8,7 @@ import { VerificationServer } from './src/api/verification-server.js';
 import { IndexerService } from './src/services/indexer.js';
 import { IndexerAPI } from './src/api/indexer-api.js';
 import { CVSSyncService } from './src/services/cvs-sync-service.js';
+import { LicenseEventMonitor } from './src/services/license-event-monitor.js';
 import { config } from './src/config/index.js';
 
 /**
@@ -33,6 +34,7 @@ class AgentService {
   private indexer: IndexerService | null = null;
   private indexerAPI: IndexerAPI | null = null;
   private cvsSyncService: CVSSyncService | null = null;
+  private licenseEventMonitor: LicenseEventMonitor | null = null;
 
   constructor() {
     console.log('🚀 Initializing Atlas Agent Service...');
@@ -87,6 +89,20 @@ class AgentService {
           parseInt(process.env.CVS_SYNC_INTERVAL_MS || '300000') // 5 minutes default
         );
       }
+
+      // Initialize License Event Monitor (automatically updates CVS on-chain)
+      if (process.env.WALLET_PRIVATE_KEY) {
+        console.log('🎫 Initializing License Event Monitor...');
+        this.licenseEventMonitor = new LicenseEventMonitor({
+          adlvAddress,
+          idoAddress,
+          rpcUrl: config.rpcUrl,
+          privateKey: process.env.WALLET_PRIVATE_KEY as `0x${string}`,
+        });
+      } else {
+        console.warn('⚠️  License Event Monitor disabled: WALLET_PRIVATE_KEY not set');
+        console.warn('   CVS will not be automatically updated after license sales');
+      }
     }
   }
 
@@ -126,7 +142,11 @@ class AgentService {
     if (this.cvsSyncService) {
       console.log('   ✓ CVS Sync Service - Story Protocol SPG integration ready');
     }
-    
+
+    if (this.licenseEventMonitor) {
+      console.log('   ✓ License Event Monitor - Auto CVS updates on license sales');
+    }
+
     console.log('═══════════════════════════════════════════\n');
 
     // Start CVS monitoring
@@ -170,6 +190,12 @@ class AgentService {
       );
       this.cvsSyncService.startAutoSync(ipIds);
       console.log(`🔄 CVS Auto-sync started for ${ipIds.length} IP assets`);
+    }
+
+    // Start License Event Monitor (automatic CVS updates on license sales)
+    if (this.licenseEventMonitor) {
+      await this.licenseEventMonitor.startMonitoring();
+      console.log('🎫 License Event Monitor started - CVS will auto-update on sales\n');
     }
 
     // Display initial stats
@@ -289,7 +315,11 @@ class AgentService {
     if (this.cvsSyncService) {
       this.cvsSyncService.stopAutoSync();
     }
-    
+
+    if (this.licenseEventMonitor) {
+      this.licenseEventMonitor.stopMonitoring();
+    }
+
     console.log('✅ Agent Service stopped');
     process.exit(0);
   }

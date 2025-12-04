@@ -5,7 +5,8 @@
  * This ensures CVS data is always up-to-date from Story Protocol's official system
  */
 
-import { createPublicClient, http, parseAbi } from 'viem';
+import { createPublicClient, createWalletClient, http, parseAbi } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
 import type { Address } from 'viem';
 import { storyAeneid } from 'viem/chains';
 import { StoryClient } from '@story-protocol/core-sdk';

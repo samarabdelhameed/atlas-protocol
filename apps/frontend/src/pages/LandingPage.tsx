@@ -162,6 +162,11 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
         } else {
           // Subsequent fetches: only get new blocks since last fetch
           fromBlock = lastFetchedBlock + 1n;
+          // CRITICAL FIX: Ensure fromBlock never exceeds toBlock
+          // This can happen if no new blocks were mined since last fetch
+          if (fromBlock > latest) {
+            fromBlock = latest;
+          }
         }
 
         const licenseLogs = await publicClient.getLogs({

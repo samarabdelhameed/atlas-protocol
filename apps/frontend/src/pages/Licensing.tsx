@@ -81,19 +81,48 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
   const [purchaseStep, setPurchaseStep] = useState<'browse' | 'confirm' | 'success'>('browse');
 
   // Fetch marketplace data (all IP assets)
-  const { data: marketplaceData, isLoading: isLoadingMarketplace } = useQuery({
+  const { data: marketplaceData, isLoading: isLoadingMarketplace, error: marketplaceError } = useQuery({
     queryKey: ['marketplace'],
     queryFn: async () => {
+      console.log('🔍 Fetching marketplace data from:', `${BACKEND_URL}/api/marketplace`);
+
+      // Add timeout to prevent infinite loading
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.warn('⏰ Marketplace request timed out');
+        controller.abort();
+      }, 15000); // 15 second timeout
+
       try {
-        const response = await fetch(`${BACKEND_URL}/api/marketplace`);
-        if (!response.ok) throw new Error('Failed to fetch marketplace');
-        return response.json();
-      } catch (error) {
-        console.error('Error fetching marketplace:', error);
-        return { assets: [], count: 0 };
+        const response = await fetch(`${BACKEND_URL}/api/marketplace`, {
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          console.error('❌ Marketplace request failed:', response.status, response.statusText);
+          throw new Error(`Failed to fetch marketplace: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('✅ Marketplace data received:', data.count, 'assets');
+        return data;
+      } catch (error: any) {
+        console.error('❌ Error fetching marketplace:', error);
+        clearTimeout(timeoutId);
+
+        // Return empty data instead of throwing to prevent infinite loading
+        if (error.name === 'AbortError') {
+          console.warn('⚠️ Returning empty marketplace due to timeout');
+          return { assets: [], count: 0, error: 'Request timed out' };
+        }
+        return { assets: [], count: 0, error: error.message };
       }
     },
     staleTime: 30_000,
+    retry: 2, // Retry failed requests up to 2 times
+    retryDelay: 1000, // Wait 1 second between retries
   });
 
   // Helper to parse price string to Wei
@@ -315,8 +344,16 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
     },
     {
       label: "Total Revenue",
-      value: marketplaceData?.assets ? 
-        `${marketplaceData.assets.reduce((acc: number, curr: any) => acc + Number(curr.totalRevenue || 0), 0).toLocaleString()} STORY` 
+      value: marketplaceData?.assets ?
+        (() => {
+          const totalWei = marketplaceData.assets.reduce((acc: number, curr: any) => acc + Number(curr.totalRevenue || 0), 0);
+          const totalStory = totalWei / 1e18;
+          return totalStory >= 1000000
+            ? `${(totalStory / 1000000).toFixed(2)}M STORY`
+            : totalStory >= 1000
+            ? `${(totalStory / 1000).toFixed(2)}K STORY`
+            : `${totalStory.toFixed(2)} STORY`;
+        })()
         : "0 STORY",
       icon: Activity,
       color: "from-green-500 to-emerald-600",
@@ -342,15 +379,17 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
 
         if (data.success && data.licenses) {
           // Transform backend data to match display format
-          const formatted = data.licenses.map((license: LicenseMetadata) => {
-            const tier = tiers.find(t => t.id === license.tierId);
+          const formatted = data.licenses.map((license: any) => {
+            const tier = tiers.find(t => t.id === license.tier_id);
+            // Handle different timestamp field names from backend
+            const timestamp = license.timestamp || license.purchased_at || license.created_at;
             return {
-              company: license.organization,
-              tier: license.tierName,
-              date: formatRelativeTime(new Date(license.timestamp)),
-              amount: `${license.amount} STORY`,
+              company: license.buyer_organization || license.organization || 'Unknown',
+              tier: license.tier_name || tier?.name || 'Unknown',
+              date: timestamp ? formatRelativeTime(new Date(timestamp)) : 'Recently',
+              amount: license.amount || '0 STORY',
               cvsImpact: tier?.cvsImpact || '+0',
-              creator: license.personalName || 'Anonymous',
+              creator: license.buyer_name || license.personalName || 'Anonymous',
             };
           });
           setRecentPurchases(formatted);
