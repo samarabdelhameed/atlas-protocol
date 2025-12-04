@@ -98,7 +98,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
           const licensee = (log.args.licensee as string) || "0x";
           const short = `${licensee.slice(0, 6)}...${licensee.slice(-4)}`;
           const price = log.args.price as bigint;
-          const amount = `${formatUnits(price, 18)} STORY`;
+          const amount = `${formatUnits(price, 18)} IP`;
           const tier = (log.args.licenseType as string) || "Standard";
           return { company: short, tier, amount, cvs: "" };
         });
@@ -117,7 +117,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
           const borrower = (log.args.borrower as string) || "0x";
           const actor = `${borrower.slice(0, 6)}...${borrower.slice(-4)}`;
           const amountWei = log.args.amount as bigint;
-          const amount = `${formatUnits(amountWei, 18)} STORY`;
+          const amount = `${formatUnits(amountWei, 18)} IP`;
           return { type: 'LoanIssued' as const, actor, amount };
         });
 

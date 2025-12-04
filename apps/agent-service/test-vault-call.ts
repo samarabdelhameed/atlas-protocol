@@ -9,7 +9,7 @@ const publicClient = createPublicClient({
   chain: {
     id: 1315,
     name: 'Story Testnet',
-    nativeCurrency: { name: 'STORY', symbol: 'STORY', decimals: 18 },
+    nativeCurrency: { name: 'IP', symbol: 'IP', decimals: 18 },
     rpcUrls: { default: { http: ['https://rpc-storyevm-testnet.aldebaranode.xyz'] } }
   },
   transport: http('https://rpc-storyevm-testnet.aldebaranode.xyz')
@@ -20,7 +20,7 @@ const walletClient = createWalletClient({
   chain: {
     id: 1315,
     name: 'Story Testnet',
-    nativeCurrency: { name: 'STORY', symbol: 'STORY', decimals: 18 },
+    nativeCurrency: { name: 'IP', symbol: 'IP', decimals: 18 },
     rpcUrls: { default: { http: ['https://rpc-storyevm-testnet.aldebaranode.xyz'] } }
   },
   transport: http('https://rpc-storyevm-testnet.aldebaranode.xyz')

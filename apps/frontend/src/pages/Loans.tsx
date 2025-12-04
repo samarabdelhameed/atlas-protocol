@@ -82,7 +82,7 @@ export default function Loans() {
   const publicClient = useMemo(() => {
     if (!RPC_URL) return null;
     return createPublicClient({
-      chain: { id: CHAIN_ID, name: 'Story', nativeCurrency: { name: 'STORY', symbol: 'STORY', decimals: 18 }, rpcUrls: { default: { http: [RPC_URL] } } },
+      chain: { id: CHAIN_ID, name: 'Story', nativeCurrency: { name: 'IP', symbol: 'IP', decimals: 18 }, rpcUrls: { default: { http: [RPC_URL] } } },
       transport: http(RPC_URL),
     });
   }, [RPC_URL, CHAIN_ID]);
@@ -414,10 +414,10 @@ export default function Loans() {
     void run();
   }, [publicClient, ADLV_ADDRESS, selectedVault, userVaults, loanQueries]);
 
-  // All loans are issued in STORY tokens on Story Protocol
-  // Owlto Bridge converts STORY → native token on destination chain (if cross-chain selected)
+  // All loans are issued in IP tokens on Story Protocol
+  // Owlto Bridge converts IP → native token on destination chain (if cross-chain selected)
   const chains = [
-    { id: 'story', name: 'Story Testnet', currency: 'STORY', color: 'from-orange-400 to-amber-600' },
+    { id: 'story', name: 'Story Testnet', currency: 'IP', color: 'from-orange-400 to-amber-600' },
     { id: 'base-sepolia', name: 'Base Sepolia', currency: 'USDC', color: 'from-blue-500 to-indigo-600' },
     { id: 'arbitrum-sepolia', name: 'Arbitrum Sepolia', currency: 'USDC', color: 'from-cyan-400 to-cyan-600' },
     { id: 'optimism-sepolia', name: 'Optimism Sepolia', currency: 'USDC', color: 'from-red-500 to-pink-600' },
@@ -478,14 +478,14 @@ export default function Loans() {
                 <option value="">Choose a vault...</option>
                 {userVaults?.map((vault: VaultData) => (
                   <option key={vault.address} value={vault.address}>
-                    {vault.address.slice(0, 6)}...{vault.address.slice(-4)} (CVS: {(Number(vault.cvs) / 1e18).toFixed(2)} STORY)
+                    {vault.address.slice(0, 6)}...{vault.address.slice(-4)} (CVS: {(Number(vault.cvs) / 1e18).toFixed(2)} IP)
                   </option>
                 ))}
               </select>
             </div>
             <div>
               <label className="block text-gray-300 text-sm font-medium mb-2">
-                Loan Amount (STORY)
+                Loan Amount (IP)
               </label>
               <div className="relative">
                 <input
@@ -495,7 +495,7 @@ export default function Loans() {
                     const val = parseFloat(e.target.value);
                     if (val > maxBorrowable) {
                       setLoanAmount(maxBorrowable.toString());
-                      setError(`Maximum loan amount is ${maxBorrowable.toFixed(4)} STORY (50% of your CVS)`);
+                      setError(`Maximum loan amount is ${maxBorrowable.toFixed(4)} IP (50% of your CVS)`);
                     } else {
                       setLoanAmount(e.target.value);
                       setError('');
@@ -515,11 +515,11 @@ export default function Loans() {
               <div className="mt-2 flex justify-between items-center text-sm">
                 <span className="text-gray-400">Max Borrowable (50% of CVS)</span>
                 <span className="text-amber-400 font-bold">
-                  {maxBorrowable > 0 ? `${maxBorrowable < 0.01 ? maxBorrowable.toFixed(4) : maxBorrowable.toLocaleString(undefined, { maximumFractionDigits: 2 })} STORY` : '—'}
+                  {maxBorrowable > 0 ? `${maxBorrowable < 0.01 ? maxBorrowable.toFixed(4) : maxBorrowable.toLocaleString(undefined, { maximumFractionDigits: 2 })} IP` : '—'}
                 </span>
               </div>
               <div className="mt-1 text-xs text-gray-500">
-                Required collateral: {loanAmount ? `${(parseFloat(loanAmount) * 1.5).toFixed(4)} STORY (150%)` : '—'}
+                Required collateral: {loanAmount ? `${(parseFloat(loanAmount) * 1.5).toFixed(4)} IP (150%)` : '—'}
               </div>
             </div>
 
@@ -557,7 +557,7 @@ export default function Loans() {
                 <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl">
                   <p className="text-xs text-blue-300">
                     {selectedChainId === 1315
-                      ? '💰 You will receive STORY on Story Testnet (same chain as your collateral)'
+                      ? '💰 You will receive IP on Story Testnet (same chain as your collateral)'
                       : `🌉 You will receive ${chains.find(c => c.id === selectedChain.toLowerCase())?.currency || 'tokens'} on ${selectedChain} via Owlto Bridge • Collateral stays on Story Testnet`}
                   </p>
                 </div>
@@ -645,7 +645,7 @@ export default function Loans() {
                       return;
                     }
                     if (parseFloat(loanAmount) > maxBorrowable) {
-                      setError(`Loan amount exceeds maximum of ${maxBorrowable.toFixed(4)} STORY`);
+                      setError(`Loan amount exceeds maximum of ${maxBorrowable.toFixed(4)} IP`);
                       return;
                     }
 
@@ -723,7 +723,7 @@ export default function Loans() {
                 <div className="p-4 bg-gray-900/50 rounded-xl border border-gray-700">
                   <div className="flex justify-between items-center mb-1">
                     <span className="text-gray-400 text-sm">Max Borrowable</span>
-                    <span className="text-amber-400 font-bold">{maxBorrowable.toFixed(4)} STORY</span>
+                    <span className="text-amber-400 font-bold">{maxBorrowable.toFixed(4)} IP</span>
                   </div>
                   <p className="text-gray-500 text-xs">50% of CVS • Requires 150% Collateral</p>
                 </div>
@@ -766,8 +766,8 @@ export default function Loans() {
               <div className="text-gray-400 text-sm">Total Outstanding Principal</div>
               <div className="text-2xl font-bold text-white">
                 {totalOutstanding > 0
-                  ? `${totalOutstanding.toFixed(4)} STORY`
-                  : '0 STORY'}
+                  ? `${totalOutstanding.toFixed(4)} IP`
+                  : '0 IP'}
               </div>
             </div>
           </div>
@@ -943,11 +943,11 @@ export default function Loans() {
                         Repaying...
                       </span>
                     ) : (
-                      `Repay ${loan.totalRepayment} STORY`
+                      `Repay ${loan.totalRepayment} IP`
                     )}
                   </motion.button>
                   <div className="text-xs text-gray-400 text-center">
-                    Collateral locked: {loan.collateral} STORY
+                    Collateral locked: {loan.collateral} IP
                   </div>
                 </div>
               </motion.div>

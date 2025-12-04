@@ -245,7 +245,7 @@ export default function MyLicensesPage({ onNavigate }: MyLicensesPageProps) {
     return value.toString();
   };
 
-  // Format revenue in STORY tokens with compact display
+  // Format revenue in IP tokens with compact display
   const formatRevenue = (revenueWei: string) => {
     const tokens = Number(revenueWei) / 1e18;
     if (tokens >= 1000) {
@@ -559,7 +559,7 @@ export default function MyLicensesPage({ onNavigate }: MyLicensesPageProps) {
                     <p className="text-3xl font-bold text-white">
                       {formatRevenue(usageData.licensingSummary.totalRevenue)}
                     </p>
-                    <p className="text-sm text-gray-400 mt-1">STORY tokens</p>
+                    <p className="text-sm text-gray-400 mt-1">IP tokens</p>
                   </div>
 
                   <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
