@@ -49,7 +49,7 @@ export interface LicenseSale {
 export interface Vault {
   id: string;
   vaultAddress: string;
-  ipAsset: string;
+  ipAsset: string | { id: string; ipId?: string };
   ipId?: string;
   creator: string;
   currentCVS: string;
@@ -241,7 +241,10 @@ export async function fetchVaultsByCreator(creator: string): Promise<Vault[]> {
         ) {
           id
           vaultAddress
-          ipAsset
+          ipAsset {
+            id
+            ipId
+          }
           creator
           currentCVS
           totalLiquidity

@@ -123,13 +123,19 @@ export default function IPIntelligencePage({ ipAssetId, onNavigate }: IPIntellig
     return ipId;
   };
 
-  // Format CVS score to readable number
+  // Format CVS score to readable number (always in wei from subgraph)
   const formatCVS = (cvsWei: string) => {
-    const cvs = Number(cvsWei) / 1e15; // Convert from wei to more readable unit
-    if (cvs >= 1000) {
-      return (cvs / 1000).toFixed(1) + 'K';
+    const cvs = Number(cvsWei) / 1e18; // Convert from wei
+    if (cvs >= 1000000) {
+      return (cvs / 1000000).toFixed(2) + 'M';
     }
-    return cvs.toFixed(0);
+    if (cvs >= 1000) {
+      return (cvs / 1000).toFixed(2) + 'K';
+    }
+    if (cvs >= 1) {
+      return cvs.toFixed(2);
+    }
+    return cvs.toFixed(4);
   };
 
   if (!isConnected || !isAuthenticated) {

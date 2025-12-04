@@ -386,7 +386,7 @@ export class VerificationServer {
         buyerEmail: email,
         tierId,
         tierName,
-        licenseType: tierToLicenseType[tierId] || 'standard',
+        licenseType: (tierToLicenseType[tierId] || 'standard') as "standard" | "commercial" | "exclusive",
         amount,
         expiresAt: expiresAt.toISOString(),
       });
@@ -567,11 +567,33 @@ export class VerificationServer {
 
       console.log(`✅ Found ${vaults.length} vault(s) for creator ${address}`);
 
-      // Return just the vault addresses (matching Dashboard expectation)
-      return this.jsonResponse({
-        vaults: vaults.map(v => v.vaultAddress),
+      // Return full vault data including CVS from subgraph
+      const responseData = {
+        vaults: vaults.map(v => {
+          // Handle ipAsset being either a string ID or an object
+          let ipId = '';
+          if (typeof v.ipAsset === 'object' && v.ipAsset !== null) {
+            ipId = v.ipAsset.ipId || v.ipAsset.id || '';
+          } else if (typeof v.ipAsset === 'string') {
+            ipId = v.ipAsset;
+          }
+          
+          return {
+            address: v.vaultAddress,
+            ipId: ipId || v.ipId || '',
+            creator: v.creator,
+            cvs: v.currentCVS || '0',
+            totalLiquidity: v.totalLiquidity || '0',
+            totalLicenseRevenue: v.totalLicenseRevenue || '0',
+            createdAt: v.createdAt,
+          };
+        }),
         count: vaults.length,
-      }, 200);
+      };
+
+      console.log('📤 Sending response to frontend:', JSON.stringify(responseData, null, 2));
+
+      return this.jsonResponse(responseData, 200);
 
     } catch (error: any) {
       console.error('❌ Error fetching vaults by creator:', error);
@@ -821,7 +843,12 @@ export class VerificationServer {
       }
 
       // Extract unique IP IDs
-      const ipIds = [...new Set(vaults.map(v => v.ipAsset || v.ipId).filter(Boolean))].filter((id): id is string => !!id);
+      const ipIds = [...new Set(vaults.map(v => {
+        if (typeof v.ipAsset === 'object' && v.ipAsset !== null) {
+          return v.ipAsset.ipId || v.ipAsset.id;
+        }
+        return v.ipAsset || v.ipId;
+      }).filter(Boolean))].filter((id): id is string => !!id);
 
       console.log(`📦 Found ${vaults.length} vaults with ${ipIds.length} unique IP assets`);
 
@@ -830,23 +857,34 @@ export class VerificationServer {
       const metadataMap = await fetchBulkIPMetadata(ipIds as `0x${string}`[]);
 
       // Merge vault data with IP metadata
-      const assets = vaults.map(vault => ({
-        // Vault data from subgraph
-        vaultAddress: vault.vaultAddress,
-        ipId: vault.ipAsset || vault.ipId,
-        creator: vault.creator,
-        cvsScore: vault.currentCVS || '0',
-        totalLicensesSold: 0, // TODO: Add to subgraph schema
-        totalRevenue: vault.totalLicenseRevenue || '0',
-        createdAt: vault.createdAt || vault.timestamp,
+      const assets = vaults.map(vault => {
+        // Resolve IP ID from ipAsset object or string
+        let ipId = '';
+        if (typeof vault.ipAsset === 'object' && vault.ipAsset !== null) {
+          ipId = vault.ipAsset.ipId || vault.ipAsset.id || '';
+        } else if (typeof vault.ipAsset === 'string') {
+          ipId = vault.ipAsset;
+        }
+        ipId = ipId || vault.ipId || '';
 
-        // IP metadata from Story Protocol
-        metadata: metadataMap.get(vault.ipAsset as `0x${string}` || vault.ipId as `0x${string}`) || {
-          name: `IP Asset ${(vault.ipAsset || vault.ipId || '').slice(0, 10)}...`,
-          description: 'No description available',
-          creator: vault.creator as `0x${string}`,
-        },
-      }));
+        return {
+          // Vault data from subgraph
+          vaultAddress: vault.vaultAddress,
+          ipId,
+          creator: vault.creator,
+          cvsScore: vault.currentCVS || '0',
+          totalLicensesSold: 0, // TODO: Add to subgraph schema
+          totalRevenue: vault.totalLicenseRevenue || '0',
+          createdAt: vault.createdAt || vault.timestamp,
+
+          // IP metadata from Story Protocol
+          metadata: metadataMap.get(ipId as `0x${string}`) || {
+            name: `IP Asset ${ipId.slice(0, 10)}...`,
+            description: 'No description available',
+            creator: vault.creator as `0x${string}`,
+          },
+        };
+      });
 
       // Sort by CVS score (highest first)
       assets.sort((a, b) => Number(b.cvsScore || 0) - Number(a.cvsScore || 0));

@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { useLicenseAuth } from '../hooks/useLicenseAuth';
 import { motion } from 'framer-motion';
-import { FileText, Clock, CheckCircle, XCircle, BarChart3, TrendingUp, Users, DollarSign } from 'lucide-react';
+import { FileText, Clock, CheckCircle, XCircle, BarChart3, TrendingUp, Users, DollarSign, Code } from 'lucide-react';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
 
@@ -29,46 +29,67 @@ interface License {
 interface UsageData {
   ipId: string;
   ipAssetName: string;
-  totalLicensesSold: number;
-  totalRevenue: string;
-  activeLicenses: number;
+
+  // Global usage metrics
+  globalUsage: {
+    totalDetections: number;
+    authorizedUses: number;
+    unauthorizedUses: number;
+    platforms: string[];
+    derivatives: number;
+    lastDetectedAt: string | null;
+  };
+
+  // Yakoa infringement intelligence
+  infringements: Array<{
+    brand_id: string;
+    detected_at: string;
+    status: string;
+    context?: string;
+  }>;
+
+  // Yakoa authorized usages
+  authorizations: Array<{
+    brand_id: string;
+    authorized_at: string;
+    context?: string;
+  }>;
+
+  // Story Protocol derivatives
+  derivatives: Array<{
+    childIpId: string;
+    childName?: string;
+    creator: string;
+    createdAt: string;
+    royaltiesPaid?: string;
+  }>;
+
+  // Provenance & verification
   provenance: {
-    score: number;
-    originality: number;
+    yakoaScore: number;
+    verified: boolean;
     confidence: number;
     status: 'verified' | 'unverified' | 'pending' | 'unavailable';
+    infringementCount: number;
+    authorizationCount: number;
   };
+
+  // CVS score
   cvs: {
     currentScore: string;
     rank: number;
     history: Array<{ timestamp: string; score: string }>;
   };
-  recentPurchases: Array<{
-    licensee: string;
-    amount: string;
-    purchasedAt: string;
-    tierName: string;
-  }>;
-  licenseTypeBreakdown: {
-    standard: number;
-    commercial: number;
-    exclusive: number;
-  };
-  revenueByMonth: Array<{
-    month: string;
-    revenue: string;
-    licenses: number;
-  }>;
-  analytics: {
-    uniqueLicensees: number;
-    averagePrice: string;
-    last7Days: {
-      newLicenses: number;
-      revenue: string;
-    };
-    last30Days: {
-      newLicenses: number;
-      revenue: string;
+
+  // License sales summary
+  licensingSummary: {
+    totalLicensesSold: number;
+    activeLicenses: number;
+    totalRevenue: string;
+    licenseTypeBreakdown: {
+      standard: number;
+      commercial: number;
+      exclusive: number;
     };
   };
 }
@@ -79,14 +100,14 @@ interface MyLicensesPageProps {
 
 export default function MyLicensesPage({ onNavigate }: MyLicensesPageProps) {
   const { address, isConnected } = useAccount();
-  const { isAuthenticated, isAuthenticating, authenticate, error: authError, authToken } = useLicenseAuth();
+  const { isAuthenticated, isAuthenticating, authenticate, error: authError, token } = useLicenseAuth();
 
   const [licenses, setLicenses] = useState<License[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Tab management
-  const [activeTab, setActiveTab] = useState<'licenses' | 'analytics'>('licenses');
+  const [activeTab, setActiveTab] = useState<'licenses' | 'analytics' | 'sdk'>('licenses');
 
   // Usage analytics state
   const [selectedLicenseForAnalytics, setSelectedLicenseForAnalytics] = useState<string | null>(null);
@@ -102,10 +123,10 @@ export default function MyLicensesPage({ onNavigate }: MyLicensesPageProps) {
 
   // Fetch usage data when license is selected for analytics
   useEffect(() => {
-    if (selectedLicenseForAnalytics && authToken) {
+    if (selectedLicenseForAnalytics && token) {
       fetchUsageData(selectedLicenseForAnalytics);
     }
-  }, [selectedLicenseForAnalytics, authToken]);
+  }, [selectedLicenseForAnalytics, token]);
 
   const fetchLicenses = async () => {
     if (!address) return;
@@ -114,24 +135,39 @@ export default function MyLicensesPage({ onNavigate }: MyLicensesPageProps) {
     setError(null);
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/licenses/${address}`);
+      // Add timeout to prevent infinite loading
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+      const response = await fetch(`${BACKEND_URL}/api/licenses/${address}`, {
+        signal: controller.signal,
+        headers: token ? {
+          'Authorization': `Bearer ${token}`,
+        } : {},
+      });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error('Failed to fetch licenses');
+        throw new Error(`Failed to fetch licenses: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
       setLicenses(data.licenses || []);
     } catch (err: any) {
       console.error('Error fetching licenses:', err);
-      setError(err.message || 'Failed to load licenses');
+      if (err.name === 'AbortError') {
+        setError('Request timed out. Please check your connection and try again.');
+      } else {
+        setError(err.message || 'Failed to load licenses');
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   const fetchUsageData = async (ipAssetId: string) => {
-    if (!authToken) {
+    if (!token) {
       setUsageDataError('Authentication required');
       return;
     }
@@ -142,7 +178,7 @@ export default function MyLicensesPage({ onNavigate }: MyLicensesPageProps) {
     try {
       const response = await fetch(`${BACKEND_URL}/api/usage-data/${ipAssetId}`, {
         headers: {
-          'Authorization': `Bearer ${authToken}`,
+          'Authorization': `Bearer ${token}`,
         },
       });
 
@@ -181,6 +217,44 @@ export default function MyLicensesPage({ onNavigate }: MyLicensesPageProps) {
   const formatPrice = (priceWei: string) => {
     const priceEth = Number(priceWei) / 1e18;
     return `${priceEth.toFixed(4)} ETH`;
+  };
+
+  // Format CVS score to readable number (always in wei from subgraph)
+  const formatCVS = (cvsWei: string) => {
+    const cvs = Number(cvsWei) / 1e18; // Convert from wei
+    if (cvs >= 1000000) {
+      return (cvs / 1000000).toFixed(2) + 'M';
+    }
+    if (cvs >= 1000) {
+      return (cvs / 1000).toFixed(2) + 'K';
+    }
+    if (cvs >= 1) {
+      return cvs.toFixed(2);
+    }
+    return cvs.toFixed(4);
+  };
+
+  // Format large numbers with K/M suffixes
+  const formatNumber = (value: number) => {
+    if (value >= 1000000) {
+      return (value / 1000000).toFixed(1) + 'M';
+    }
+    if (value >= 1000) {
+      return (value / 1000).toFixed(1) + 'K';
+    }
+    return value.toString();
+  };
+
+  // Format revenue in STORY tokens with compact display
+  const formatRevenue = (revenueWei: string) => {
+    const tokens = Number(revenueWei) / 1e18;
+    if (tokens >= 1000) {
+      return (tokens / 1000).toFixed(2) + 'K';
+    }
+    if (tokens >= 1) {
+      return tokens.toFixed(2);
+    }
+    return tokens.toFixed(4);
   };
 
   const isExpiringSoon = (expiresAt: string) => {
@@ -292,6 +366,19 @@ export default function MyLicensesPage({ onNavigate }: MyLicensesPageProps) {
             <span className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4" />
               Usage Analytics
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('sdk')}
+            className={`px-6 py-2.5 rounded-xl font-medium transition-all ${
+              activeTab === 'sdk'
+                ? 'bg-gradient-to-r from-orange-500 to-amber-600 text-white shadow-[0_0_20px_rgba(249,115,22,0.3)]'
+                : 'bg-gray-800/50 text-gray-400 hover:text-white hover:bg-gray-800'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <Code className="w-4 h-4" />
+              SDK Usage
             </span>
           </button>
         </div>
@@ -460,8 +547,8 @@ export default function MyLicensesPage({ onNavigate }: MyLicensesPageProps) {
                       <p className="text-gray-400 text-sm">Total Licenses</p>
                       <FileText className="w-5 h-5 text-orange-500" />
                     </div>
-                    <p className="text-3xl font-bold text-white">{usageData.totalLicensesSold}</p>
-                    <p className="text-sm text-green-400 mt-1">{usageData.activeLicenses} active</p>
+                    <p className="text-3xl font-bold text-white">{formatNumber(usageData.licensingSummary.totalLicensesSold)}</p>
+                    <p className="text-sm text-green-400 mt-1">{formatNumber(usageData.licensingSummary.activeLicenses)} active</p>
                   </div>
 
                   <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
@@ -470,7 +557,7 @@ export default function MyLicensesPage({ onNavigate }: MyLicensesPageProps) {
                       <DollarSign className="w-5 h-5 text-orange-500" />
                     </div>
                     <p className="text-3xl font-bold text-white">
-                      {(Number(usageData.totalRevenue) / 1e18).toFixed(4)}
+                      {formatRevenue(usageData.licensingSummary.totalRevenue)}
                     </p>
                     <p className="text-sm text-gray-400 mt-1">STORY tokens</p>
                   </div>
@@ -480,7 +567,7 @@ export default function MyLicensesPage({ onNavigate }: MyLicensesPageProps) {
                       <p className="text-gray-400 text-sm">Provenance Score</p>
                       <CheckCircle className="w-5 h-5 text-orange-500" />
                     </div>
-                    <p className="text-3xl font-bold text-white">{usageData.provenance.score}/100</p>
+                    <p className="text-3xl font-bold text-white">{usageData.provenance.yakoaScore}/100</p>
                     <p className="text-sm text-gray-400 mt-1 capitalize">{usageData.provenance.status}</p>
                   </div>
 
@@ -489,54 +576,10 @@ export default function MyLicensesPage({ onNavigate }: MyLicensesPageProps) {
                       <p className="text-gray-400 text-sm">CVS Score</p>
                       <TrendingUp className="w-5 h-5 text-orange-500" />
                     </div>
-                    <p className="text-3xl font-bold text-white">{usageData.cvs.currentScore}</p>
+                    <p className="text-3xl font-bold text-white">{formatCVS(usageData.cvs.currentScore)}</p>
                     {usageData.cvs.rank > 0 && (
-                      <p className="text-sm text-gray-400 mt-1">Rank #{usageData.cvs.rank}</p>
+                      <p className="text-sm text-gray-400 mt-1">Rank #{formatNumber(usageData.cvs.rank)}</p>
                     )}
-                  </div>
-                </div>
-
-                {/* Recent Activity */}
-                <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
-                  <h3 className="text-xl font-bold text-white mb-4">Recent Activity</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-gray-900/50 p-4 rounded-xl">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Clock className="w-4 h-4 text-orange-500" />
-                        <span className="text-gray-400 text-sm">Last 7 Days</span>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-gray-300">New Licenses</span>
-                          <span className="text-white font-bold">{usageData.analytics.last7Days.newLicenses}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-300">Revenue</span>
-                          <span className="text-orange-400 font-bold">
-                            {(Number(usageData.analytics.last7Days.revenue) / 1e18).toFixed(4)} STORY
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-gray-900/50 p-4 rounded-xl">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Clock className="w-4 h-4 text-orange-500" />
-                        <span className="text-gray-400 text-sm">Last 30 Days</span>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-gray-300">New Licenses</span>
-                          <span className="text-white font-bold">{usageData.analytics.last30Days.newLicenses}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-300">Revenue</span>
-                          <span className="text-orange-400 font-bold">
-                            {(Number(usageData.analytics.last30Days.revenue) / 1e18).toFixed(4)} STORY
-                          </span>
-                        </div>
-                      </div>
-                    </div>
                   </div>
                 </div>
 
@@ -546,38 +589,15 @@ export default function MyLicensesPage({ onNavigate }: MyLicensesPageProps) {
                   <div className="grid grid-cols-3 gap-4">
                     <div className="bg-gray-900/50 p-4 rounded-xl text-center">
                       <p className="text-gray-400 text-sm mb-2">Standard</p>
-                      <p className="text-3xl font-bold text-white">{usageData.licenseTypeBreakdown.standard}</p>
+                      <p className="text-3xl font-bold text-white">{formatNumber(usageData.licensingSummary.licenseTypeBreakdown.standard)}</p>
                     </div>
                     <div className="bg-gray-900/50 p-4 rounded-xl text-center">
                       <p className="text-gray-400 text-sm mb-2">Commercial</p>
-                      <p className="text-3xl font-bold text-white">{usageData.licenseTypeBreakdown.commercial}</p>
+                      <p className="text-3xl font-bold text-white">{formatNumber(usageData.licensingSummary.licenseTypeBreakdown.commercial)}</p>
                     </div>
                     <div className="bg-gray-900/50 p-4 rounded-xl text-center">
                       <p className="text-gray-400 text-sm mb-2">Exclusive</p>
-                      <p className="text-3xl font-bold text-white">{usageData.licenseTypeBreakdown.exclusive}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* User Metrics */}
-                <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
-                  <h3 className="text-xl font-bold text-white mb-4">User Metrics</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-gray-900/50 p-4 rounded-xl">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Users className="w-5 h-5 text-orange-500" />
-                        <span className="text-gray-400 text-sm">Unique Licensees</span>
-                      </div>
-                      <p className="text-2xl font-bold text-white">{usageData.analytics.uniqueLicensees}</p>
-                    </div>
-                    <div className="bg-gray-900/50 p-4 rounded-xl">
-                      <div className="flex items-center gap-2 mb-2">
-                        <DollarSign className="w-5 h-5 text-orange-500" />
-                        <span className="text-gray-400 text-sm">Average Price</span>
-                      </div>
-                      <p className="text-2xl font-bold text-white">
-                        {(Number(usageData.analytics.averagePrice) / 1e18).toFixed(4)} STORY
-                      </p>
+                      <p className="text-3xl font-bold text-white">{formatNumber(usageData.licensingSummary.licenseTypeBreakdown.exclusive)}</p>
                     </div>
                   </div>
                 </div>
@@ -596,6 +616,163 @@ export default function MyLicensesPage({ onNavigate }: MyLicensesPageProps) {
                 </p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* SDK Usage Tab Content */}
+        {activeTab === 'sdk' && (
+          <div className="space-y-6">
+            {/* Introduction */}
+            <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
+              <h2 className="text-2xl font-bold text-white mb-4">Programmatic Access via SDK</h2>
+              <p className="text-gray-300 mb-4">
+                Access your licensed IP intelligence data programmatically using the Atlas Protocol SDK.
+                The SDK provides a simple, type-safe interface to query global usage data, infringement
+                detection, derivative works, and more.
+              </p>
+              <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-xl p-4">
+                <p className="text-cyan-300 text-sm">
+                  <strong>Note:</strong> You must have an active license for an IP asset to access its usage data via the SDK.
+                </p>
+              </div>
+            </div>
+
+            {/* Installation */}
+            <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
+              <h3 className="text-xl font-bold text-white mb-4">1. Installation</h3>
+              <div className="bg-gray-900 rounded-xl p-4 font-mono text-sm">
+                <code className="text-green-400">npm install @atlas-protocol/sdk</code>
+              </div>
+              <p className="text-gray-400 text-sm mt-2">or</p>
+              <div className="bg-gray-900 rounded-xl p-4 font-mono text-sm mt-2">
+                <code className="text-green-400">yarn add @atlas-protocol/sdk</code>
+              </div>
+            </div>
+
+            {/* Authentication */}
+            <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
+              <h3 className="text-xl font-bold text-white mb-4">2. Authentication</h3>
+              <p className="text-gray-300 mb-4">
+                Authenticate using your wallet to prove license ownership:
+              </p>
+              <div className="bg-gray-900 rounded-xl p-4 font-mono text-xs overflow-x-auto">
+                <pre className="text-gray-300">
+{`import { AtlasClient } from '@atlas-protocol/sdk';
+import { privateKeyToAccount } from 'viem/accounts';
+
+// Initialize with your wallet
+const account = privateKeyToAccount('0x...');
+const client = new AtlasClient({
+  account,
+  backendUrl: '${BACKEND_URL}',
+});
+
+// Authenticate (signs a message to prove ownership)
+await client.authenticate();`}
+                </pre>
+              </div>
+            </div>
+
+            {/* Fetching Usage Data */}
+            <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
+              <h3 className="text-xl font-bold text-white mb-4">3. Fetching Usage Data</h3>
+              <p className="text-gray-300 mb-4">
+                Query comprehensive usage intelligence for licensed IP assets:
+              </p>
+              <div className="bg-gray-900 rounded-xl p-4 font-mono text-xs overflow-x-auto">
+                <pre className="text-gray-300">
+{`// Get global usage data for an IP asset
+const usageData = await client.getUsageData('0xIPAssetAddress...');
+
+console.log(usageData);
+// {
+//   ipId: '0x...',
+//   ipAssetName: 'My IP Asset',
+//   globalUsage: {
+//     totalDetections: 42,
+//     authorizedUses: 35,
+//     unauthorizedUses: 7,
+//     platforms: ['TikTok', 'Instagram', 'YouTube'],
+//     derivatives: 5,
+//     lastDetectedAt: '2024-12-04T10:30:00Z'
+//   },
+//   infringements: [...],
+//   authorizations: [...],
+//   derivatives: [...],
+//   provenance: {
+//     yakoaScore: 92,
+//     verified: true,
+//     confidence: 0.95,
+//     status: 'verified'
+//   },
+//   cvs: { currentScore: '1250000000000000000', rank: 42 },
+//   licensingSummary: { ... }
+// }`}
+                </pre>
+              </div>
+            </div>
+
+            {/* Response Fields */}
+            <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
+              <h3 className="text-xl font-bold text-white mb-4">4. Response Fields</h3>
+              <div className="space-y-3">
+                <div className="bg-gray-900/50 p-3 rounded-lg">
+                  <p className="text-orange-400 font-semibold">globalUsage</p>
+                  <p className="text-gray-400 text-sm">Where and how your IP is being used worldwide</p>
+                </div>
+                <div className="bg-gray-900/50 p-3 rounded-lg">
+                  <p className="text-orange-400 font-semibold">infringements</p>
+                  <p className="text-gray-400 text-sm">Detected unauthorized uses via Yakoa AI</p>
+                </div>
+                <div className="bg-gray-900/50 p-3 rounded-lg">
+                  <p className="text-orange-400 font-semibold">authorizations</p>
+                  <p className="text-gray-400 text-sm">Legitimate authorized uses across platforms</p>
+                </div>
+                <div className="bg-gray-900/50 p-3 rounded-lg">
+                  <p className="text-orange-400 font-semibold">derivatives</p>
+                  <p className="text-gray-400 text-sm">On-chain derivative works and remixes</p>
+                </div>
+                <div className="bg-gray-900/50 p-3 rounded-lg">
+                  <p className="text-orange-400 font-semibold">provenance</p>
+                  <p className="text-gray-400 text-sm">Originality score and verification status</p>
+                </div>
+                <div className="bg-gray-900/50 p-3 rounded-lg">
+                  <p className="text-orange-400 font-semibold">cvs</p>
+                  <p className="text-gray-400 text-sm">Content Value Score from Story Protocol</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Additional Resources */}
+            <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
+              <h3 className="text-xl font-bold text-white mb-4">Additional Resources</h3>
+              <div className="space-y-2">
+                <a
+                  href="https://github.com/atlas-protocol/sdk"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-orange-400 hover:text-orange-300 transition-colors"
+                >
+                  → SDK Documentation
+                </a>
+                <a
+                  href="https://github.com/atlas-protocol/examples"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-orange-400 hover:text-orange-300 transition-colors"
+                >
+                  → Code Examples
+                </a>
+                <a
+                  href="https://docs.atlas-protocol.com/api"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-orange-400 hover:text-orange-300 transition-colors"
+                >
+                  → API Reference
+                </a>
+              </div>
+            </div>
           </div>
         )}
       </div>
