@@ -91,7 +91,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       try {
         if (!publicClient || !ADLV_ADDRESS || (ADLV_ADDRESS as string) === "0x0000000000000000000000000000000000000000") return;
         const latest = await publicClient.getBlockNumber();
-        const window = 10_000n;
+        const window = 3_000n;
         const fromBlock = latest > window ? latest - window : 0n;
         const soldLogs = await publicClient.getLogs({ address: ADLV_ADDRESS, event: evLicenseSold, fromBlock, toBlock: latest });
         const items = soldLogs.map((log) => {
@@ -153,7 +153,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
 
         // Count license sales from events - use incremental updates for efficiency
         const latest = await publicClient.getBlockNumber();
-        const maxHistoricalBlocks = 100_000n; // Limit historical lookback
+        const maxHistoricalBlocks = 3_000n; // Limit historical lookback to prevent RPC errors
 
         let fromBlock: bigint;
         if (lastFetchedBlock === 0n) {
