@@ -27,7 +27,6 @@
 - [Live Deployment](#-live-deployment)
 - [Getting Started](#-getting-started)
 - [Technical Achievements](#-technical-achievements)
-- [Future Roadmap](#-future-roadmap)
 - [Team & Acknowledgments](#-team--acknowledgments)
 
 ---
@@ -1616,44 +1615,6 @@ Open http://localhost:5173 in your browser
 - ✅ **CI/CD Pipeline** (GitHub Actions)
 - ✅ **Environment Management** (Multi-network support)
 
----
-
-## 🔮 Future Roadmap
-
-### Phase 1: Enhanced CVS Oracle (Q1 2025)
-
-- [ ] Integrate Yakoa API for originality scoring
-- [ ] Add derivative tracking (IP children affect parent CVS)
-- [ ] Multi-signature oracle updates for security
-- [ ] CVS history charts and analytics
-
-### Phase 2: Advanced Loan Features (Q2 2025)
-
-- [ ] Flash loans for instant liquidity
-- [ ] Loan refinancing (lower rates for good credit)
-- [ ] Partial repayments
-- [ ] Loan transfer/trading (NFT-based)
-
-### Phase 3: Expanded Cross-Chain Support (Q2 2025)
-
-- [ ] Mainnet deployment (Ethereum, Polygon, Arbitrum)
-- [ ] Layer 2 optimizations (Optimism, Base)
-- [ ] Cross-chain vault deposits
-- [ ] Multi-chain collateral aggregation
-
-### Phase 4: GenAI Marketplace (Q3 2025)
-
-- [ ] Direct AI model integration (OpenAI, Anthropic)
-- [ ] Usage-based licensing (pay per query)
-- [ ] Dataset verification proofs
-- [ ] Automated royalty distribution to derivative creators
-
-### Phase 5: Governance & DAO (Q4 2025)
-
-- [ ] ATLAS token launch
-- [ ] Decentralized governance
-- [ ] Community-driven CVS formula updates
-- [ ] Protocol fee distribution to token holders
 
 ---
 
@@ -1685,8 +1646,7 @@ Open http://localhost:5173 in your browser
 - **[Agent Service README](./apps/agent-service/README.md)** - Backend architecture
 - **[Frontend README](./apps/frontend/README.md)** - UI component guide
 - **[Subgraph README](./subgraph/README.md)** - GraphQL schema and queries
-- **[CVS Disconnect Fix](./CVS_DISCONNECT_FIXED.md)** - CVS sync service setup
-- **[Testing Summary](./TESTING_SUMMARY.md)** - Test results and coverage
+
 
 ### Video Demos
 
@@ -1697,8 +1657,8 @@ Open http://localhost:5173 in your browser
 ### Live Links
 
 - **Frontend:** [https://atlas-protocol.vercel.app](https://atlas-protocol.vercel.app)
-- **Subgraph:** [https://api.goldsky.com/api/public/atlas/v1/gn](https://api.goldsky.com/api/public/atlas/v1/gn)
-- **GitHub:** [https://github.com/your-org/atlas-protocol](https://github.com/your-org/atlas-protocol)
+- **Subgraph:** [https://api.goldsky.com/api/public/project_cmi7k5szzd54101yy44xg05em/subgraphs/atlasprotocol/2.0.0/gn](https://api.goldsky.com/api/public/project_cmi7k5szzd54101yy44xg05em/subgraphs/atlasprotocol/2.0.0/gn)
+- **GitHub:** [https://github.com/samarabdelhameed/atlas-protocol](https://github.com/samarabdelhameed/atlas-protocol)
 
 ---
 
