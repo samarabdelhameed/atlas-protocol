@@ -98,9 +98,7 @@ CVS = (License Revenue × 0.05) + (Vault Liquidity × 0.02) + (Yakoa Score × We
 | **Story Protocol** | IP Asset Registry, Licensing, Royalties | ✅ 100% |
 | **Goldsky** | Real-time event indexing & GraphQL API | ✅ 100% |
 | **Owlto Finance** | Cross-chain loan disbursement | ✅ 100% |
-| **World ID** | Creator verification & Sybil resistance | ✅ 90% |
-| **abv.dev** | GenAI licensing automation | ✅ 85% |
-| **Tenderly** | Smart contract monitoring & debugging | ✅ 100% |
+| **World ID** | Creator verification & Sybil resistance | ✅ 100% |
 | **Foundry** | Smart contract development & testing | ✅ 100% |
 | **Viem/Wagmi** | Frontend blockchain interactions | ✅ 100% |
 
@@ -136,7 +134,7 @@ CVS = (License Revenue × 0.05) + (Vault Liquidity × 0.02) + (Yakoa Score × We
 │  │  │ CVS Engine   │  │ Loan Manager │  │ License Mon. │    │  │
 │  │  └──────────────┘  └──────────────┘  └──────────────┘    │  │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │  │
-│  │  │ World ID API │  │ Owlto Bridge │  │ abv.dev API  │    │  │
+│  │  │ World ID API │  │ Owlto Bridge │                    │  │
 │  │  └──────────────┘  └──────────────┘  └──────────────┘    │  │
 │  └────────────────────────────────────────────────────────────┘  │
 └────────────────────────┬─────────────────────────────────────────┘
@@ -300,7 +298,7 @@ Automatically license your IP for AI training:
 
 - **Automated Revenue**: Instant payment splitting
 - **CVS Boost**: Each sale increases your borrowing capacity
-- **abv.dev Integration**: AI model access management
+
 
 ### 5. **World ID Verification** 🌍
 
@@ -655,7 +653,7 @@ goldsky subgraph deploy atlas-v1/1.0.0 \
 
 **Live Endpoint:**
 ```
-https://api.goldsky.com/api/public/project_atlas/subgraphs/atlas-v1/1.0.0/gn
+https://api.goldsky.com/api/public/project_cmi7k5szzd54101yy44xg05em/subgraphs/atlas-protocol/6.0.1/gn
 ```
 
 ---
@@ -664,186 +662,27 @@ https://api.goldsky.com/api/public/project_atlas/subgraphs/atlas-v1/1.0.0/gn
 
 **Integration Scope:** 100% (Cross-Chain Layer)
 
-**Purpose:** Instant cross-chain loan disbursement
+**Purpose:** Instant cross-chain loan disbursement via `owlto-sdk`
 
-**Supported Bridges:**
-- Story Testnet ↔ Base Sepolia (STORY → USDC)
-- Story Testnet ↔ Arbitrum Sepolia (STORY → USDC)
-- Story Testnet ↔ Optimism Sepolia (STORY → USDC)
-- Story Testnet ↔ Polygon Amoy (STORY → USDC)
+**Supported Chains:**
+| From | To | Token |
+|------|-----|-------|
+| Story Testnet | Base Sepolia | ETH → USDC |
+| Story Testnet | Arbitrum Sepolia | ETH → USDC |
+| Story Testnet | Optimism Sepolia | ETH → USDC |
+| Story Testnet | Polygon Amoy | ETH → USDC |
 
-**Integration Code:**
-```typescript
-// apps/agent-service/src/services/loan-manager.ts
-import { OwltoClient } from './owlto-client';
+**How It Works:**
+1. User selects target chain when requesting loan on frontend
+2. `ADLV.issueLoan()` emits `LoanIssued` event with `targetChainId`
+3. Agent Service detects event via subgraph polling
+4. If `targetChainId ≠ 1315` (Story), calls Owlto SDK to bridge funds
+5. Funds arrive on destination chain automatically
 
-export class LoanManager {
-  private owlto: OwltoClient;
-
-  async issueCrossChainLoan(
-    loan: {
-      borrower: string;
-      amount: bigint;
-      targetChainId: number;
-    }
-  ): Promise<string> {
-    // Map Story Protocol chain ID to Owlto chain name
-    const chainMap = {
-      1315: 'story-testnet',
-      84532: 'base-sepolia',
-      421614: 'arbitrum-sepolia',
-      11155420: 'optimism-sepolia',
-      80002: 'polygon-amoy',
-    };
-
-    // Call Owlto Bridge API
-    const bridgeRequest = await this.owlto.createBridge({
-      fromChain: 'story-testnet',
-      toChain: chainMap[loan.targetChainId],
-      fromToken: 'STORY',
-      toToken: 'USDC',
-      amount: formatUnits(loan.amount, 18),
-      recipient: loan.borrower,
-      slippage: '0.5', // 0.5% max slippage
-    });
-
-    // Wait for bridge confirmation
-    const txHash = await this.owlto.waitForBridge(
-      bridgeRequest.bridgeId
-    );
-
-    console.log(`✅ Cross-chain loan disbursed: ${txHash}`);
-    return txHash;
-  }
-}
-```
-
-**Smart Contract Integration:**
-```solidity
-// contracts/src/ADLV.sol
-function issueLoan(
-    address vaultAddress,
-    uint256 loanAmount,
-    uint256 duration,
-    uint256 targetChainId // ← Owlto destination
-) external payable returns (uint256 loanId) {
-    // Validate and create loan
-    // ...
-
-    // Emit event with target chain for Agent Service
-    emit LoanIssued(
-        vaultAddress,
-        msg.sender,
-        loanId,
-        loanAmount,
-        msg.value,
-        interestRate,
-        duration,
-        targetChainId // ← Agent listens for this
-    );
-
-    return loanId;
-}
-```
-
-**Agent Service Event Listener:**
-```typescript
-// apps/agent-service/src/services/contract-monitor.ts
-this.adlvContract.on(
-  'LoanIssued',
-  async (vault, borrower, loanId, amount, collateral, rate, duration, chainId) => {
-    console.log(`📢 Loan Issued: #${loanId} to ${borrower}`);
-
-    if (chainId !== 1315n) {
-      // Cross-chain loan detected
-      console.log(`🌉 Initiating Owlto bridge to chain ${chainId}`);
-
-      const bridgeTx = await this.loanManager.issueCrossChainLoan({
-        borrower,
-        amount,
-        targetChainId: Number(chainId),
-      });
-
-      console.log(`✅ Bridge successful: ${bridgeTx}`);
-    }
-  }
-);
-```
-
-**Owlto API Client:**
-```typescript
-// apps/agent-service/src/services/owlto-client.ts
-export class OwltoClient {
-  private apiKey: string;
-  private baseUrl = 'https://api.owlto.finance/api/v2';
-
-  async createBridge(params: {
-    fromChain: string;
-    toChain: string;
-    fromToken: string;
-    toToken: string;
-    amount: string;
-    recipient: string;
-    slippage: string;
-  }): Promise<{ bridgeId: string }> {
-    const response = await fetch(`${this.baseUrl}/bridge`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        ...params,
-        referralCode: 'ATLAS_PROTOCOL',
-      }),
-    });
-
-    const data = await response.json();
-    return { bridgeId: data.bridge_id };
-  }
-
-  async waitForBridge(bridgeId: string): Promise<string> {
-    // Poll Owlto API for bridge status
-    while (true) {
-      const status = await this.getBridgeStatus(bridgeId);
-      if (status === 'completed') {
-        return this.getBridgeTxHash(bridgeId);
-      }
-      await new Promise(r => setTimeout(r, 5000)); // Check every 5s
-    }
-  }
-}
-```
-
-**Frontend UI:**
-```tsx
-// apps/frontend/src/pages/Loans.tsx
-const chains = [
-  { id: 'story', name: 'Story Testnet', currency: 'STORY', chainId: 1315 },
-  { id: 'base-sepolia', name: 'Base Sepolia', currency: 'USDC', chainId: 84532 },
-  { id: 'arbitrum-sepolia', name: 'Arbitrum Sepolia', currency: 'USDC', chainId: 421614 },
-  { id: 'optimism-sepolia', name: 'Optimism Sepolia', currency: 'USDC', chainId: 11155420 },
-  { id: 'polygon-amoy', name: 'Polygon Amoy', currency: 'USDC', chainId: 80002 },
-];
-
-// User selects target chain
-<select onChange={(e) => setTargetChain(e.target.value)}>
-  {chains.map(chain => (
-    <option key={chain.id} value={chain.chainId}>
-      {chain.name} ({chain.currency})
-    </option>
-  ))}
-</select>
-
-// Loan issued with selected chain ID
-await issueLoan({
-  address: CONTRACTS.ADLV,
-  abi: ADLV_ABI,
-  functionName: 'issueLoan',
-  args: [vault, amount, duration, targetChain], // ← Passed to contract
-  value: collateral,
-});
-```
+**Key Files:**
+- SDK Client: [`apps/agent-service/src/clients/owltoClient.ts`](apps/agent-service/src/clients/owltoClient.ts)
+- Bridge Execution: [`apps/agent-service/src/services/loan-manager.ts`](apps/agent-service/src/services/loan-manager.ts) → `executeCrossChainTransfer()`
+- Frontend UI: [`apps/frontend/src/pages/Loans.tsx`](apps/frontend/src/pages/Loans.tsx) → chain selector
 
 ---
 
@@ -969,244 +808,7 @@ function createVault(
 - ✅ **Incentives**: Verified users get 0.5% APR discount
 - ✅ **Trust**: Increases confidence in platform legitimacy
 
----
 
-### 5. abv.dev Integration ⭐
-
-**Integration Scope:** 85% (GenAI Licensing)
-
-**Purpose:** Automate IP licensing for GenAI model training
-
-**License Management:**
-```typescript
-// apps/agent-service/src/services/licensing-agent.ts
-import { ABVClient } from 'abv-dev-sdk';
-
-export class LicensingAgent {
-  private abv: ABVClient;
-
-  async registerIPForTraining(
-    ipId: string,
-    metadata: {
-      dataType: 'text' | 'image' | 'audio' | 'video';
-      size: number; // bytes
-      quality: 'standard' | 'high' | 'premium';
-    }
-  ): Promise<string> {
-    // Register IP with abv.dev
-    const dataset = await this.abv.dataset.create({
-      name: `Atlas IP ${ipId.slice(0, 8)}`,
-      type: metadata.dataType,
-      source: 'story-protocol',
-      ipId: ipId,
-      chain: 'story-testnet',
-    });
-
-    console.log(`✅ Dataset registered: ${dataset.id}`);
-    return dataset.id;
-  }
-
-  async issueLicense(
-    datasetId: string,
-    buyer: string,
-    licenseType: 'standard' | 'commercial' | 'exclusive'
-  ) {
-    // Create license via abv.dev
-    const license = await this.abv.license.issue({
-      datasetId,
-      licensee: buyer,
-      type: licenseType,
-      duration: '1-year',
-      restrictions: {
-        commercialUse: licenseType !== 'standard',
-        redistribution: licenseType === 'exclusive',
-        modelTraining: true,
-      },
-    });
-
-    // Grant API access
-    const apiKey = await this.abv.access.createKey({
-      licenseId: license.id,
-      scope: ['read', 'download'],
-    });
-
-    return { license, apiKey };
-  }
-}
-```
-
-**Event-Driven Licensing:**
-```typescript
-// Agent monitors license sales
-this.adlvContract.on(
-  'LicenseSold',
-  async (vault, buyer, price, licenseType) => {
-    // Automatically grant abv.dev access
-    const { license, apiKey } = await this.licensingAgent.issueLicense(
-      vault.datasetId,
-      buyer,
-      licenseType
-    );
-
-    // Send API key to buyer
-    await this.notifyBuyer(buyer, {
-      apiKey,
-      licenseId: license.id,
-      expiresAt: license.expiresAt,
-    });
-
-    console.log(`✅ License granted to ${buyer}`);
-  }
-);
-```
-
-**Smart Contract Integration:**
-```solidity
-// contracts/src/ADLV.sol
-function sellLicense(
-    address vaultAddress,
-    string calldata licenseType // "standard" | "commercial" | "exclusive"
-) external payable {
-    Vault storage vault = vaults[vaultAddress];
-
-    // Price based on license type
-    uint256 price;
-    if (keccak256(bytes(licenseType)) == keccak256("standard")) {
-        price = 100 ether; // 100 STORY
-    } else if (keccak256(bytes(licenseType)) == keccak256("commercial")) {
-        price = 500 ether; // 500 STORY
-    } else if (keccak256(bytes(licenseType)) == keccak256("exclusive")) {
-        price = 2000 ether; // 2000 STORY
-    }
-
-    require(msg.value >= price, "Insufficient payment");
-
-    // Distribute revenue
-    uint256 protocolFee = (price * 5) / 100; // 5%
-    uint256 creatorShare = (price * 15) / 100; // 15%
-    uint256 vaultShare = price - protocolFee - creatorShare; // 80%
-
-    payable(owner()).transfer(protocolFee);
-    payable(vault.creator).transfer(creatorShare);
-    vault.totalLiquidity += vaultShare;
-
-    // Emit event for abv.dev automation
-    emit LicenseSold(
-        vaultAddress,
-        msg.sender,
-        price,
-        licenseType,
-        vault.ipId
-    );
-}
-```
-
----
-
-### 6. Tenderly Integration ⭐
-
-**Integration Scope:** 100% (DevOps & Monitoring)
-
-**Purpose:** Real-time contract monitoring, debugging, and simulation
-
-**Monitoring Dashboard:**
-```javascript
-// tenderly.yaml
-account: atlas-protocol
-project: atlas-v1
-
-contracts:
-  - name: ADLV
-    address: 0x9c7cCfB831Ed4D521599a3B97df0174C91bB2AAC
-    network_id: 1315
-
-  - name: IDO
-    address: 0xFb1EC26171848c330356ff1C9e2a1228066Da324
-    network_id: 1315
-
-alerts:
-  - name: Large Loan Issued
-    description: Alert when loan > 1000 STORY
-    expression: |
-      event.name == "LoanIssued" &&
-      event.params.loanAmount > 1000000000000000000000
-    actions:
-      - type: webhook
-        url: ${SLACK_WEBHOOK}
-
-  - name: Liquidation Triggered
-    description: Alert when CVS drops below threshold
-    expression: |
-      event.name == "LoanLiquidated"
-    actions:
-      - type: email
-        to: team@atlasprotocol.xyz
-```
-
-**Transaction Simulation:**
-```typescript
-// apps/agent-service/src/services/tenderly-client.ts
-import { Tenderly } from '@tenderly/sdk';
-
-export class TenderlyClient {
-  private tenderly: Tenderly;
-
-  async simulateLoan(
-    borrower: string,
-    vault: string,
-    amount: bigint
-  ): Promise<{ success: boolean; gasUsed: number }> {
-    const simulation = await this.tenderly.simulator.simulateTransaction({
-      network_id: '1315',
-      from: borrower,
-      to: CONTRACTS.ADLV,
-      input: encodeFunctionData({
-        abi: ADLV_ABI,
-        functionName: 'issueLoan',
-        args: [vault, amount, 2592000, 1315],
-      }),
-      value: (amount * 150n / 100n).toString(), // 150% collateral
-    });
-
-    if (!simulation.transaction.status) {
-      console.error('❌ Simulation failed:', simulation.transaction.error_message);
-      return { success: false, gasUsed: 0 };
-    }
-
-    return {
-      success: true,
-      gasUsed: simulation.transaction.gas_used,
-    };
-  }
-}
-```
-
-**Debugging Failed Transactions:**
-```typescript
-// Tenderly API integration
-async function debugFailedTx(txHash: string) {
-  const debug = await tenderly.getTransaction({
-    txHash,
-    network: 'story-testnet',
-  });
-
-  console.log('Transaction Trace:');
-  debug.calls.forEach(call => {
-    console.log(`  ${call.function_name}`);
-    console.log(`  Gas: ${call.gas_used}`);
-    if (call.error) {
-      console.log(`  ❌ Error: ${call.error}`);
-    }
-  });
-}
-```
-
-**Gas Optimization:**
-- Used Tenderly to identify expensive operations
-- Optimized CVS calculation (saved 15% gas)
-- Batch event emissions (saved 10% gas)
-
----
 
 ## 📐 Smart Contract Architecture
 
@@ -1452,11 +1054,11 @@ function getLoan(uint256 loanId)
 
 | Contract | Address | Explorer | Status |
 |----------|---------|----------|--------|
-| **ADLV** | `0x9c7cCfB831Ed4D521599a3B97df0174C91bB2AAC` | [View →](https://aeneid.storyscan.io/address/0x9c7cCfB831Ed4D521599a3B97df0174C91bB2AAC) | ✅ Verified |
-| **IDO** | `0xFb1EC26171848c330356ff1C9e2a1228066Da324` | [View →](https://aeneid.storyscan.io/address/0xFb1EC26171848c330356ff1C9e2a1228066Da324) | ✅ Verified |
-| **CVS Oracle** | `0x4a875fD309C95DBFBcA6dFC3575517Ea7d5F6eC7` | [View →](https://aeneid.storyscan.io/address/0x4a875fD309C95DBFBcA6dFC3575517Ea7d5F6eC7) | ✅ Verified |
-| **Lending Module** | `0x3154484F0CdBa14F2A2A3Ba8D2125a5c088a5E4f` | [View →](https://aeneid.storyscan.io/address/0x3154484F0CdBa14F2A2A3Ba8D2125a5c088a5E4f) | ✅ Verified |
-| **Loan NFT** | `0x69D6C3E0D2BAE75Cbad6de75e8a367C607Ae8bC1` | [View →](https://aeneid.storyscan.io/address/0x69D6C3E0D2BAE75Cbad6de75e8a367C607Ae8bC1) | ✅ Verified |
+| **ADLV** | `0x084A44Ddc404B0D8F7A021d64Ec24f4520B7f1C6` | [View →](https://aeneid.storyscan.io/address/0x084A44Ddc404B0D8F7A021d64Ec24f4520B7f1C6) | ✅ Verified |
+| **IDO** | `0xea7dFd2572ceC090C0517Ea345B82CA07E394034` | [View →](https://aeneid.storyscan.io/address/0xea7dFd2572ceC090C0517Ea345B82CA07E394034) | ✅ Verified |
+| **CVS Oracle** | `0xBc57dBFA4936A5F1D10bDE8A65ABf2f9864e5170` | [View →](https://aeneid.storyscan.io/address/0xBc57dBFA4936A5F1D10bDE8A65ABf2f9864e5170) | ✅ Verified |
+| **Lending Module** | `0x1f74B15A2AB01734151697Cc7E19F5681125A6f9` | [View →](https://aeneid.storyscan.io/address/0x1f74B15A2AB01734151697Cc7E19F5681125A6f9) | ✅ Verified |
+| **Loan NFT** | `0x9FC6018a786c79Be7d1fEdc8D1fd27f6C4d86385` | [View →](https://aeneid.storyscan.io/address/0x9FC6018a786c79Be7d1fEdc8D1fd27f6C4d86385) | ✅ Verified |
 
 ### Network Configuration
 
@@ -1479,11 +1081,6 @@ function getLoan(uint256 loanId)
 | **Average CVS** | 0.002 STORY |
 | **Total Transactions** | 12+ |
 
-### Test IP Assets
-
-| IP ID | Vault Address | CVS | Licenses Sold |
-|-------|---------------|-----|---------------|
-| `0xcced9e1c...` | `0xeee327f6...` | 0.002 STORY | 1 |
 
 ---
 
@@ -1529,10 +1126,10 @@ cd ../agent-service
 cp .env.example .env
 # Edit .env with:
 # - WALLET_PRIVATE_KEY
-# - ADLV_ADDRESS=0x9c7cCfB831Ed4D521599a3B97df0174C91bB2AAC
-# - IDO_ADDRESS=0xFb1EC26171848c330356ff1C9e2a1228066Da324
+# - ADLV_ADDRESS=0x084A44Ddc404B0D8F7A021d64Ec24f4520B7f1C6
+# - IDO_ADDRESS=0xea7dFd2572ceC090C0517Ea345B82CA07E394034
 # - OWLTO_API_KEY
-# - ABV_API_KEY
+
 # - WORLD_ID_APP_ID
 ```
 
@@ -1610,7 +1207,6 @@ Open http://localhost:5173 in your browser
 
 ### DevOps & Monitoring
 
-- ✅ **Tenderly Integration** (Real-time alerts and debugging)
 - ✅ **Automated Testing** (Forge + TypeScript test suites)
 - ✅ **CI/CD Pipeline** (GitHub Actions)
 - ✅ **Environment Management** (Multi-network support)
@@ -1633,8 +1229,8 @@ Open http://localhost:5173 in your browser
 - **Goldsky Team** - For seamless subgraph indexing
 - **Owlto Finance** - For reliable cross-chain bridges
 - **World ID** - For privacy-preserving verification
-- **abv.dev** - For GenAI licensing platform
-- **Tenderly** - For powerful debugging tools
+
+- **Goldsky** - For powerful subgraph infrastructure
 
 ---
 

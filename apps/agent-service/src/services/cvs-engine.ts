@@ -84,11 +84,23 @@ export class CVSEngine {
     interestRate: number;
     reason?: string;
   }> {
-    const data = await graphqlClient.request(queries.GET_VAULT, {
-      id: vaultAddress,
-    });
+    let data;
+    try {
+      data = await graphqlClient.request(queries.GET_VAULT, {
+        id: vaultAddress,
+      });
+    } catch (error: any) {
+      console.warn('⚠️  Subgraph unavailable for eligibility check:', error?.message || 'Unknown error');
+      return {
+        eligible: false,
+        currentCVS: BigInt(0),
+        maxLoanAmount: BigInt(0),
+        interestRate: 20,
+        reason: 'Subgraph unavailable',
+      };
+    }
 
-    const vault = data.idoVault;
+    const vault = data?.idovault;
     if (!vault) {
       return {
         eligible: false,
@@ -152,11 +164,18 @@ export class CVSEngine {
     atRisk: any[];
     liquidatable: any[];
   }> {
-    const data = await graphqlClient.request(queries.GET_ACTIVE_LOANS, {
-      first: 100,
-    });
+    let data;
+    try {
+      data = await graphqlClient.request(queries.GET_ACTIVE_LOANS, {
+        first: 100,
+      });
+    } catch (error: any) {
+      // Gracefully handle subgraph unavailability
+      console.warn('⚠️  Subgraph unavailable for loan monitoring:', error?.message || 'Unknown error');
+      return { atRisk: [], liquidatable: [] };
+    }
 
-    const loans = data.loans;
+    const loans = data?.loans || [];
     const atRisk: any[] = [];
     const liquidatable: any[] = [];
 
@@ -165,7 +184,7 @@ export class CVSEngine {
         id: loan.vault.vaultAddress,
       });
 
-      const vault = vaultData.idoVault;
+      const vault = vaultData.idovault;
       if (!vault) continue;
 
       const currentCVS = BigInt(vault.currentCVS);
@@ -261,13 +280,19 @@ export class CVSEngine {
    * Get vault statistics
    */
   async getVaultStats(vaultAddress: string) {
-    const data = await graphqlClient.request(queries.GET_VAULT, {
-      id: vaultAddress,
-    });
+    let data;
+    try {
+      data = await graphqlClient.request(queries.GET_VAULT, {
+        id: vaultAddress,
+      });
+    } catch (error: any) {
+      console.warn('⚠️  Subgraph unavailable for vault stats:', error?.message || 'Unknown error');
+      return null;
+    }
 
-    const vault = data.idoVault;
+    const vault = data?.idovault;
     if (!vault) {
-      throw new Error(`Vault ${vaultAddress} not found`);
+      return null;
     }
 
     return {

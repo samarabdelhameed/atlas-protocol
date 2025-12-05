@@ -108,7 +108,7 @@ export const GET_IP_USAGE_EVENTS = gql`
 
 export const GET_VAULT = gql`
   query GetVault($id: ID!) {
-    idoVault(id: $id) {
+    idovault(id: $id) {
       id
       vaultAddress
       creator
@@ -189,7 +189,7 @@ export const GET_VAULT = gql`
 
 export const GET_VAULTS = gql`
   query GetVaults($first: Int = 10, $skip: Int = 0, $minCVS: BigInt) {
-    idoVaults(
+    idovaults(
       first: $first
       skip: $skip
       where: { currentCVS_gte: $minCVS }
@@ -216,7 +216,7 @@ export const GET_VAULTS = gql`
 
 export const GET_VAULT_BY_CREATOR = gql`
   query GetVaultByCreator($creator: Bytes!) {
-    idoVaults(where: { creator: $creator }, orderBy: createdAt, orderDirection: desc) {
+    idovaults(where: { creator: $creator }, orderBy: createdAt, orderDirection: desc) {
       id
       vaultAddress
       currentCVS
@@ -418,7 +418,7 @@ export const GET_CVS_LEADERBOARD = gql`
 
 export const GET_VAULT_ANALYTICS = gql`
   query GetVaultAnalytics($vaultId: ID!, $timeframe: Int = 2592000) {
-    idoVault(id: $vaultId) {
+    idovault(id: $vaultId) {
       id
       currentCVS
       totalLicenseRevenue
