@@ -44,6 +44,36 @@ interface YakoaTokenResponse {
 }
 
 /**
+ * Normalize token ID to standard Ethereum address format (40 hex chars)
+ * Story Protocol uses padded bytes32 format (66 hex chars), but Yakoa API expects 40 chars
+ * 
+ * @param tokenId - Token ID in any format (padded or standard)
+ * @returns Normalized 40-char hex address with 0x prefix, lowercased
+ */
+function normalizeTokenId(tokenId: string): string {
+  // Remove 0x prefix for processing
+  const hex = tokenId.toLowerCase().replace(/^0x/, '');
+  
+  // If it's already 40 chars, return as-is
+  if (hex.length === 40) {
+    return `0x${hex}`;
+  }
+  
+  // If it's a padded bytes32 (64 chars), extract the last 40 chars (the actual address)
+  if (hex.length === 64) {
+    return `0x${hex.slice(-40)}`;
+  }
+  
+  // For other lengths, try to extract last 40 chars if possible
+  if (hex.length > 40) {
+    return `0x${hex.slice(-40)}`;
+  }
+  
+  // Return as-is if shorter (will likely fail API validation)
+  return `0x${hex}`;
+}
+
+/**
  * Fetch originality score from Yakoa API
  *
  * @param tokenId - Token ID or IP Asset ID
@@ -51,8 +81,8 @@ interface YakoaTokenResponse {
  */
 export async function fetchOriginalityScore(tokenId: string): Promise<YakoaScore> {
   const apiKey = process.env.YAKOA_API_KEY;
-  const subdomain = process.env.YAKOA_SUBDOMAIN;
-  const network = process.env.YAKOA_NETWORK || 'story-aeneid'; // Story Protocol Aeneid testnet
+  const subdomain = process.env.YAKOA_SUBDOMAIN || 'docs-demo';
+  const network = process.env.YAKOA_NETWORK || 'docs-demo'; // Story Protocol Aeneid testnet
 
   if (!apiKey) {
     console.warn('⚠️ YAKOA_API_KEY not set. Using default originality score of 0 (Graceful Degradation).');
@@ -92,7 +122,7 @@ export async function fetchOriginalityScore(tokenId: string): Promise<YakoaScore
     // Yakoa API endpoint for getting token data
     // Format: https://{subdomain}.ip-api-sandbox.yakoa.io/{network}/token/{token_id}
     const baseUrl = `https://${subdomain}.ip-api-sandbox.yakoa.io`;
-    const endpoint = `${baseUrl}/${network}/token/${tokenId}`;
+    const endpoint = `${baseUrl}/${network}/token/${normalizeTokenId(tokenId)}`;
 
     console.log(`📡 Yakoa API Endpoint: ${endpoint}`);
 
