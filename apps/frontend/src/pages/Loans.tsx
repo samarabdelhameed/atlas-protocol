@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import { DollarSign, Clock, CheckCircle2, AlertTriangle, Shield, Zap, Loader2, X, AlertCircle } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { createPublicClient, http, isAddress, formatUnits, parseUnits } from 'viem';
+import { createPublicClient, http, formatUnits, parseUnits } from 'viem';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { CONTRACTS } from '../contracts/addresses';
 import ADLV_JSON from '../contracts/abis/ADLV.json';
@@ -57,7 +57,7 @@ export default function Loans() {
   const [repayError, setRepayError] = useState<string>('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [successTxHash, setSuccessTxHash] = useState<string>('');
-  const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
+  const [isLoadingMetrics, ] = useState(false);
 
   // Helper function to parse revert reasons from contract errors
   const parseContractError = (error: any): string => {
