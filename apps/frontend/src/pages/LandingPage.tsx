@@ -27,6 +27,10 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
     window.matchMedia &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  // Backend URL configuration
+  const BACKEND_URL = import.meta.env.VITE_AGENT_API_URL || 'http://localhost:3001';
+  const INDEXER_URL = import.meta.env.VITE_INDEXER_URL || 'http://localhost:3002';
+
   // Env-driven chain setup for read-only event logs
   const RPC_URL = import.meta.env.VITE_RPC_URL as string | undefined;
   const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || storyTestnet.id);
@@ -85,15 +89,43 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
   // Track last fetched block for incremental updates
   const [lastFetchedBlock, setLastFetchedBlock] = useState<bigint>(0n);
 
-  // Poll chain logs periodically and map LicenseSold events to ticker items
+  // Fetch recent license sales from backend API (same as Licensing page)
   useEffect(() => {
-    const run = async () => {
+    const fetchRecentLicenses = async () => {
+      try {
+        console.log('🔍 Fetching license sales from backend...');
+        const response = await fetch(`${BACKEND_URL}/licenses/metadata`);
+        const data = await response.json();
+
+        if (data.success && data.licenses && data.licenses.length > 0) {
+          console.log('✅ Got', data.licenses.length, 'license sales');
+          const items = data.licenses.map((license: any) => ({
+            company: license.buyer_organization || license.organization || `${(license.licensee_address || '0x').slice(0, 6)}...`,
+            tier: license.tier_name || license.license_type || 'Standard',
+            amount: license.amount || `${(Number(license.price || 0) / 1e18).toFixed(2)} IP`,
+            cvs: license.cvs_impact || '',
+          }));
+          setChainSales(items.slice(0, 20));
+        } else {
+          console.log('ℹ️ No license sales found, trying blockchain events...');
+          // Fallback to blockchain if no backend data
+          await fetchFromBlockchain();
+        }
+      } catch (error) {
+        console.error('❌ Error fetching from backend:', error);
+        // Fallback to blockchain on error
+        await fetchFromBlockchain();
+      }
+    };
+
+    const fetchFromBlockchain = async () => {
       try {
         if (!publicClient || !ADLV_ADDRESS || (ADLV_ADDRESS as string) === "0x0000000000000000000000000000000000000000") return;
         const latest = await publicClient.getBlockNumber();
         const window = 3_000n;
         const fromBlock = latest > window ? latest - window : 0n;
         const soldLogs = await publicClient.getLogs({ address: ADLV_ADDRESS, event: evLicenseSold, fromBlock, toBlock: latest });
+        console.log('📊 Found', soldLogs.length, 'license events on chain');
         const items = soldLogs.map((log) => {
           const licensee = (log.args.licensee as string) || "0x";
           const short = `${licensee.slice(0, 6)}...${licensee.slice(-4)}`;
@@ -103,33 +135,91 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
           return { company: short, tier, amount, cvs: "" };
         });
         setChainSales(items.slice(-20));
-
-        const createdLogs = await publicClient.getLogs({ address: ADLV_ADDRESS, event: evVaultCreated, fromBlock, toBlock: latest });
-        const loanLogs = await publicClient.getLogs({ address: ADLV_ADDRESS, event: evLoanIssued, fromBlock, toBlock: latest });
-
-        const createdItems = createdLogs.map((log) => {
-          const creator = (log.args.creator as string) || "0x";
-          const actor = `${creator.slice(0, 6)}...${creator.slice(-4)}`;
-          return { type: 'VaultCreated' as const, actor };
-        });
-
-        const loanItems = loanLogs.map((log) => {
-          const borrower = (log.args.borrower as string) || "0x";
-          const actor = `${borrower.slice(0, 6)}...${borrower.slice(-4)}`;
-          const amountWei = log.args.amount as bigint;
-          const amount = `${formatUnits(amountWei, 18)} IP`;
-          return { type: 'LoanIssued' as const, actor, amount };
-        });
-
-        setPlatformActivity([...createdItems, ...loanItems].slice(-20));
-      } catch (error) {
-        console.error('Error fetching chain data:', error);
+      } catch (e) {
+        console.error('❌ Blockchain fetch error:', e);
       }
     };
-    run();
-  const timer = setInterval(run, prefersReducedMotion ? 120_000 : 60_000);
+
+    fetchRecentLicenses();
+    const timer = setInterval(fetchRecentLicenses, 30_000);
     return () => clearInterval(timer);
-  }, [publicClient, ADLV_ADDRESS, prefersReducedMotion, evLicenseSold, evVaultCreated, evLoanIssued]);
+  }, [publicClient, ADLV_ADDRESS, evLicenseSold, BACKEND_URL]);
+
+  // Fetch platform activity from backend API
+  useEffect(() => {
+    const fetchPlatformActivity = async () => {
+      try {
+        console.log('🔍 Fetching platform activity...');
+        const activities: { type: 'VaultCreated' | 'LoanIssued'; actor: string; amount?: string }[] = [];
+
+        // Try to fetch IP assets from marketplace API (port 3001)
+        try {
+          const marketplaceResponse = await fetch(`${BACKEND_URL}/api/marketplace`);
+          const marketplaceData = await marketplaceResponse.json();
+          console.log('🏪 Marketplace response:', marketplaceData?.count || 0, 'assets');
+
+          if (marketplaceData.assets && marketplaceData.assets.length > 0) {
+            // Add vault/IP creation activities from marketplace
+            marketplaceData.assets.slice(0, 6).forEach((asset: any) => {
+              const creator = asset.creator || asset.vaultAddress || '0x';
+              activities.push({
+                type: 'VaultCreated',
+                actor: `${creator.slice(0, 6)}...${creator.slice(-4)}`,
+              });
+            });
+          }
+        } catch (e) {
+          console.log('ℹ️ Could not fetch from marketplace API');
+        }
+
+        // Try to fetch license analytics for recent activity
+        try {
+          const analyticsResponse = await fetch(`${BACKEND_URL}/api/admin/analytics`);
+          const analyticsData = await analyticsResponse.json();
+          console.log('📊 Analytics response:', analyticsData?.success);
+
+          if (analyticsData.success && analyticsData.analytics) {
+            // Show totals in platform activity if we have them
+            console.log(`   Total vaults: ${analyticsData.totalVaults}, licenses: ${analyticsData.totalLicenses}`);
+          }
+        } catch (e) {
+          console.log('ℹ️ Could not fetch analytics');
+        }
+
+        // Try to get loan data from blockchain
+        if (publicClient && ADLV_ADDRESS && (ADLV_ADDRESS as string) !== "0x0000000000000000000000000000000000000000") {
+          try {
+            const latest = await publicClient.getBlockNumber();
+            const window = 3_000n;
+            const fromBlock = latest > window ? latest - window : 0n;
+            const loanLogs = await publicClient.getLogs({ address: ADLV_ADDRESS, event: evLoanIssued, fromBlock, toBlock: latest });
+            console.log('💳 Found', loanLogs.length, 'loan events');
+            
+            loanLogs.slice(-4).forEach((log) => {
+              const borrower = (log.args.borrower as string) || "0x";
+              const amountWei = log.args.amount as bigint;
+              activities.push({
+                type: 'LoanIssued',
+                actor: `${borrower.slice(0, 6)}...${borrower.slice(-4)}`,
+                amount: `${formatUnits(amountWei, 18)} IP`,
+              });
+            });
+          } catch (e) {
+            console.log('ℹ️ Could not fetch loan events');
+          }
+        }
+
+        console.log('✅ Platform activity:', activities.length, 'items');
+        setPlatformActivity(activities.slice(0, 10));
+      } catch (error) {
+        console.error('❌ Error fetching platform activity:', error);
+      }
+    };
+
+    fetchPlatformActivity();
+    const timer = setInterval(fetchPlatformActivity, 60_000);
+    return () => clearInterval(timer);
+  }, [publicClient, ADLV_ADDRESS, evLoanIssued, BACKEND_URL]);
 
   // Fetch global stats from contracts
   useEffect(() => {
@@ -357,7 +447,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                 {tickerItems.length > 0 ? (
                   prefersReducedMotion ? (
                     <div className="flex items-center gap-4 flex-wrap justify-center">
-                      {tickerItems.map((item: { company: string; tier: string; amount: string; cvs?: string }, idx: number) => (
+                      {tickerItems.slice(0, 10).map((item: { company: string; tier: string; amount: string; cvs?: string }, idx: number) => (
                         <div
                           key={item.company + idx}
                           className="px-4 py-2 rounded-full border border-gray-700/60 bg-gray-800/40 text-gray-200 text-sm flex items-center gap-3"
@@ -395,7 +485,10 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                     </motion.div>
                   )
                 ) : (
-                  <div className="text-gray-500 text-sm">No recent license sales</div>
+                  <div className="text-center py-4">
+                    <p className="text-gray-500 text-sm mb-2">Fetching recent license sales...</p>
+                    <p className="text-gray-600 text-xs">Check the Licensing page to purchase IP licenses</p>
+                  </div>
                 )}
               </div>
             </div>
@@ -409,14 +502,23 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
               </div>
               {platformActivity.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {platformActivity.map((ev, idx) => (
+                  {platformActivity.slice(0, 6).map((ev, idx) => (
                     <div
-                      key={ev.type + idx}
-                      className="flex items-center justify-between px-4 py-2 rounded-xl border border-gray-700/60 bg-gray-800/40 text-sm"
+                      key={ev.type + ev.actor + idx}
+                      className="flex items-center justify-between px-4 py-3 rounded-xl border border-gray-700/60 bg-gray-800/40 text-sm hover:border-orange-500/30 transition-colors"
                     >
                       <div className="flex items-center gap-2">
-                        <span className="text-white font-semibold">{ev.type}</span>
-                        <span className="text-gray-400">{ev.actor}</span>
+                        {ev.type === 'VaultCreated' ? (
+                          <Lock className="w-4 h-4 text-orange-400" />
+                        ) : (
+                          <DollarSign className="w-4 h-4 text-green-400" />
+                        )}
+                        <div>
+                          <span className="text-white font-semibold block">
+                            {ev.type === 'VaultCreated' ? 'Vault Created' : 'Loan Issued'}
+                          </span>
+                          <span className="text-gray-400 text-xs">{ev.actor}</span>
+                        </div>
                       </div>
                       {ev.amount && (
                         <span className="text-orange-400 font-bold">{ev.amount}</span>
@@ -425,7 +527,10 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                   ))}
                 </div>
               ) : (
-                <div className="text-gray-500 text-sm">No recent platform activity</div>
+                <div className="text-center py-4">
+                  <p className="text-gray-500 text-sm mb-2">Fetching platform activity...</p>
+                  <p className="text-gray-600 text-xs">Recent vault creations and loan issuances will appear here</p>
+                </div>
               )}
             </div>
           </div>

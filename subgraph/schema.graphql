@@ -150,6 +150,10 @@ type Loan @entity {
   issuedAt: BigInt!
   lastPaymentAt: BigInt
   
+  # Cross-Chain Info
+  targetChainId: BigInt
+  transactionHash: Bytes!
+  
   # Relations
   payments: [LoanPayment!]! @derivedFrom(field: "loan")
 }

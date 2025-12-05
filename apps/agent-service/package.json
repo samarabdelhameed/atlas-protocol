@@ -5,7 +5,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun run index.ts",
+    "dev": "bun run --watch index.ts",
     "start": "bun run index.ts",
     "build": "bun build index.ts --outdir dist --target bun"
   },
@@ -26,6 +26,7 @@
     "better-sqlite3": "^12.5.0",
     "ethers": "^6.15.0",
     "jsonwebtoken": "^9.0.2",
+    "owlto-sdk": "^0.2.5",
     "typescript": "^5.9.3",
     "viem": "^2.39.0"
   }

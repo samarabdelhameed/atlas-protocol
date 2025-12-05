@@ -7,14 +7,14 @@ const client = createPublicClient({
   transport: http(config.rpcUrl),
 });
 
-const IDO_ADDRESS = config.contracts.ido;
+const ADLV_ADDRESS = config.contracts.adlv;
 const ABI = [parseAbiItem('function owner() view returns (address)')];
 
 async function checkOwner() {
-  console.log(`Checking owner of IDO at ${IDO_ADDRESS}...`);
+  console.log(`Checking owner of ADLV at ${ADLV_ADDRESS}...`);
   try {
     const owner = await client.readContract({
-      address: IDO_ADDRESS,
+      address: ADLV_ADDRESS,
       abi: ABI,
       functionName: 'owner',
     });
@@ -22,9 +22,9 @@ async function checkOwner() {
     console.log(`Agent: ${config.wallet.address}`);
     
     if (owner.toLowerCase() === config.wallet.address.toLowerCase()) {
-      console.log('✅ Agent IS the owner');
+      console.log('✅ Agent IS the owner of ADLV');
     } else {
-      console.log('❌ Agent is NOT the owner');
+      console.log('❌ Agent is NOT the owner of ADLV');
     }
   } catch (error) {
     console.error('Error:', error);

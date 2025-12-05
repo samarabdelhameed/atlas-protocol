@@ -7,23 +7,26 @@ import { useQuery, useQueries } from '@tanstack/react-query';
 import { CONTRACTS } from '../contracts/addresses';
 import ADLV_JSON from '../contracts/abis/ADLV.json';
 import IDO_JSON from '../contracts/abis/IDO.json';
-import LendingModule_ABI from '../contracts/abis/LendingModule.json';
+// LendingModule_ABI not used - repayLoan uses ADLV contract
 
 // Debug: Check ABI issueLoan parameters
 const issueLoanABI = ADLV_JSON.abi.find((item: any) => item.name === 'issueLoan');
 console.log('🔍 issueLoan ABI inputs:', issueLoanABI?.inputs?.length, issueLoanABI?.inputs?.map((i: any) => i.name));
 
 interface LoanData {
-  id: bigint;
-  vault: `0x${string}`;
-  loanAmount: bigint;
-  collateralAmount: bigint;
-  startTime: bigint;
-  endTime: bigint;
-  interestRate: bigint;
-  status: number;
-  cvsAtIssuance: bigint;
-  borrower: `0x${string}`;
+  loanId: bigint;           // uint256 loanId
+  vaultAddress: `0x${string}`; // address vaultAddress (renamed from vault)
+  borrower: `0x${string}`;  // address borrower
+  loanAmount: bigint;       // uint256 loanAmount
+  collateralAmount: bigint; // uint256 collateralAmount
+  interestRate: bigint;     // uint256 interestRate
+  duration: bigint;         // uint256 duration (was missing!)
+  cvsAtIssuance: bigint;    // uint256 cvsAtIssuance
+  startTime: bigint;        // uint256 startTime
+  endTime: bigint;          // uint256 endTime
+  repaidAmount: bigint;     // uint256 repaidAmount (was missing!)
+  outstandingAmount: bigint; // uint256 outstandingAmount (was missing!)
+  status: number | bigint;           // LoanStatus status
 }
 
 interface VaultData {
@@ -54,6 +57,45 @@ export default function Loans() {
   const [repayError, setRepayError] = useState<string>('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [successTxHash, setSuccessTxHash] = useState<string>('');
+  const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
+
+  // Helper function to parse revert reasons from contract errors
+  const parseContractError = (error: any): string => {
+    const message = error?.message || error?.toString() || 'Unknown error';
+    
+    // Check for common ADLV revert reasons
+    if (message.includes('Insufficient CVS')) {
+      return 'Insufficient CVS: Your IP asset needs more value to support this loan amount. Try a smaller amount or increase CVS through license sales.';
+    }
+    if (message.includes('Insufficient collateral')) {
+      return 'Insufficient collateral: You need to provide at least 150% of the loan amount as collateral.';
+    }
+    if (message.includes('Insufficient liquidity')) {
+      return 'Insufficient vault liquidity: The vault doesn\'t have enough funds to issue this loan.';
+    }
+    if (message.includes('Vault does not exist')) {
+      return 'Vault not found: The selected vault doesn\'t exist on-chain.';
+    }
+    if (message.includes('User rejected') || message.includes('user rejected')) {
+      return 'Transaction cancelled: You rejected the transaction in your wallet.';
+    }
+    if (message.includes('insufficient funds')) {
+      return 'Insufficient wallet balance: You don\'t have enough IP tokens for the collateral.';
+    }
+    
+    // Extract revert reason if present
+    const revertMatch = message.match(/revert(?:ed)?[:\s]+(.+?)(?:\n|$)/i);
+    if (revertMatch) {
+      return `Transaction reverted: ${revertMatch[1]}`;
+    }
+    
+    // Truncate long messages
+    if (message.length > 200) {
+      return message.substring(0, 200) + '...';
+    }
+    
+    return message;
+  };
 
   // Chain ID mapping for Owlto Bridge (TESTNET)
   const CHAIN_ID_MAP = {
@@ -104,7 +146,8 @@ export default function Loans() {
           ipId: (v.ipId || v.ipAsset) as `0x${string}`,
           creator: v.creator,
           cvs: BigInt(v.cvs || v.currentCVS || '0'),
-          maxLoan: BigInt(v.cvs || v.currentCVS || '0') / 2n,
+          // Apply 99% safety buffer to avoid edge case failures due to rounding
+          maxLoan: (BigInt(v.cvs || v.currentCVS || '0') * 99n) / 200n, // 49.5% of CVS (with buffer)
         }));
     },
     enabled: !!address,
@@ -144,7 +187,8 @@ export default function Loans() {
   // Fetch individual loan details in parallel
   const loanQueries = useQueries({
     queries: ((loanIds as bigint[]) || []).map((loanId: bigint) => ({
-      queryKey: ['loan', loanId],
+      // Convert BigInt to string for query key to avoid JSON.stringify error
+      queryKey: ['loan', loanId.toString()],
       queryFn: async () => {
         if (!publicClient) return null;
 
@@ -161,7 +205,7 @@ export default function Loans() {
           address: CONTRACTS.ADLV,
           abi: ADLV_JSON.abi,
           functionName: 'getVault',
-          args: [loan.vault],
+          args: [loan.vaultAddress],
         }) as VaultData;
 
         // Fetch current CVS
@@ -203,11 +247,13 @@ export default function Loans() {
   const activeLoans = useMemo(() => {
     console.log('🔍 Processing loan queries:', loanQueries.length);
     loanQueries.forEach((q, i) => {
-      console.log(`   Query ${i}:`, q.data ? `status=${(q.data as EnrichedLoanData).status}` : 'no data');
+      if (q.data) {
+        console.log(`   Loan ${q.data.loanId}: rawStatus=${q.data.status} type=${typeof q.data.status} cast=${Number(q.data.status)}`);
+      }
     });
 
     const filtered = loanQueries
-      .filter(q => q.data && (q.data as EnrichedLoanData).status === 0); // 0 = ACTIVE status
+      .filter(q => q.data && Number((q.data as EnrichedLoanData).status) === 1); // 1 = Active status
 
     console.log('   Active loans after filter:', filtered.length);
 
@@ -222,13 +268,25 @@ export default function Loans() {
           ? (Number(loan.currentCVS) / Number(loan.cvsAtIssuance)) * 100
           : 100;
 
-        // Calculate total repayment
-        const totalRepayment = loan.loanAmount + loan.accruedInterest;
+        // Calculate total repayment (Principal + Interest - Repaid)
+        // Check for 0 to avoid negative numbers due to async timing updates
+        const totalDue = loan.loanAmount + loan.accruedInterest;
+        const totalRepayment = totalDue > loan.repaidAmount ? totalDue - loan.repaidAmount : 0n;
+        
+        // Calculate interest per second for buffer to prevent partial repayment
+        // Interest = (principal * rate * time) / (10000 * duration)
+        // Rate is bps. Duration is seconds.
+        const interestPerSecond = (loan.loanAmount * loan.interestRate) / (10000n * loan.duration);
+        // Add 5 minutes buffer (300 seconds) to ensure transaction covers block time drift
+        const buffer = interestPerSecond * 300n;
+        
+        // Ensure strictly greater than totalDue by adding 1000 wei extra just in case of rounding
+        const repaymentTxValue = totalRepayment + buffer + 1000n;
 
         return {
-          id: loan.id.toString(),
+          id: loan.loanId.toString(),
           amount: formatUnits(loan.loanAmount, 18),
-          vaultAddress: loan.vault,
+          vaultAddress: loan.vaultAddress,
           chain: 'Story Testnet',
           dueDate: new Date(Number(loan.endTime) * 1000).toLocaleDateString(),
           timeRemaining,
@@ -238,11 +296,11 @@ export default function Loans() {
           collateral: formatUnits(loan.collateralAmount, 18),
           interest: formatUnits(loan.accruedInterest, 18),
           totalRepayment: formatUnits(totalRepayment, 18),
-          totalRepaymentWei: totalRepayment,
+          totalRepaymentWei: repaymentTxValue, // Use buffered amount for TX
           currentCVS: Number(formatUnits(loan.currentCVS, 18)),
           collateralRatio: cvsHealth,
           apr: '3.5%',
-          status: (cvsHealth > 80 ? 'healthy' : cvsHealth > 50 ? 'warning' : 'critical') as 'healthy' | 'warning' | 'critical',
+          status: (cvsHealth > 80 ? 'healthy' : cvsHealth > 50 ? 'warning' : 'critical'),
           isLiquidatable: loan.isLiquidatable,
         };
       })
@@ -271,17 +329,21 @@ export default function Loans() {
   });
 
   // Handle repayment transaction success
+  const [lastProcessedRepayTx, setLastProcessedRepayTx] = useState<string | null>(null);
+  
   useEffect(() => {
-    if (repayTxHash && !isRepaying) {
+    // Only process if we have a new tx hash that we haven't processed yet
+    if (repayTxHash && !isRepaying && repayTxHash !== lastProcessedRepayTx) {
+      setLastProcessedRepayTx(repayTxHash);
       // Refetch loan data
-      loanQueries.forEach(q => q.refetch());
+      refetchLoanIds();
       setRepayingLoanId(null);
       setRepayError('');
       setShowSuccess(true);
       setSuccessTxHash(repayTxHash);
       setTimeout(() => setShowSuccess(false), 5000);
     }
-  }, [repayTxHash, isRepaying, loanQueries]);
+  }, [repayTxHash, isRepaying, lastProcessedRepayTx, refetchLoanIds]);
 
   // Handle loan issuance transaction success/failure
   useEffect(() => {
@@ -311,7 +373,7 @@ export default function Loans() {
   useEffect(() => {
     if (writeError) {
       console.error('❌ Write contract error:', writeError);
-      setError(`Transaction failed: ${writeError.message}`);
+      setError(parseContractError(writeError));
     }
   }, [writeError]);
 
@@ -328,8 +390,8 @@ export default function Loans() {
 
     // Call contract write
     repayLoan?.({
-      address: CONTRACTS.LendingModule,
-      abi: LendingModule_ABI.abi,
+      address: CONTRACTS.ADLV,
+      abi: ADLV_JSON.abi,
       functionName: 'repayLoan',
       args: [BigInt(loanId)],
       value: loan.totalRepaymentWei || 0n,
@@ -342,77 +404,89 @@ export default function Loans() {
   const [aprBps, setAprBps] = useState<number>(350);
 
   // Fetch live metrics when vault changes
+  const selectedVaultData = useMemo(() => {
+    return userVaults?.find((v: any) => v.address.toLowerCase() === selectedVault.toLowerCase());
+  }, [userVaults, selectedVault]);
+
+  // Read Collateral Ratio from Contract
+  const { data: collateralRatioData } = useReadContract({
+    address: ADLV_ADDRESS,
+    abi: ADLV_JSON.abi,
+    functionName: 'defaultCollateralRatio',
+    query: {
+      enabled: !!ADLV_ADDRESS,
+      staleTime: 60000, // Cache for 1 minute
+    }
+  });
+
+  // Read Interest Rate from Contract (dependent on CVS)
+  const { data: interestRateData } = useReadContract({
+    address: ADLV_ADDRESS,
+    abi: ADLV_JSON.abi,
+    functionName: 'calculateInterestRate',
+    args: selectedVaultData ? [selectedVaultData.cvs] : undefined,
+    query: {
+      enabled: !!ADLV_ADDRESS && !!selectedVaultData,
+      staleTime: 60000,
+    }
+  });
+
+  // Update state based on hooks and synchronous calculations
   useEffect(() => {
-    const run = async () => {
-      setError('');
-      if (!selectedVault || !userVaults) return;
+    if (!selectedVaultData) {
+      setCurrentCVS(0);
+      setMaxBorrowable(0);
+      return;
+    }
 
-      try {
-        // Find selected vault in API data
-        const vault = userVaults.find((v: any) => v.address.toLowerCase() === selectedVault.toLowerCase());
+    // Update CVS from API data
+    const cvsVal = Number(formatUnits(selectedVaultData.cvs, 18));
+    setCurrentCVS(cvsVal);
 
-        if (vault) {
-          // Use data from API
-          const cvsVal = Number(formatUnits(vault.cvs, 18));
-          setCurrentCVS(cvsVal);
+    // Update Collateral Ratio if available
+    if (collateralRatioData) {
+      setCollateralBps(Number(collateralRatioData));
+    }
 
-          // Calculate max borrowable = 50% of CVS - existing active loans for this vault
-          const maxLoanFromCVS = Number(formatUnits(vault.maxLoan, 18));
+    // Update APR if available
+    if (interestRateData) {
+      setAprBps(Number(interestRateData));
+    }
 
-          // Calculate total outstanding loans for this vault
-          const activeLoansForVault = loanQueries
-            .map(q => q.data)
-            .filter((loan): loan is EnrichedLoanData => 
-              loan !== null && 
-              loan !== undefined && 
-              loan.vault.toLowerCase() === selectedVault.toLowerCase() && 
-              loan.status === 0 // 0 = Active
-            );
+    // Calculate Max Borrowable Synchronously
+    const maxLoanFromCVS = Number(formatUnits(selectedVaultData.maxLoan, 18));
 
-          const totalOutstanding = activeLoansForVault.reduce(
-            (sum, loan) => sum + Number(formatUnits(loan.loanAmount, 18)),
-            0
-          );
+    // Calculate total outstanding loans for this vault
+    const activeLoansForVault = loanQueries
+      .map(q => q.data)
+      .filter((loan): loan is EnrichedLoanData => 
+        loan !== null && 
+        loan !== undefined && 
+        loan.vaultAddress.toLowerCase() === selectedVault.toLowerCase() && 
+        loan.status === 1 // 1 = Active
+      );
 
-          // Remaining borrowing capacity
-          const remainingCapacity = Math.max(0, maxLoanFromCVS - totalOutstanding);
+    const totalOutstanding = activeLoansForVault.reduce(
+      (sum, loan) => sum + Number(formatUnits(loan.loanAmount, 18)),
+      0
+    );
 
-          console.log('📊 Borrowing capacity:', {
-            cvs: cvsVal,
-            maxFromCVS: maxLoanFromCVS,
-            totalOutstanding,
-            remainingCapacity,
-            activeLoans: activeLoansForVault.length,
-          });
+    // Remaining borrowing capacity with 1% safety buffer
+    const remainingCapacity = Math.max(0, (maxLoanFromCVS - totalOutstanding) * 0.99);
 
-          setMaxBorrowable(remainingCapacity);
+    console.log('📊 Borrowing capacity:', {
+      cvs: cvsVal,
+      maxFromCVS: maxLoanFromCVS,
+      totalOutstanding,
+      remainingCapacity,
+      activeLoans: activeLoansForVault.length,
+    });
 
-          // These can still be fetched from contract or hardcoded for now
-          // Collateral ratio (bps)
-          if (publicClient && ADLV_ADDRESS) {
-             const cr = (await publicClient.readContract({
-              address: ADLV_ADDRESS,
-              abi: ADLV_JSON.abi,
-              functionName: 'defaultCollateralRatio',
-            })) as bigint;
-            setCollateralBps(Number(cr));
-
-            // APR from CVS (bps)
-            const apr = (await publicClient.readContract({
-              address: ADLV_ADDRESS,
-              abi: ADLV_JSON.abi,
-              functionName: 'calculateInterestRate',
-              args: [vault.cvs],
-            })) as bigint;
-            setAprBps(Number(apr));
-          }
-        }
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to load vault metrics');
-      }
-    };
-    void run();
-  }, [publicClient, ADLV_ADDRESS, selectedVault, userVaults, loanQueries]);
+    setMaxBorrowable(remainingCapacity);
+    
+    // No longer setting isLoadingMetrics here to avoid infinite loops
+    // The button will just be disabled if maxBorrowable is 0 or data is missing
+  }, [selectedVaultData, collateralRatioData, interestRateData, loanQueries, selectedVault]);
 
   // All loans are issued in IP tokens on Story Protocol
   // Owlto Bridge converts IP → native token on destination chain (if cross-chain selected)
@@ -506,7 +580,7 @@ export default function Loans() {
                   className="w-full px-4 py-4 bg-gray-900/50 border border-gray-700 rounded-xl text-white text-2xl font-bold placeholder-gray-500 focus:border-orange-500 focus:outline-none transition-colors"
                 />
                 <button
-                  onClick={() => setLoanAmount(maxBorrowable ? maxBorrowable.toString() : '')}
+                  onClick={() => setLoanAmount(maxBorrowable ? (Math.floor(maxBorrowable * 10000) / 10000).toString() : '')}
                   className="absolute right-4 top-1/2 -translate-y-1/2 px-4 py-2 bg-gradient-to-b from-orange-950/40 to-transparent border border-orange-500 text-white rounded-xl text-sm font-medium shadow-[0_0_15px_rgba(249,115,22,0.3)] hover:shadow-[0_0_25px_rgba(249,115,22,0.5)] transition-all duration-300"
                 >
                   MAX
@@ -620,12 +694,17 @@ export default function Loans() {
               )}
 
               {error && (
-                <div className="text-red-400 text-sm mb-2">{error}</div>
+                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm mb-3">
+                  <div className="flex items-start gap-2">
+                    <span className="text-red-500 mt-0.5">⚠️</span>
+                    <span>{error}</span>
+                  </div>
+                </div>
               )}
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                disabled={!loanAmount || !selectedVault || !selectedChain || isWaiting || isPending || !address}
+                disabled={!loanAmount || !selectedVault || !selectedChain || isWaiting || isPending || !address || isLoadingMetrics || maxBorrowable === 0}
                 onClick={() => {
                   try {
                     // Clear previous errors
@@ -645,7 +724,14 @@ export default function Loans() {
                       return;
                     }
                     if (parseFloat(loanAmount) > maxBorrowable) {
-                      setError(`Loan amount exceeds maximum of ${maxBorrowable.toFixed(4)} IP`);
+                      setError(`Loan amount exceeds maximum of ${maxBorrowable.toFixed(4)} IP. Your CVS only supports loans up to ${(currentCVS / 2).toFixed(4)} IP.`);
+                      return;
+                    }
+                    
+                    // Additional CVS validation
+                    const requiredCVS = parseFloat(loanAmount) * 2;
+                    if (currentCVS < requiredCVS) {
+                      setError(`Insufficient CVS: You need ${requiredCVS.toFixed(4)} IP CVS to borrow ${loanAmount} IP, but you only have ${currentCVS.toFixed(4)} IP CVS.`);
                       return;
                     }
 
@@ -682,9 +768,25 @@ export default function Loans() {
                     setError(`Error: ${err.message || 'Unknown error'}`);
                   }
                 }}
-                className="w-full py-4 bg-gradient-to-b from-orange-950/40 to-transparent border-2 border-orange-500 text-white rounded-2xl font-bold text-lg shadow-[0_0_30px_rgba(249,115,22,0.4)] hover:shadow-[0_0_50px_rgba(249,115,22,0.6)] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-4 bg-gradient-to-b from-orange-950/40 to-transparent border-2 border-orange-500 text-white rounded-2xl font-bold text-lg shadow-[0_0_30px_rgba(249,115,22,0.4)] hover:shadow-[0_0_50px_rgba(249,115,22,0.6)] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
-                {isPending ? 'Waiting for approval...' : isWaiting ? 'Processing...' : loanExecuted ? '✓ Loan Executed Successfully!' : 'Execute Liquidity Drawdown'}
+                {isLoadingMetrics ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="animate-spin">⏳</span> Loading vault data...
+                  </span>
+                ) : isPending ? (
+                  'Waiting for wallet approval...'
+                ) : isWaiting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="animate-spin">⏳</span> Processing transaction...
+                  </span>
+                ) : loanExecuted ? (
+                  '✅ Loan Executed Successfully!'
+                ) : maxBorrowable === 0 && selectedVault ? (
+                  'No borrowing capacity available'
+                ) : (
+                  'Execute Liquidity Drawdown'
+                )}
               </motion.button>
               {txHash && (
                 <div className="mt-2 text-xs text-amber-400">

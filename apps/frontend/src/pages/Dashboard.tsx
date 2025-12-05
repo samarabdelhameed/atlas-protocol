@@ -2,10 +2,11 @@ import { motion } from 'framer-motion';
 import { TrendingUp, DollarSign, FileText, Activity, ArrowUp, ArrowDown, Sparkles } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { parseAbiItem, createPublicClient, http, formatUnits } from 'viem';
-import { useAccount } from 'wagmi';
+import { useAccount, useReadContract } from 'wagmi';
 import { useQuery } from '@tanstack/react-query';
 import { storyTestnet } from '../wagmi';
 import { CONTRACTS } from '../contracts/addresses';
+import ADLV_JSON from '../contracts/abis/ADLV.json';
 
 interface DashboardProps {
   onNavigate?: (page: string) => void;
@@ -241,26 +242,29 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
     ];
   }, [totalRevenue, activeLoansCount, totalCVS, totalMaxBorrowable, userVaults, recentLicenses]);
 
-  // Fetch loan data from chain
+  // Fetch active loan count directly from contract
+  const { data: borrowerLoans } = useReadContract({
+    address: ADLV_ADDRESS,
+    abi: ADLV_JSON.abi,
+    functionName: 'getBorrowerLoans',
+    args: [address],
+    query: {
+      enabled: !!address,
+      refetchInterval: 10000,
+    }
+  });
+
+  // Update active loans count when data changes
+  useEffect(() => {
+    if (borrowerLoans && Array.isArray(borrowerLoans)) {
+      setActiveLoansCount(borrowerLoans.length);
+    }
+  }, [borrowerLoans]);
+
+  // Fetch chart data and revenue (backend data)
   useEffect(() => {
     const run = async () => {
       try {
-        if (!publicClient) return;
-
-        const latest = await publicClient.getBlockNumber();
-        // CRITICAL FIX: Reduce block range from 10,000 to 1,000 to prevent "Block range is too large" RPC error
-        const window = 1_000n; // Story Protocol RPC has stricter limits
-        const fromBlock = latest > window ? latest - window : 0n;
-
-        // Fetch loans (real data from chain)
-        const loanLogs = await publicClient.getLogs({
-          address: ADLV_ADDRESS,
-          event: evLoanIssued,
-          fromBlock,
-          toBlock: latest
-        });
-        setActiveLoansCount(loanLogs.length);
-
         // Calculate total revenue from backend license data
         const revenue = recentLicenses.reduce((sum, license) => {
           const amount = parseFloat(license.amount.replace(' IP', '')) || 0;
@@ -303,7 +307,7 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
         setChartData(validData);
 
       } catch (error) {
-        console.error('Error fetching chain data:', error);
+        console.error('Error fetching chart data:', error);
         // Set fallback chart data on error to prevent NaN
         setChartData(Array.from({ length: 30 }, (_, i) =>
           5000 + Math.sin(i / 3) * 2000 + Math.random() * 1000
@@ -317,7 +321,7 @@ export default function Dashboard({ onNavigate }: DashboardProps = {}) {
     return () => {
       clearInterval(interval);
     };
-  }, [publicClient, ADLV_ADDRESS, evLoanIssued, recentLicenses]);
+  }, [recentLicenses]);
 
   // CRITICAL FIX: Prevent NaN in chart calculations
   const validChartData = chartData.filter(v => Number.isFinite(v));

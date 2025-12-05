@@ -277,7 +277,7 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
       price: "0.1", // 0.1 IP tokens
       period: "/month",
       color: "from-orange-500 to-amber-600",
-      cvsImpact: "+25",
+      cvsImpact: "+0.002",
       features: [
         "Access to 10 IP datasets",
         "Basic usage analytics",
@@ -294,7 +294,7 @@ export default function Licensing({ preSelectedVault }: LicensingProps = {}) {
       price: "1.5", // 1.5 IP tokens
       period: "/month",
       color: "from-amber-500 to-orange-600",
-      cvsImpact: "+80",
+      cvsImpact: "+0.0750",
       features: [
         "Access to 50+ IP datasets",
         "Advanced analytics dashboard",

@@ -8,18 +8,20 @@
  * to update CVS off-chain after license sales.
  */
 
-import { createPublicClient, createWalletClient, http, parseAbiItem, formatUnits } from 'viem';
+import { createPublicClient, createWalletClient, http, parseAbiItem, formatUnits, type AbiEvent } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { storyAeneid } from 'viem/chains';
 
 // Contract ABIs
+const LICENSE_SOLD_EVENT = parseAbiItem('event LicenseSold(address indexed vaultAddress, bytes32 indexed ipId, address indexed licensee, uint256 amount, string licenseType)') as AbiEvent;
+
 const ADLV_ABI = [
-  parseAbiItem('event LicenseSold(address indexed vaultAddress, bytes32 indexed ipId, address indexed licensee, uint256 amount, string licenseType)'),
+  LICENSE_SOLD_EVENT,
   parseAbiItem('function getVault(address vaultAddress) view returns (bytes32 ipId, address creator, uint256 totalLiquidity, uint256 availableLiquidity, uint256 totalLoansIssued, uint256 totalLicenseRevenue, uint256 activeLoansCount)'),
 ];
 
 const IDO_ABI = [
-  parseAbiItem('function increaseCVS(bytes32 ipId, uint256 amount) external'),
+  parseAbiItem('function updateCVS(bytes32 ipId, uint256 newCVS) external'),
   parseAbiItem('function getCVS(bytes32 ipId) view returns (uint256)'),
 ];
 
@@ -74,7 +76,7 @@ export class LicenseEventMonitor {
     // Watch for new LicenseSold events
     this.unwatch = this.publicClient.watchEvent({
       address: this.config.adlvAddress,
-      event: ADLV_ABI[0],
+      event: LICENSE_SOLD_EVENT,
       onLogs: async (logs) => {
         for (const log of logs) {
           await this.handleLicenseSold(log);
@@ -125,14 +127,26 @@ export class LicenseEventMonitor {
 
       console.log(`   Current CVS: ${formatUnits(currentCVS, 18)} STORY`);
 
-      // Update CVS on-chain
-      console.log(`   📤 Sending CVS update transaction...`);
+      // Calculate new total CVS
+      const newCVS = currentCVS + cvsIncrease;
+      console.log(`   New CVS: ${formatUnits(newCVS, 18)} STORY`);
+
+      // Update CVS on-chain via ADLV contract (Agent -> ADLV -> IDO)
+      console.log(`   📤 Sending CVS update transaction via ADLV...`);
+
+      const ADLV_UPDATE_ABI = [
+        parseAbiItem('function updateIPCVS(bytes32 ipId, uint256 newCVS) external')
+      ] as const;
+
+      const account = privateKeyToAccount(this.config.privateKey);
 
       const txHash = await this.walletClient.writeContract({
-        address: this.config.idoAddress,
-        abi: IDO_ABI,
-        functionName: 'increaseCVS',
-        args: [ipId, cvsIncrease],
+        address: this.config.adlvAddress,
+        abi: ADLV_UPDATE_ABI,
+        functionName: 'updateIPCVS',
+        args: [ipId, newCVS],
+        chain: storyAeneid,
+        account,
       });
 
       console.log(`   ✅ Tx sent: ${txHash}`);
@@ -146,7 +160,7 @@ export class LicenseEventMonitor {
 
       if (receipt.status === 'success') {
         // Read new CVS value
-        const newCVS = await this.publicClient.readContract({
+        const verifiedCVS = await this.publicClient.readContract({
           address: this.config.idoAddress,
           abi: IDO_ABI,
           functionName: 'getCVS',
@@ -154,7 +168,7 @@ export class LicenseEventMonitor {
         }) as bigint;
 
         console.log(`   ✅ CVS Updated Successfully!`);
-        console.log(`   📈 New CVS: ${formatUnits(newCVS, 18)} STORY`);
+        console.log(`   📈 Verified CVS: ${formatUnits(verifiedCVS, 18)} STORY`);
         console.log(`   📊 Increase: +${formatUnits(cvsIncrease, 18)} STORY\n`);
       } else {
         console.error(`   ❌ Transaction failed (status: ${receipt.status})\n`);

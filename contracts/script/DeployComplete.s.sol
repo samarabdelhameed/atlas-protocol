@@ -89,6 +89,10 @@ contract DeployCompleteScript is Script {
 
         ido.transferOwnership(address(adlv));
         console.log("   [OK] IDO owned by ADLV");
+
+        // 9. Set bridge agent for cross-chain transfers (Owlto)
+        adlv.setBridgeAgent(backendWallet);
+        console.log("   [OK] Bridge Agent set to:", backendWallet);
         console.log("");
 
         vm.stopBroadcast();
@@ -109,6 +113,7 @@ contract DeployCompleteScript is Script {
         console.log("  IDO owner:", address(adlv));
         console.log("  Loan NFT owner:", address(lendingModule));
         console.log("  CVS Oracle owner:", deployer);
+        console.log("  Bridge Agent:", backendWallet);
         console.log("");
         console.log("CVS Oracle Status:");
         console.log("  [OK] Integrated with IDO");
