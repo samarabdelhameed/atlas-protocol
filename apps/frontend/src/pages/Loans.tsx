@@ -26,7 +26,7 @@ interface LoanData {
   endTime: bigint;          // uint256 endTime
   repaidAmount: bigint;     // uint256 repaidAmount (was missing!)
   outstandingAmount: bigint; // uint256 outstandingAmount (was missing!)
-  status: number;           // LoanStatus status
+  status: number | bigint;           // LoanStatus status
 }
 
 interface VaultData {
@@ -247,11 +247,13 @@ export default function Loans() {
   const activeLoans = useMemo(() => {
     console.log('🔍 Processing loan queries:', loanQueries.length);
     loanQueries.forEach((q, i) => {
-      console.log(`   Query ${i}:`, q.data ? `status=${(q.data as EnrichedLoanData).status}` : 'no data');
+      if (q.data) {
+        console.log(`   Loan ${q.data.loanId}: rawStatus=${q.data.status} type=${typeof q.data.status} cast=${Number(q.data.status)}`);
+      }
     });
 
     const filtered = loanQueries
-      .filter(q => q.data && (q.data as EnrichedLoanData).status === 1); // 1 = Active status (Pending=0, Active=1, Repaid=2)
+      .filter(q => q.data && Number((q.data as EnrichedLoanData).status) === 1); // 1 = Active status
 
     console.log('   Active loans after filter:', filtered.length);
 
@@ -266,8 +268,20 @@ export default function Loans() {
           ? (Number(loan.currentCVS) / Number(loan.cvsAtIssuance)) * 100
           : 100;
 
-        // Calculate total repayment
-        const totalRepayment = loan.loanAmount + loan.accruedInterest;
+        // Calculate total repayment (Principal + Interest - Repaid)
+        // Check for 0 to avoid negative numbers due to async timing updates
+        const totalDue = loan.loanAmount + loan.accruedInterest;
+        const totalRepayment = totalDue > loan.repaidAmount ? totalDue - loan.repaidAmount : 0n;
+        
+        // Calculate interest per second for buffer to prevent partial repayment
+        // Interest = (principal * rate * time) / (10000 * duration)
+        // Rate is bps. Duration is seconds.
+        const interestPerSecond = (loan.loanAmount * loan.interestRate) / (10000n * loan.duration);
+        // Add 5 minutes buffer (300 seconds) to ensure transaction covers block time drift
+        const buffer = interestPerSecond * 300n;
+        
+        // Ensure strictly greater than totalDue by adding 1000 wei extra just in case of rounding
+        const repaymentTxValue = totalRepayment + buffer + 1000n;
 
         return {
           id: loan.loanId.toString(),
@@ -282,11 +296,11 @@ export default function Loans() {
           collateral: formatUnits(loan.collateralAmount, 18),
           interest: formatUnits(loan.accruedInterest, 18),
           totalRepayment: formatUnits(totalRepayment, 18),
-          totalRepaymentWei: totalRepayment,
+          totalRepaymentWei: repaymentTxValue, // Use buffered amount for TX
           currentCVS: Number(formatUnits(loan.currentCVS, 18)),
           collateralRatio: cvsHealth,
           apr: '3.5%',
-          status: (cvsHealth > 80 ? 'healthy' : cvsHealth > 50 ? 'warning' : 'critical') as 'healthy' | 'warning' | 'critical',
+          status: (cvsHealth > 80 ? 'healthy' : cvsHealth > 50 ? 'warning' : 'critical'),
           isLiquidatable: loan.isLiquidatable,
         };
       })
@@ -390,84 +404,89 @@ export default function Loans() {
   const [aprBps, setAprBps] = useState<number>(350);
 
   // Fetch live metrics when vault changes
+  const selectedVaultData = useMemo(() => {
+    return userVaults?.find((v: any) => v.address.toLowerCase() === selectedVault.toLowerCase());
+  }, [userVaults, selectedVault]);
+
+  // Read Collateral Ratio from Contract
+  const { data: collateralRatioData } = useReadContract({
+    address: ADLV_ADDRESS,
+    abi: ADLV_JSON.abi,
+    functionName: 'defaultCollateralRatio',
+    query: {
+      enabled: !!ADLV_ADDRESS,
+      staleTime: 60000, // Cache for 1 minute
+    }
+  });
+
+  // Read Interest Rate from Contract (dependent on CVS)
+  const { data: interestRateData } = useReadContract({
+    address: ADLV_ADDRESS,
+    abi: ADLV_JSON.abi,
+    functionName: 'calculateInterestRate',
+    args: selectedVaultData ? [selectedVaultData.cvs] : undefined,
+    query: {
+      enabled: !!ADLV_ADDRESS && !!selectedVaultData,
+      staleTime: 60000,
+    }
+  });
+
+  // Update state based on hooks and synchronous calculations
   useEffect(() => {
-    const run = async () => {
-      setError('');
-      if (!selectedVault || !userVaults) {
-        setIsLoadingMetrics(false);
-        return;
-      }
-      
-      setIsLoadingMetrics(true);
+    if (!selectedVaultData) {
+      setCurrentCVS(0);
+      setMaxBorrowable(0);
+      return;
+    }
 
-      try {
-        // Find selected vault in API data
-        const vault = userVaults.find((v: any) => v.address.toLowerCase() === selectedVault.toLowerCase());
+    // Update CVS from API data
+    const cvsVal = Number(formatUnits(selectedVaultData.cvs, 18));
+    setCurrentCVS(cvsVal);
 
-        if (vault) {
-          // Use data from API
-          const cvsVal = Number(formatUnits(vault.cvs, 18));
-          setCurrentCVS(cvsVal);
+    // Update Collateral Ratio if available
+    if (collateralRatioData) {
+      setCollateralBps(Number(collateralRatioData));
+    }
 
-          // Calculate max borrowable = 50% of CVS - existing active loans for this vault
-          const maxLoanFromCVS = Number(formatUnits(vault.maxLoan, 18));
+    // Update APR if available
+    if (interestRateData) {
+      setAprBps(Number(interestRateData));
+    }
 
-          // Calculate total outstanding loans for this vault
-          const activeLoansForVault = loanQueries
-            .map(q => q.data)
-            .filter((loan): loan is EnrichedLoanData => 
-              loan !== null && 
-              loan !== undefined && 
-              loan.vaultAddress.toLowerCase() === selectedVault.toLowerCase() && 
-              loan.status === 1 // 1 = Active (not 0 which is Pending)
-            );
+    // Calculate Max Borrowable Synchronously
+    const maxLoanFromCVS = Number(formatUnits(selectedVaultData.maxLoan, 18));
 
-          const totalOutstanding = activeLoansForVault.reduce(
-            (sum, loan) => sum + Number(formatUnits(loan.loanAmount, 18)),
-            0
-          );
+    // Calculate total outstanding loans for this vault
+    const activeLoansForVault = loanQueries
+      .map(q => q.data)
+      .filter((loan): loan is EnrichedLoanData => 
+        loan !== null && 
+        loan !== undefined && 
+        loan.vaultAddress.toLowerCase() === selectedVault.toLowerCase() && 
+        loan.status === 1 // 1 = Active
+      );
 
-          // Remaining borrowing capacity with 1% safety buffer
-          const remainingCapacity = Math.max(0, (maxLoanFromCVS - totalOutstanding) * 0.99);
+    const totalOutstanding = activeLoansForVault.reduce(
+      (sum, loan) => sum + Number(formatUnits(loan.loanAmount, 18)),
+      0
+    );
 
-          console.log('📊 Borrowing capacity:', {
-            cvs: cvsVal,
-            maxFromCVS: maxLoanFromCVS,
-            totalOutstanding,
-            remainingCapacity,
-            activeLoans: activeLoansForVault.length,
-          });
+    // Remaining borrowing capacity with 1% safety buffer
+    const remainingCapacity = Math.max(0, (maxLoanFromCVS - totalOutstanding) * 0.99);
 
-          setMaxBorrowable(remainingCapacity);
+    console.log('📊 Borrowing capacity:', {
+      cvs: cvsVal,
+      maxFromCVS: maxLoanFromCVS,
+      totalOutstanding,
+      remainingCapacity,
+      activeLoans: activeLoansForVault.length,
+    });
 
-          // These can still be fetched from contract or hardcoded for now
-          // Collateral ratio (bps)
-          if (publicClient && ADLV_ADDRESS) {
-             const cr = (await publicClient.readContract({
-              address: ADLV_ADDRESS,
-              abi: ADLV_JSON.abi,
-              functionName: 'defaultCollateralRatio',
-            })) as bigint;
-            setCollateralBps(Number(cr));
-
-            // APR from CVS (bps)
-            const apr = (await publicClient.readContract({
-              address: ADLV_ADDRESS,
-              abi: ADLV_JSON.abi,
-              functionName: 'calculateInterestRate',
-              args: [vault.cvs],
-            })) as bigint;
-            setAprBps(Number(apr));
-          }
-        }
-        setIsLoadingMetrics(false);
-      } catch (e) {
-        setIsLoadingMetrics(false);
-        setError(parseContractError(e));
-      }
-    };
-    void run();
-  }, [publicClient, ADLV_ADDRESS, selectedVault, userVaults, loanQueries]);
+    setMaxBorrowable(remainingCapacity);
+    
+    // No longer setting isLoadingMetrics here to avoid infinite loops
+    // The button will just be disabled if maxBorrowable is 0 or data is missing
+  }, [selectedVaultData, collateralRatioData, interestRateData, loanQueries, selectedVault]);
 
   // All loans are issued in IP tokens on Story Protocol
   // Owlto Bridge converts IP → native token on destination chain (if cross-chain selected)
