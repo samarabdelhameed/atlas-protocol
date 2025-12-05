@@ -9,9 +9,9 @@ dataSources:
     name: AtlasADLV
     network: story-aeneid
     source:
-      address: "0x9c7ccfb831ed4d521599a3b97df0174c91bb2aac" # Atlas ADLV Contract address (v5.0 - CVS Oracle Integrated) - lowercase
+      address: "0x084a44ddc404b0d8f7a021d64ec24f4520b7f1c6" # Atlas ADLV Contract address (v6.0 - Owlto Bridge) - lowercase
       abi: AtlasADLV
-      startBlock: 11797000 # Actual deployment block
+      startBlock: 11860000 # v6.0 deployment block
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -32,7 +32,7 @@ dataSources:
         - event: LicenseSold(indexed address,indexed bytes32,indexed address,uint256,string)
           handler: handleLicenseSale
         # Core Handler 3: Loan Issuance (based on CVS)
-        - event: LoanIssued(indexed address,indexed address,indexed uint256,uint256,uint256,uint256,uint256)
+        - event: LoanIssued(indexed address,indexed address,indexed uint256,uint256,uint256,uint256,uint256,uint256)
           handler: handleLoanIssued
         # Loan Management
         - event: LoanRepaid(indexed address,indexed address,indexed uint256,uint256)
@@ -53,9 +53,9 @@ dataSources:
     name: CVSOracle
     network: story-aeneid
     source:
-      address: "0x4a875fd309c95dbfbca6dfc3575517ea7d5f6ec7" # CVS Oracle Contract address (v5.0) - lowercase
+      address: "0xbc57dbfa4936a5f1d10bde8a65abf2f9864e5170" # CVS Oracle Contract address (v6.0) - lowercase
       abi: CVSOracle
-      startBlock: 11797551 # Actual deployment block
+      startBlock: 11860000 # v6.0 deployment block
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7

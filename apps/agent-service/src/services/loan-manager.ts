@@ -45,6 +45,9 @@ export class LoanManager {
   private adlvContract: Contract;
   private idoContract: Contract;
   private isMonitoring: boolean = false;
+  private pollingInterval: NodeJS.Timeout | null = null;
+  private lastProcessedTimestamp: number = 0;
+  private readonly SUBGRAPH_URL = process.env.SUBGRAPH_URL || 'https://api.goldsky.com/api/public/project_cmi7k5szzd54101yy44xg05em/subgraphs/atlas-protocol/6.0.1/gn';
 
   constructor(
     adlvAddress: string,
@@ -80,6 +83,9 @@ export class LoanManager {
   /**
    * Start monitoring LoanIssued events from ADLV contract
    */
+  /**
+   * Start monitoring LoanIssued events via Subgraph polling
+   */
   public startMonitoring(): void {
     if (this.isMonitoring) {
       console.log('⚠️  Loan monitoring already active');
@@ -87,16 +93,16 @@ export class LoanManager {
     }
 
     this.isMonitoring = true;
-    console.log('🔍 Starting loan event monitoring...');
+    console.log('🔍 Starting loan monitoring via Subgraph polling...');
+    console.log(`   Subgraph URL: ${this.SUBGRAPH_URL}`);
 
-    // Listen for LoanIssued events
-    this.adlvContract.on('LoanIssued', this.handleLoanIssuedEvent.bind(this));
+    // Initial poll
+    this.pollSubgraph();
 
-    // Also listen for other important events
-    this.adlvContract.on('LoanRepaid', this.handleLoanRepaidEvent.bind(this));
-    this.adlvContract.on('LoanLiquidated', this.handleLoanLiquidatedEvent.bind(this));
+    // Start polling interval (every 10 seconds)
+    this.pollingInterval = setInterval(() => this.pollSubgraph(), 10000);
 
-    console.log('✅ Loan event monitoring active');
+    console.log('✅ Loan monitoring active');
   }
 
   /**
@@ -108,10 +114,106 @@ export class LoanManager {
     }
 
     this.isMonitoring = false;
-    this.adlvContract.removeAllListeners('LoanIssued');
-    this.adlvContract.removeAllListeners('LoanRepaid');
-    this.adlvContract.removeAllListeners('LoanLiquidated');
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
+      this.pollingInterval = null;
+    }
     console.log('🛑 Loan monitoring stopped');
+  }
+
+  /**
+   * Poll subgraph for new loans
+   */
+  private async pollSubgraph(): Promise<void> {
+    try {
+      // Query for recent LoanIssued events
+      // We filter by timestamp to get only new events
+      const query = `
+        query {
+          loans(
+            orderBy: issuedAt, 
+            orderDirection: desc, 
+            first: 10,
+            where: { issuedAt_gt: ${this.lastProcessedTimestamp} }
+          ) {
+            id
+            loanId
+            vault {
+              id
+            }
+            borrower
+            loanAmount
+            collateralAmount
+            interestRate
+            duration
+            targetChainId
+            issuedAt
+            transactionHash
+          }
+        }
+      `;
+
+      const response = await fetch(this.SUBGRAPH_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+
+      const data = await response.json() as any;
+      
+      if (data.errors) {
+        console.error('❌ Subgraph query error:', data.errors);
+        return;
+      }
+
+      const loans = data.data?.loans || [];
+
+      if (loans.length > 0) {
+        console.log(`Found ${loans.length} new loans`);
+        
+        // Process loans (oldest first)
+        for (const loan of loans.reverse()) {
+          await this.processLoanFromSubgraph(loan);
+          
+          // Update last processed timestamp
+          const timestamp = Number(loan.issuedAt);
+          if (timestamp > this.lastProcessedTimestamp) {
+            this.lastProcessedTimestamp = timestamp;
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ Error polling subgraph:', error.message || error);
+      if (error.response) {
+        try {
+          const text = await error.response.text();
+          console.error('   Response body:', text);
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+  }
+
+  /**
+   * Process loan data from subgraph
+   */
+  private async processLoanFromSubgraph(loan: any): Promise<void> {
+    try {
+      await this.handleLoanIssuedEvent(
+        loan.vault.id, // Extract vault address from object
+        loan.borrower,
+        BigInt(loan.loanId),
+        BigInt(loan.loanAmount),
+        BigInt(loan.collateralAmount),
+        BigInt(loan.interestRate),
+        BigInt(loan.duration),
+        BigInt(loan.targetChainId || 0), // Handle optional field
+        { transactionHash: loan.transactionHash } as any // Mock event object
+      );
+    } catch (error) {
+      console.error(`Error processing loan ${loan.loanId}:`, error);
+    }
   }
 
   /**
@@ -129,6 +231,7 @@ export class LoanManager {
     event: EventLog
   ): Promise<void> {
     const amountEth = Number(amount) / 1e18;
+    const STORY_CHAIN_ID = 1315n;
     
     console.log('\n🚨 LoanIssued Event Detected!');
     console.log('═══════════════════════════════════════════');
@@ -139,38 +242,61 @@ export class LoanManager {
     console.log(`   Collateral: ${Number(collateral) / 1e18} tokens`);
     console.log(`   Interest Rate: ${Number(interestRate) / 100}%`);
     console.log(`   Duration: ${Number(duration)} seconds`);
-    console.log(`   Target Chain: ${targetChainId.toString()} ${targetChainId === 0n ? '(Same Chain - No Bridge)' : ''}`);
+    console.log(`   Target Chain: ${targetChainId.toString()} ${targetChainId === 0n || targetChainId === STORY_CHAIN_ID ? '(Same Chain - No Bridge)' : '(Cross-Chain Bridge Required)'}`);
     console.log('═══════════════════════════════════════════\n');
 
     try {
-      // Skip cross-chain transfer if targetChainId is 0 (same chain)
-      if (targetChainId === 0n) {
+      // Skip cross-chain transfer if targetChainId is 0 or Story chain (same chain)
+      if (targetChainId === 0n || targetChainId === STORY_CHAIN_ID) {
         console.log('✅ Loan issued on same chain. No bridging required.');
         return;
       }
       
-      // Get vault details
-      const vault = await this.adlvContract.getVault(vaultAddress);
+      // CROSS-CHAIN LOAN DETECTED - Execute bridge flow
+      console.log('🌉 Cross-chain loan detected! Initiating Owlto bridge flow...\n');
       
-      // Use targetChainId from event
-      const destChainId = Number(targetChainId);
+      // Step 1: Claim funds from contract
+      console.log('📥 Step 1: Claiming funds from contract...');
+      try {
+        const claimTx = await this.adlvContract.claimForBridge!(loanId);
+        const claimReceipt = await claimTx.wait();
+        console.log(`   ✅ Funds claimed! Tx: ${claimReceipt?.hash}`);
+      } catch (claimError: any) {
+        console.error('   ❌ Failed to claim funds:', claimError.message);
+        throw claimError;
+      }
       
-      // Get token address (USDC on Base: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913)
-      // You can make this configurable per vault
-      const tokenAddress = process.env.LOAN_TOKEN_ADDRESS || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
-
-      // Execute cross-chain transfer via Owlto Finance
-      await this.executeCrossChainTransfer({
+      // Step 2: Bridge via Owlto Finance SDK
+      console.log('\n🌉 Step 2: Bridging via Owlto Finance...');
+      const bridgeResult = await this.executeCrossChainTransfer({
         recipient: borrower,
-        targetChainId: destChainId,
-        tokenAddress: tokenAddress,
+        targetChainId: Number(targetChainId),
+        tokenAddress: '0x0000000000000000000000000000000000000000', // Native token
         amount: amount.toString(),
         loanId: loanId,
       });
+      
+      // Step 3: Confirm bridge on contract (optional)
+      if (bridgeResult && bridgeResult.txHash) {
+        console.log('\n📝 Step 3: Confirming bridge on contract...');
+        try {
+          // Convert txHash to bytes32
+          const txHashBytes32 = bridgeResult.txHash.padEnd(66, '0').slice(0, 66);
+          const confirmTx = await this.adlvContract.confirmBridge!(loanId, txHashBytes32);
+          const confirmReceipt = await confirmTx.wait();
+          console.log(`   ✅ Bridge confirmed! Tx: ${confirmReceipt?.hash}`);
+        } catch (confirmError: any) {
+          console.warn('   ⚠️ Failed to confirm bridge (non-critical):', confirmError.message);
+        }
+      }
 
-      console.log(`✅ Cross-chain transfer for Loan ${loanId.toString()} successfully initiated via Owlto Finance`);
-    } catch (error) {
-      console.error(`❌ ERROR processing Loan ${loanId.toString()}:`, error);
+      console.log(`\n✅ Cross-chain transfer for Loan ${loanId.toString()} completed!`);
+      console.log(`   Recipient: ${borrower}`);
+      console.log(`   Amount: ${amountEth} tokens`);
+      console.log(`   Destination: Chain ${targetChainId}`);
+      
+    } catch (error: any) {
+      console.error(`\n❌ ERROR processing cross-chain Loan ${loanId.toString()}:`, error.message);
       // In production, you might want to:
       // 1. Log to error tracking service
       // 2. Send alert to administrators
@@ -208,65 +334,69 @@ export class LoanManager {
   }
 
   /**
-   * Execute cross-chain transfer using Owlto Finance API
+   * Execute cross-chain transfer using Owlto Finance SDK
    * This is the core IPFi functionality
    */
   private async executeCrossChainTransfer(params: CrossChainTransferParams): Promise<any> {
-    if (!config.owlto.apiKey) {
-      console.warn('⚠️  Owlto API key not configured. Skipping cross-chain transfer.');
-      return null;
+    const { getBridgeTransaction } = await import('../clients/owltoClient.js');
+    
+    if (!this.signer) {
+      throw new Error('Signer not available. Cannot execute bridge transaction.');
     }
 
     try {
       // Get current chain ID from provider
       const network = await this.provider.getNetwork();
       const fromChainId = Number(network.chainId);
+      const signerAddress = await this.signer.getAddress();
 
-      console.log(`🌉 Initiating cross-chain transfer via Owlto Finance...`);
       console.log(`   From Chain: ${fromChainId}`);
       console.log(`   To Chain: ${params.targetChainId}`);
       console.log(`   Recipient: ${params.recipient}`);
-      console.log(`   Amount: ${params.amount}`);
+      console.log(`   Amount: ${Number(params.amount) / 1e18} tokens`);
 
-      const response = await fetch(OWLTO_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.owlto.apiKey}`,
-        },
-        body: JSON.stringify({
-          fromChainId: fromChainId,
-          toChainId: params.targetChainId,
-          recipient: params.recipient,
-          tokenAddress: params.tokenAddress,
-          amount: params.amount,
-          // Additional Owlto-specific parameters
-          slippage: process.env.OWLTO_SLIPPAGE || '0.5', // 0.5% slippage
-          referralCode: process.env.OWLTO_REFERRAL_CODE || '',
-          // Metadata for tracking
-          metadata: {
-            loanId: params.loanId.toString(),
-            source: 'atlas-protocol',
-            timestamp: new Date().toISOString(),
-          },
-        }),
+      // Get bridge transaction from Owlto SDK
+      const buildTx = await getBridgeTransaction({
+        fromChainId,
+        toChainId: params.targetChainId,
+        amount: params.amount,
+        tokenName: 'ETH', // Native token
+        recipient: params.recipient,
+        sender: signerAddress,
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Owlto API failed: ${response.status} - ${errorText}`);
+      if (!buildTx || !buildTx.txs?.transferBody) {
+        throw new Error('Failed to get bridge transaction from Owlto');
       }
 
-      const result = await response.json();
-      
-      console.log(`✅ Owlto bridge transaction created:`);
-      console.log(`   Bridge ID: ${result.bridgeId || result.id}`);
-      console.log(`   Transaction Hash: ${result.txHash || 'Pending'}`);
-      console.log(`   Status: ${result.status || 'Processing'}`);
+      // Send approve transaction if needed (for ERC20 tokens)
+      if (buildTx.txs.approveBody) {
+        console.log('   📤 Sending approve transaction...');
+        const approveTx = await this.signer.sendTransaction(buildTx.txs.approveBody);
+        await approveTx.wait();
+        console.log('   ✅ Approve confirmed');
+      }
 
-      return result;
-    } catch (error) {
-      console.error('❌ Owlto API Error:', error);
+      // Send the bridge transaction
+      console.log('   📤 Sending bridge transaction...');
+      const tx = await this.signer.sendTransaction(buildTx.txs.transferBody);
+      
+      console.log(`   ⏳ Waiting for confirmation... Tx: ${tx.hash}`);
+      const receipt = await tx.wait();
+      
+      console.log(`   ✅ Bridge transaction confirmed!`);
+      console.log(`   📦 Block: ${receipt?.blockNumber}`);
+
+      // Wait for bridge completion (optional - can take a few minutes)
+      // const bridgeReceipt = await waitForBridgeReceipt(tx.hash, fromChainId);
+
+      return {
+        txHash: tx.hash,
+        blockNumber: receipt?.blockNumber,
+        success: true,
+      };
+    } catch (error: any) {
+      console.error('   ❌ Owlto Bridge Error:', error.message);
       throw error;
     }
   }
@@ -288,21 +418,21 @@ export class LoanManager {
   }> {
     try {
       // Get vault info
-      const vault = await this.adlvContract.getVault(vaultAddress);
+      const vault = await this.adlvContract.getVault!(vaultAddress);
       const ipId = vault.ipId;
 
       // Get current CVS from IDO
-      const currentCVS = await this.idoContract.getCVS(ipId);
+      const currentCVS = await this.idoContract.getCVS!(ipId);
 
       // Calculate max loan amount (50% of CVS)
-      const maxLoanAmount = await this.adlvContract.calculateMaxLoanAmount(vaultAddress);
+      const maxLoanAmount = await this.adlvContract.calculateMaxLoanAmount!(vaultAddress);
 
       // Calculate interest rate
-      const interestRate = await this.adlvContract.calculateInterestRate(currentCVS);
+      const interestRate = await this.adlvContract.calculateInterestRate!(currentCVS);
 
       // Calculate required collateral (150% of loan amount)
-      const defaultCollateralRatio = await this.adlvContract.defaultCollateralRatio();
-      const requiredCollateral = (loanAmount * defaultCollateralRatio) / BigInt(10000);
+      const defaultCollateralRatio = await this.adlvContract.defaultCollateralRatio!();
+      const requiredCollateral = (loanAmount * BigInt(defaultCollateralRatio)) / BigInt(10000);
 
       // Check eligibility
       const minCVSRatio = BigInt(2); // CVS must be >= 2x loan amount
@@ -381,7 +511,7 @@ export class LoanManager {
       const collateralAmount = eligibility.requiredCollateral;
 
       // Issue loan transaction
-      const tx = await this.adlvContract.issueLoan(
+      const tx = await this.adlvContract.issueLoan!(
         request.vaultAddress,
         request.loanAmount,
         BigInt(request.duration),
@@ -417,7 +547,7 @@ export class LoanManager {
       const loanId = parsed?.args[2] as bigint; // loanId is the 3rd argument
 
       // Get loan details
-      const loan = await this.adlvContract.getLoan(loanId);
+      const loan = await this.adlvContract.getLoan!(loanId);
 
       return {
         loanId,
@@ -442,27 +572,27 @@ export class LoanManager {
 
     try {
       // Get loan details
-      const loan = await this.adlvContract.getLoan(loanId);
+      const loan = await this.adlvContract.getLoan!(loanId);
 
       // Calculate total due if amount not provided
       let repaymentAmount = amount;
       if (!repaymentAmount) {
         const elapsedTime = BigInt(Math.floor(Date.now() / 1000)) - loan.startTime;
-        const interest = await this.adlvContract.calculateInterest(
+        const interest = await this.adlvContract.calculateInterest!(
           loan.loanAmount,
           loan.interestRate,
           elapsedTime,
           loan.duration
         );
 
-        repaymentAmount = loan.loanAmount + interest - loan.repaidAmount;
+        repaymentAmount = BigInt(loan.loanAmount) + BigInt(interest) - BigInt(loan.repaidAmount);
       }
 
       // Repay loan
-      const tx = await this.adlvContract.repayLoan(loanId, { value: repaymentAmount });
+      const tx = await this.adlvContract.repayLoan!(loanId, { value: repaymentAmount });
       const receipt = await tx.wait();
 
-      return receipt.hash;
+      return receipt?.hash ?? '';
     } catch (error) {
       console.error('Error repaying loan:', error);
       throw error;
@@ -478,9 +608,9 @@ export class LoanManager {
     }
 
     try {
-      const tx = await this.adlvContract.liquidateLoan(loanId);
+      const tx = await this.adlvContract.liquidateLoan!(loanId);
       const receipt = await tx.wait();
-      return receipt.hash;
+      return receipt?.hash ?? '';
     } catch (error) {
       console.error('Error liquidating loan:', error);
       throw error;
@@ -491,14 +621,14 @@ export class LoanManager {
    * Get loan details
    */
   async getLoan(loanId: bigint) {
-    return await this.adlvContract.getLoan(loanId);
+    return await this.adlvContract.getLoan!(loanId);
   }
 
   /**
    * Get vault details
    */
   async getVault(vaultAddress: string) {
-    return await this.adlvContract.getVault(vaultAddress);
+    return await this.adlvContract.getVault!(vaultAddress);
   }
 
   /**
@@ -514,7 +644,7 @@ export class LoanManager {
         ipIdBytes32 = keccak256(toUtf8Bytes(ipId));
       }
       
-      const vaultAddress = await this.adlvContract.ipToVault(ipIdBytes32);
+      const vaultAddress = await this.adlvContract.ipToVault!(ipIdBytes32);
       if (vaultAddress === '0x0000000000000000000000000000000000000000') {
         return null;
       }
@@ -551,7 +681,7 @@ export class LoanManager {
 
       // Call createVault on ADLV contract
       // createVault(bytes32 ipId) - takes only ONE parameter
-      const tx = await this.adlvContract.createVault(ipIdBytes32);
+      const tx = await this.adlvContract.createVault!(ipIdBytes32);
       
       // Wait for transaction receipt
       const receipt = await tx.wait();

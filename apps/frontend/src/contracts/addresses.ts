@@ -5,13 +5,13 @@
  */
 
 export const CONTRACTS = {
-  ADLV: '0x9c7cCfB831Ed4D521599a3B97df0174C91bB2AAC' as const, // v5.0 - CVS Oracle Integrated
-  IDO: '0xFb1EC26171848c330356ff1C9e2a1228066Da324' as const, // v5.0 - CVS Oracle Integrated
-  LendingModule: '0x3154484F0CdBa14F2A2A3Ba8D2125a5c088a5E4f' as const,
-  LoanNFT: '0x69D6C3E0D2BAE75Cbad6de75e8a367C607Ae8bC1' as const,
-  CVSOracle: '0x4a875fD309C95DBFBcA6dFC3575517Ea7d5F6eC7' as const, // v5.0 - NEW!
+  ADLV: '0x084A44Ddc404B0D8F7A021d64Ec24f4520B7f1C6' as const, // v6.0 - Owlto Bridge Integrated
+  IDO: '0xea7dFd2572ceC090C0517Ea345B82CA07E394034' as const, // v6.0 - Owlto Bridge Integrated
+  LendingModule: '0x1f74B15A2AB01734151697Cc7E19F5681125A6f9' as const,
+  LoanNFT: '0x9FC6018a786c79Be7d1fEdc8D1fd27f6C4d86385' as const,
+  CVSOracle: '0xBc57dBFA4936A5F1D10bDE8A65ABf2f9864e5170' as const, // v6.0
   StoryProtocolCore: '0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5' as const,
-  IPAssetRegistry: '0x77319B4031e6eF1250907aa00018B8B1c67a244b' as const, // Updated to official Aeneid deployment
+  IPAssetRegistry: '0x77319B4031e6eF1250907aa00018B8B1c67a244b' as const,
   SPG: '0x69415CE984A79a3Cfbe3F51024C63b6C107331e3' as const,
 } as const;
 

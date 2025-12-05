@@ -187,7 +187,12 @@ export function handleLoanIssued(event: LoanIssued): void {
   loan.loanAmount = event.params.amount;
   loan.collateralAmount = event.params.collateral;
   loan.interestRate = event.params.interestRate;
+  loan.interestRate = event.params.interestRate;
   loan.duration = event.params.duration;
+  
+  // Cross-Chain Info
+  loan.targetChainId = event.params.targetChainId;
+  loan.transactionHash = event.transaction.hash;
   
   // CVS metrics at loan issuance
   let vault = IDOVault.load(event.params.vaultAddress.toHex());
