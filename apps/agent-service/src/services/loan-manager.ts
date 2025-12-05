@@ -182,8 +182,16 @@ export class LoanManager {
           }
         }
       }
-    } catch (error) {
-      console.error('❌ Error polling subgraph:', error);
+    } catch (error: any) {
+      console.error('❌ Error polling subgraph:', error.message || error);
+      if (error.response) {
+        try {
+          const text = await error.response.text();
+          console.error('   Response body:', text);
+        } catch (e) {
+          // ignore
+        }
+      }
     }
   }
 
