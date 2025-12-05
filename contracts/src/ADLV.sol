@@ -19,6 +19,9 @@ contract ADLV {
     /// @notice Protocol owner
     address public owner;
     
+    /// @notice Bridge agent for cross-chain transfers (Owlto)
+    address public bridgeAgent;
+    
     /// @notice Protocol fee percentage (basis points, e.g., 500 = 5%)
     uint256 public protocolFeeBps = 500; // 5%
     
@@ -82,6 +85,15 @@ contract ADLV {
         Liquidated
     }
     
+    /// @notice Pending cross-chain bridge transfer
+    struct PendingBridge {
+        address borrower;
+        uint256 amount;
+        uint256 targetChainId;
+        bool claimed;
+        bool confirmed;
+    }
+    
     // ========================================
     // Mappings
     // ========================================
@@ -100,6 +112,9 @@ contract ADLV {
     
     /// @notice Mapping from IP ID to vault address
     mapping(bytes32 => address) public ipToVault;
+    
+    /// @notice Mapping from loan ID to pending bridge
+    mapping(uint256 => PendingBridge) public pendingBridges;
     
     /// @notice Mapping from vault address to depositor shares
     mapping(address => mapping(address => uint256)) public depositorShares;
@@ -185,6 +200,27 @@ contract ADLV {
         uint256 shares
     );
     
+    /// @notice Emitted when bridge agent claims funds for bridging
+    event BridgeFundsClaimed(
+        uint256 indexed loanId,
+        address indexed agent,
+        address indexed borrower,
+        uint256 amount,
+        uint256 targetChainId
+    );
+    
+    /// @notice Emitted when bridge is confirmed
+    event BridgeConfirmed(
+        uint256 indexed loanId,
+        bytes32 bridgeTxHash
+    );
+    
+    /// @notice Emitted when bridge agent is updated
+    event BridgeAgentUpdated(
+        address indexed oldAgent,
+        address indexed newAgent
+    );
+    
     // ========================================
     // Modifiers
     // ========================================
@@ -204,6 +240,11 @@ contract ADLV {
     
     modifier vaultExists(address vaultAddress) {
         require(vaults[vaultAddress].exists, "ADLV: Vault does not exist");
+        _;
+    }
+    
+    modifier onlyBridgeAgent() {
+        require(msg.sender == bridgeAgent, "ADLV: Only bridge agent");
         _;
     }
     
@@ -250,6 +291,16 @@ contract ADLV {
      */
     function updateIPCVS(bytes32 ipId, uint256 newCVS) external onlyOwner {
         idoContract.updateCVS(ipId, newCVS);
+    }
+    
+    /**
+     * @notice Set the bridge agent for cross-chain transfers
+     * @param _bridgeAgent Address of the bridge agent
+     */
+    function setBridgeAgent(address _bridgeAgent) external onlyOwner {
+        require(_bridgeAgent != address(0), "ADLV: Invalid bridge agent");
+        emit BridgeAgentUpdated(bridgeAgent, _bridgeAgent);
+        bridgeAgent = _bridgeAgent;
     }
     
     // ========================================
@@ -443,8 +494,22 @@ contract ADLV {
         vault.activeLoansCount += 1;
         vault.availableLiquidity -= loanAmount;
         
-        // Transfer loan amount to borrower
-        payable(msg.sender).transfer(loanAmount);
+        // Transfer loan amount: direct for same-chain, hold for cross-chain bridge
+        uint256 STORY_CHAIN_ID = 1315;
+        if (targetChainId == 0 || targetChainId == STORY_CHAIN_ID) {
+            // Same chain - transfer directly to borrower
+            payable(msg.sender).transfer(loanAmount);
+        } else {
+            // Cross-chain - hold funds for bridge agent to claim
+            pendingBridges[loanId] = PendingBridge({
+                borrower: msg.sender,
+                amount: loanAmount,
+                targetChainId: targetChainId,
+                claimed: false,
+                confirmed: false
+            });
+            // Note: Funds remain in contract until bridge agent claims them
+        }
         
         emit LoanIssued(
             vaultAddress,
@@ -703,5 +768,75 @@ contract ADLV {
         address borrower
     ) external view returns (uint256[] memory) {
         return borrowerLoans[borrower];
+    }
+    
+    // ========================================
+    // Cross-Chain Bridge Functions (Owlto)
+    // ========================================
+    
+    /**
+     * @notice Bridge agent claims funds to bridge to destination chain
+     * @param loanId The loan ID with pending cross-chain transfer
+     */
+    function claimForBridge(uint256 loanId) external onlyBridgeAgent {
+        PendingBridge storage bridge = pendingBridges[loanId];
+        
+        require(bridge.amount > 0, "ADLV: No pending bridge");
+        require(!bridge.claimed, "ADLV: Already claimed");
+        
+        bridge.claimed = true;
+        
+        // Transfer funds to bridge agent
+        payable(bridgeAgent).transfer(bridge.amount);
+        
+        emit BridgeFundsClaimed(
+            loanId,
+            bridgeAgent,
+            bridge.borrower,
+            bridge.amount,
+            bridge.targetChainId
+        );
+    }
+    
+    /**
+     * @notice Bridge agent confirms bridge was completed
+     * @param loanId The loan ID
+     * @param bridgeTxHash Transaction hash from the bridge
+     */
+    function confirmBridge(uint256 loanId, bytes32 bridgeTxHash) external onlyBridgeAgent {
+        PendingBridge storage bridge = pendingBridges[loanId];
+        
+        require(bridge.claimed, "ADLV: Not yet claimed");
+        require(!bridge.confirmed, "ADLV: Already confirmed");
+        
+        bridge.confirmed = true;
+        
+        emit BridgeConfirmed(loanId, bridgeTxHash);
+    }
+    
+    /**
+     * @notice Get pending bridge details for a loan
+     * @param loanId The loan ID
+     * @return borrower The borrower address
+     * @return amount The bridge amount
+     * @return targetChainId The destination chain
+     * @return claimed Whether funds have been claimed by agent
+     * @return confirmed Whether bridge has been confirmed
+     */
+    function getPendingBridge(uint256 loanId) external view returns (
+        address borrower,
+        uint256 amount,
+        uint256 targetChainId,
+        bool claimed,
+        bool confirmed
+    ) {
+        PendingBridge storage bridge = pendingBridges[loanId];
+        return (
+            bridge.borrower,
+            bridge.amount,
+            bridge.targetChainId,
+            bridge.claimed,
+            bridge.confirmed
+        );
     }
 }

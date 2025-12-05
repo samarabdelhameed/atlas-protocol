@@ -7,7 +7,7 @@ import { useQuery, useQueries } from '@tanstack/react-query';
 import { CONTRACTS } from '../contracts/addresses';
 import ADLV_JSON from '../contracts/abis/ADLV.json';
 import IDO_JSON from '../contracts/abis/IDO.json';
-import LendingModule_ABI from '../contracts/abis/LendingModule.json';
+// LendingModule_ABI not used - repayLoan uses ADLV contract
 
 // Debug: Check ABI issueLoan parameters
 const issueLoanABI = ADLV_JSON.abi.find((item: any) => item.name === 'issueLoan');
@@ -315,17 +315,21 @@ export default function Loans() {
   });
 
   // Handle repayment transaction success
+  const [lastProcessedRepayTx, setLastProcessedRepayTx] = useState<string | null>(null);
+  
   useEffect(() => {
-    if (repayTxHash && !isRepaying) {
+    // Only process if we have a new tx hash that we haven't processed yet
+    if (repayTxHash && !isRepaying && repayTxHash !== lastProcessedRepayTx) {
+      setLastProcessedRepayTx(repayTxHash);
       // Refetch loan data
-      loanQueries.forEach(q => q.refetch());
+      refetchLoanIds();
       setRepayingLoanId(null);
       setRepayError('');
       setShowSuccess(true);
       setSuccessTxHash(repayTxHash);
       setTimeout(() => setShowSuccess(false), 5000);
     }
-  }, [repayTxHash, isRepaying, loanQueries]);
+  }, [repayTxHash, isRepaying, lastProcessedRepayTx, refetchLoanIds]);
 
   // Handle loan issuance transaction success/failure
   useEffect(() => {
@@ -372,8 +376,8 @@ export default function Loans() {
 
     // Call contract write
     repayLoan?.({
-      address: CONTRACTS.LendingModule,
-      abi: LendingModule_ABI.abi,
+      address: CONTRACTS.ADLV,
+      abi: ADLV_JSON.abi,
       functionName: 'repayLoan',
       args: [BigInt(loanId)],
       value: loan.totalRepaymentWei || 0n,

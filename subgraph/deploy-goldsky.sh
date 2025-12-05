@@ -50,7 +50,7 @@ echo ""
 
 # Deploy using the correct Goldsky CLI format
 # Format: goldsky subgraph deploy <name>/<version> --path .
-goldsky subgraph deploy atlas-protocol/1.0.0 --path .
+goldsky subgraph deploy atlas-protocol/6.0.1 --path .
 
 if [ $? -eq 0 ]; then
     echo ""
