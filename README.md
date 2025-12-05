@@ -99,6 +99,7 @@ CVS = (License Revenue × 0.05) + (Vault Liquidity × 0.02) + (Yakoa Score × We
 | **Goldsky** | Real-time event indexing & GraphQL API | ✅ 100% |
 | **Owlto Finance** | Cross-chain loan disbursement | ✅ 100% |
 | **World ID** | Creator verification & Sybil resistance | ✅ 100% |
+| **Yakoa** | IP infringement detection & originality scoring | ✅ 100% |
 | **Foundry** | Smart contract development & testing | ✅ 100% |
 | **Viem/Wagmi** | Frontend blockchain interactions | ✅ 100% |
 
@@ -808,7 +809,32 @@ function createVault(
 - ✅ **Incentives**: Verified users get 0.5% APR discount
 - ✅ **Trust**: Increases confidence in platform legitimacy
 
+---
 
+### 5. Yakoa Integration ⭐
+
+**Integration Scope:** 100% (IP Intelligence)
+
+**Purpose:** Detect IP infringements and calculate originality scores for CVS
+
+**How It Works:**
+1. When a license is purchased or CVS is calculated, Yakoa API is queried
+2. Returns infringement count, authorization status, and originality score
+3. Score affects CVS calculation and loan eligibility
+
+**Key Files:**
+- API Client: [`apps/agent-service/src/clients/yakoaClient.ts`](apps/agent-service/src/clients/yakoaClient.ts)
+- Usage Service: [`apps/agent-service/src/services/usage-data-service.ts`](apps/agent-service/src/services/usage-data-service.ts)
+- IP Intelligence UI: [`apps/frontend/src/pages/IPIntelligencePage.tsx`](apps/frontend/src/pages/IPIntelligencePage.tsx)
+
+**Environment Variables:**
+```bash
+YAKOA_API_KEY=your_api_key
+YAKOA_SUBDOMAIN=your_subdomain
+YAKOA_NETWORK=story-aeneid
+```
+
+---
 
 ## 📐 Smart Contract Architecture
 
