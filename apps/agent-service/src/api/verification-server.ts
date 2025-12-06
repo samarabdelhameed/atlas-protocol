@@ -862,6 +862,20 @@ export class VerificationServer {
 
       console.log(`📦 Found ${vaults.length} vaults with ${ipIds.length} unique IP assets`);
 
+      // Helper: Check if a name is generic and should use subgraph format
+      const isGenericName = (name: string | undefined | null): boolean => {
+        if (!name) return true;
+        if (/^\d+:\s*.+\s*#\d+$/.test(name)) return true; // "1315: Test NFTs #3542"
+        if (/^IP Asset\s*(0x[a-fA-F0-9]|#\d)/i.test(name)) return true;
+        if (/^0x[a-fA-F0-9]{6,}$/i.test(name)) return true;
+        if (/^IP Asset$/i.test(name.trim())) return true;
+        return false;
+      };
+      const getDefaultName = (ipId: string): string => {
+        const cleanId = ipId.toLowerCase();
+        return `IP Asset ${cleanId.slice(0, 6)}...${cleanId.slice(-4)}`;
+      };
+
       // If vaults have embedded IP asset data, use it - but enrich with Story API if names are defaults
       const vaultsWithIPData = vaults.filter(v => 
         typeof v.ipAsset === 'object' && v.ipAsset !== null && v.ipAsset.name
@@ -892,6 +906,12 @@ export class VerificationServer {
           // Get real metadata from Story Protocol API, fall back to subgraph data
           const storyMetadata = metadataMap.get(resolvedIpId as `0x${string}`);
           
+          // Determine the best name: prefer Story API custom name, else use subgraph default format
+          let resolvedName = storyMetadata?.name;
+          if (isGenericName(resolvedName)) {
+            resolvedName = getDefaultName(resolvedIpId);
+          }
+          
           return {
             vaultAddress: vault.vaultAddress,
             ipId: resolvedIpId,
@@ -901,9 +921,8 @@ export class VerificationServer {
             totalRevenue: vault.totalLicenseRevenue || '0',
             createdAt: vault.createdAt || vault.timestamp,
             metadata: {
-              // Prefer Story Protocol metadata over subgraph defaults
-              name: storyMetadata?.name || ipAsset.name || `IP Asset ${cleanIpId.slice(0, 10)}...`,
-              description: storyMetadata?.description || ipAsset.description || 'No description available',
+              name: resolvedName,
+              description: storyMetadata?.description || 'IP Asset registered via ADLV vault creation',
               creator: (storyMetadata?.creator || ipAsset.creator || vault.creator) as `0x${string}`,
               thumbnailURI: storyMetadata?.thumbnailURI,
             },
@@ -930,21 +949,30 @@ export class VerificationServer {
         const storyAssets = await listAllIPAssets({ limit: 50 });
         
         if (storyAssets.assets.length > 0) {
-          const assets = storyAssets.assets.map(asset => ({
-            vaultAddress: '', // No vault linked yet
-            ipId: asset.ipId,
-            creator: asset.ownerAddress,
-            cvsScore: '0',
-            totalLicensesSold: 0,
-            totalRevenue: '0',
-            createdAt: asset.registrationDate,
-            metadata: {
-              name: asset.nftMetadata?.name || asset.name || asset.title || `IP Asset ${asset.ipId.slice(0, 10)}...`,
-              description: asset.nftMetadata?.description || asset.description || 'No description available',
-              creator: asset.ownerAddress as `0x${string}`,
-              thumbnailURI: asset.nftMetadata?.image?.cachedUrl || asset.nftMetadata?.image?.originalUrl,
-            },
-          }));
+          const assets = storyAssets.assets.map(asset => {
+            // Find a non-generic name, or use subgraph default format
+            const candidateNames = [asset.name, asset.title, asset.nftMetadata?.name];
+            let resolvedName = candidateNames.find(n => !isGenericName(n));
+            if (!resolvedName) {
+              resolvedName = getDefaultName(asset.ipId);
+            }
+            
+            return {
+              vaultAddress: '', // No vault linked yet
+              ipId: asset.ipId,
+              creator: asset.ownerAddress,
+              cvsScore: '0',
+              totalLicensesSold: 0,
+              totalRevenue: '0',
+              createdAt: asset.registrationDate,
+              metadata: {
+                name: resolvedName,
+                description: asset.nftMetadata?.description || asset.description || 'IP Asset registered via ADLV vault creation',
+                creator: asset.ownerAddress as `0x${string}`,
+                thumbnailURI: asset.nftMetadata?.image?.cachedUrl || asset.nftMetadata?.image?.originalUrl,
+              },
+            };
+          });
           
           console.log(`✅ Returning ${assets.length} IP assets from Story Protocol API`);
           return this.jsonResponse({
