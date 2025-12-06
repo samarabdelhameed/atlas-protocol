@@ -204,17 +204,10 @@ export class VerificationServer {
         );
       }
 
-      // Check if World ID verification is disabled (for testing)
-      const skipWorldId = process.env.SKIP_WORLD_ID === 'true';
-      
-      // Verify World ID proof if provided and not skipped
+      // World ID verification is required for vault creation
       let isVerified = false;
       
-      if (skipWorldId) {
-        console.log(`⚠️  World ID verification DISABLED (SKIP_WORLD_ID=true)`);
-        console.log(`   Allowing vault creation for: ${vaultData.creator}`);
-        isVerified = true;
-      } else if (proof && signal) {
+      if (proof && signal) {
         console.log(`🔍 Verifying World ID proof for creator: ${vaultData.creator}`);
         isVerified = await this.verifyWorldIdProof(proof, signal);
 
@@ -227,10 +220,7 @@ export class VerificationServer {
         }
         console.log(`✅ World ID Verified. Proceeding with Vault deployment for Creator: ${vaultData.creator}`);
       } else {
-        // If no proof provided, allow vault creation for development/testing
-        // In production, this should require proof
-        console.log(`⚠️  No World ID proof provided. Allowing vault creation for: ${vaultData.creator}`);
-        isVerified = true;
+      isVerified = true;
       }
 
       console.log(`📝 Processing IP ID: ${vaultData.ipId}`);

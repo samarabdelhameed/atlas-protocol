@@ -693,23 +693,38 @@ https://api.goldsky.com/api/public/project_cmi7k5szzd54101yy44xg05em/subgraphs/a
 
 ### 4. World ID Integration ⭐
 
-**Integration Scope:** 90% (Identity Layer)
+**Integration Scope:** 100% (Identity & Sybil Resistance Layer)
 
-**Purpose:** Sybil-resistant vault creation and reduced rates for verified users
+#### 🎯 Problem Solved
 
-**Integration Flow:**
+IP-backed lending marketplaces are vulnerable to **bot attacks** where automated scripts:
+- Create fake accounts to spam fraudulent IP registrations
+- Extract loans against non-existent or stolen IP
+- Manipulate marketplace metrics through coordinated bot activity
+
+Without identity verification, bots can flood the platform with fake creators.
+
+#### 💡 Why World ID is Necessary
+
+World ID provides **proof of unique humanness** without revealing personal identity:
+- **Bot Prevention**: Only verified humans can create vaults, blocking automated attacks
+- **Zero-Knowledge Privacy**: Creators verify they're human without exposing any personal data
+- **Trust Layer**: License buyers know they're dealing with verified human creators (not bots)
+- **Marketplace Integrity**: Ensures all IP in the marketplace comes from real people
+
+**Atlas cannot function securely without World ID** — it's the foundation that ensures only legitimate human creators participate in the marketplace.
+
+#### 🔄 Integration Flow
 ```
 User Creates Vault
        ↓
-World ID Verification Widget
+World ID Verification Widget (Step 2 of Vault Creation)
        ↓
 Zero-Knowledge Proof Generated
        ↓
-Proof Sent to World ID API
+Proof Verified via World ID API
        ↓
-Verification Result → Smart Contract
-       ↓
-Vault Creation Allowed (1 per human)
+Human Verified → Vault Creation Allowed
 ```
 
 **Frontend Implementation:**
