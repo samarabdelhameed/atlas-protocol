@@ -268,7 +268,7 @@ export default function MyLicensesPage({ onNavigate }: MyLicensesPageProps) {
 
   const formatPrice = (priceWei: string) => {
     const priceEth = Number(priceWei) / 1e18;
-    return `${priceEth.toFixed(4)} ETH`;
+    return `${priceEth.toFixed(4)} IP`;
   };
 
   // Format CVS score to readable number (always in wei from subgraph)

@@ -18,7 +18,7 @@ import ADLV_ABI from "../contracts/abis/ADLV.json";
 import IDO_ABI from "../contracts/abis/IDO.json";
 
 interface VaultCreationProps {
-  onNavigate?: (page: string) => void;
+  onNavigate?: (page: string, data?: string) => void;
 }
 
 interface WorldIDResult {
