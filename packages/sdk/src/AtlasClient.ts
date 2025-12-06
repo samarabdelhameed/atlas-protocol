@@ -69,6 +69,58 @@ export interface GlobalUsageData {
       exclusive: number;
     };
   };
+
+  // NEW: Story Protocol on-chain usage stats
+  storyProtocolStats?: {
+    directDerivatives: number;
+    totalDescendants: number;
+    parentIPs: number;
+    ancestorIPs: number;
+    licensesAttached: number;
+    licenseTokensIssued: number;
+    totalTransactions: number;
+    recentTransactions: Array<{
+      txHash: string;
+      eventType: string;
+      blockNumber: number;
+      createdAt: string;
+    }>;
+  };
+
+  // Mock Usage Analytics (varies per IP asset)
+  mockUsageAnalytics?: {
+    apiCalls: {
+      total: number;
+      last24h: number;
+      last7d: number;
+      last30d: number;
+    };
+    contentAccess: {
+      downloads: number;
+      views: number;
+      uniqueUsers: number;
+    };
+    geographicDistribution: Array<{
+      country: string;
+      percentage: number;
+      accessCount: number;
+    }>;
+    platformUsage: Array<{
+      platform: string;
+      usageCount: number;
+      lastAccessed: string;
+    }>;
+    aiTrainingDetection: {
+      foundInDatasets: number;
+      datasetNames: string[];
+      estimatedModelsUsingIP: number;
+    };
+    usageTrend: Array<{
+      date: string;
+      apiCalls: number;
+      downloads: number;
+    }>;
+  };
 }
 
 export interface License {
@@ -148,7 +200,7 @@ export class AtlasClient {
         throw new Error('Failed to get authentication challenge');
       }
 
-      const { message } = await challengeRes.json();
+      const { message } = await challengeRes.json() as { message: string };
 
       // Step 2: Sign the challenge message
       const signature = await this.signer.signMessage(message);
@@ -164,7 +216,7 @@ export class AtlasClient {
         throw new Error('Signature verification failed');
       }
 
-      const authData = await verifyRes.json();
+      const authData = await verifyRes.json() as { token: string; expiresAt: number };
       this.authToken = authData.token;
       this.tokenExpiry = authData.expiresAt;
 
@@ -222,7 +274,7 @@ export class AtlasClient {
       throw new Error(`Failed to fetch usage data: ${response.statusText}`);
     }
 
-    return response.json();
+    return response.json() as Promise<GlobalUsageData>;
   }
 
   /**
@@ -246,7 +298,7 @@ export class AtlasClient {
       throw new Error(`Failed to fetch licenses: ${response.statusText}`);
     }
 
-    return response.json();
+    return response.json() as Promise<{ licenses: License[]; count: number }>;
   }
 
   /**
@@ -287,9 +339,4 @@ export function createClient(config?: AtlasClientConfig): AtlasClient {
   return new AtlasClient(config);
 }
 
-// Export types
-export type {
-  AtlasClientConfig,
-  GlobalUsageData,
-  License,
-};
+// Types are already exported above via interface declarations

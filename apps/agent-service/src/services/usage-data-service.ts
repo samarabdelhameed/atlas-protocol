@@ -14,6 +14,7 @@ import { licenseDb } from '../db/database.js';
 import { graphqlClient } from '@atlas-protocol/graphql-client';
 import { gql } from 'graphql-request';
 import { fetchOriginalityScore } from '../clients/yakoaClient.js';
+import { getIPUsageStats, type IPUsageStats, type DerivativeEdge } from '../clients/storyProtocolApiClient.js';
 
 /**
  * Global IP Asset Usage Response
@@ -85,6 +86,64 @@ export interface UsageDataResponse {
       exclusive: number;
     };
   };
+
+  // STORY PROTOCOL USAGE STATS (NEW - from Story API)
+  storyProtocolStats?: {
+    directDerivatives: number;
+    totalDescendants: number;
+    parentIPs: number;
+    ancestorIPs: number;
+    licensesAttached: number;
+    licenseTokensIssued: number;
+    totalTransactions: number;
+    recentTransactions: Array<{
+      txHash: string;
+      eventType: string;
+      blockNumber: number;
+      createdAt: string;
+    }>;
+  };
+
+  // MOCK USAGE ANALYTICS (for hackathon demo - varies per asset)
+  mockUsageAnalytics?: {
+    // API Access Metrics
+    apiCalls: {
+      total: number;
+      last24h: number;
+      last7d: number;
+      last30d: number;
+    };
+    // Downloads/Views
+    contentAccess: {
+      downloads: number;
+      views: number;
+      uniqueUsers: number;
+    };
+    // Geographic Distribution
+    geographicDistribution: Array<{
+      country: string;
+      percentage: number;
+      accessCount: number;
+    }>;
+    // Platform Usage
+    platformUsage: Array<{
+      platform: string;
+      usageCount: number;
+      lastAccessed: string;
+    }>;
+    // AI Training Detection (simulated)
+    aiTrainingDetection: {
+      foundInDatasets: number;
+      datasetNames: string[];
+      estimatedModelsUsingIP: number;
+    };
+    // Usage Trend (last 7 days)
+    usageTrend: Array<{
+      date: string;
+      apiCalls: number;
+      downloads: number;
+    }>;
+  };
 }
 
 /**
@@ -95,23 +154,34 @@ export async function getUsageData(ipId: string): Promise<UsageDataResponse | nu
   try {
     console.log(`📊 Fetching global usage intelligence for IP: ${ipId}`);
 
-    // STEP 1: Fetch Yakoa usage intelligence (infringements, authorizations)
+    // STEP 1: Fetch Story Protocol usage stats (NEW - primary source)
+    const storyStats = await getIPUsageStats(ipId);
+
+    // STEP 2: Fetch Yakoa provenance intelligence (infringements, authorizations)
     const yakoaData = await fetchYakoaUsageData(ipId);
 
-    // STEP 2: Fetch Story Protocol derivatives (on-chain remixes)
-    const derivatives = await fetchDerivativeWorks(ipId);
-
-    // STEP 3: Fetch CVS score from subgraph
+    // STEP 3: Fetch CVS score from subgraph (if available)
     const cvs = await fetchCVSData(ipId);
 
-    // STEP 4: Get IP asset name
-    const ipAssetName = await getIPAssetName(ipId);
-
-    // STEP 5: Get licensing summary (secondary data)
+    // STEP 4: Get licensing summary from local database
     const licensingSummary = await getLicensingSummary(ipId);
 
-    // STEP 6: Calculate global usage metrics
-    const totalDetections = yakoaData.infringements.length + yakoaData.authorizations.length + derivatives.length;
+    // Get IP asset name from Story API or fallback
+    const ipAssetName = storyStats?.name || await getIPAssetName(ipId);
+
+    // Transform Story Protocol derivatives to our format
+    const derivatives = storyStats?.derivatives?.map((edge: DerivativeEdge) => ({
+      childIpId: edge.childIpId,
+      childName: undefined, // Story API doesn't include child name in edges
+      creator: edge.caller,
+      createdAt: edge.blockTimestamp,
+      royaltiesPaid: undefined,
+    })) || [];
+
+    // Calculate global usage metrics
+    const totalDetections = yakoaData.infringements.length + 
+                           yakoaData.authorizations.length + 
+                           (storyStats?.totalDescendants || derivatives.length);
     const platforms = extractUniquePlatforms(yakoaData.infringements, yakoaData.authorizations);
     const lastDetected = getMostRecentDetection(yakoaData.infringements, yakoaData.authorizations, derivatives);
 
@@ -125,7 +195,7 @@ export async function getUsageData(ipId: string): Promise<UsageDataResponse | nu
         authorizedUses: yakoaData.authorizations.length,
         unauthorizedUses: yakoaData.infringements.length,
         platforms,
-        derivatives: derivatives.length,
+        derivatives: storyStats?.directDerivatives || derivatives.length,
         lastDetectedAt: lastDetected,
       },
 
@@ -153,11 +223,114 @@ export async function getUsageData(ipId: string): Promise<UsageDataResponse | nu
 
       // Licensing summary (secondary metrics)
       licensingSummary,
+
+      // NEW: Story Protocol on-chain usage stats
+      storyProtocolStats: storyStats ? {
+        directDerivatives: storyStats.directDerivatives,
+        totalDescendants: storyStats.totalDescendants,
+        parentIPs: storyStats.parentIPs,
+        ancestorIPs: storyStats.ancestorIPs,
+        licensesAttached: storyStats.licensesAttached,
+        licenseTokensIssued: storyStats.licenseTokensIssued,
+        totalTransactions: storyStats.totalTransactions,
+        recentTransactions: storyStats.recentTransactions.map(tx => ({
+          txHash: tx.txHash,
+          eventType: tx.eventType,
+          blockNumber: tx.blockNumber,
+          createdAt: tx.createdAt,
+        })),
+      } : undefined,
+
+      // MOCK USAGE ANALYTICS (for hackathon demo)
+      mockUsageAnalytics: generateMockUsageAnalytics(ipId),
     };
   } catch (error: any) {
     console.error(`❌ Error fetching global usage data for ${ipId}:`, error);
     return null;
   }
+}
+
+/**
+ * Generate mock usage analytics data that varies per IP asset
+ * Uses a simple hash of the IP ID to create consistent but varied data
+ */
+function generateMockUsageAnalytics(ipId: string) {
+  // Create a simple numeric seed from the IP ID for consistent randomness
+  const seed = ipId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const seededRandom = (min: number, max: number) => {
+    const x = Math.sin(seed + min * max) * 10000;
+    return Math.floor((x - Math.floor(x)) * (max - min + 1)) + min;
+  };
+
+  // Generate varied but consistent data per IP
+  const baseApiCalls = seededRandom(1000, 50000);
+  const baseDownloads = seededRandom(100, 5000);
+  const baseViews = baseDownloads * seededRandom(3, 10);
+
+  // Countries weighted by common distribution
+  const countries = ['United States', 'China', 'Germany', 'Japan', 'United Kingdom', 'India', 'Brazil', 'France'];
+  const shuffledCountries = countries.sort(() => Math.sin(seed) - 0.5).slice(0, seededRandom(3, 6));
+  const totalPercentage = 100;
+  let remainingPercentage = totalPercentage;
+  
+  const geographicDistribution = shuffledCountries.map((country, idx) => {
+    const isLast = idx === shuffledCountries.length - 1;
+    const percentage = isLast ? remainingPercentage : Math.min(seededRandom(10, 40), remainingPercentage - (shuffledCountries.length - idx - 1) * 5);
+    remainingPercentage -= percentage;
+    return {
+      country,
+      percentage,
+      accessCount: Math.floor(baseApiCalls * percentage / 100),
+    };
+  });
+
+  // AI platforms
+  const allPlatforms = ['OpenAI GPT-4', 'Anthropic Claude', 'Google Gemini', 'Stable Diffusion', 'Midjourney', 'Meta LLaMA', 'Hugging Face'];
+  const selectedPlatforms = allPlatforms.sort(() => Math.sin(seed + 1) - 0.5).slice(0, seededRandom(2, 5));
+  
+  const platformUsage = selectedPlatforms.map(platform => ({
+    platform,
+    usageCount: seededRandom(50, 2000),
+    lastAccessed: new Date(Date.now() - seededRandom(0, 7 * 24 * 60 * 60 * 1000)).toISOString(),
+  }));
+
+  // AI training datasets
+  const allDatasets = ['LAION-5B', 'CommonCrawl', 'The Pile', 'RedPajama', 'C4 Dataset', 'WebText2'];
+  const detectedDatasets = allDatasets.sort(() => Math.sin(seed + 2) - 0.5).slice(0, seededRandom(0, 3));
+
+  // Generate 7-day trend
+  const usageTrend = Array.from({ length: 7 }, (_, i) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (6 - i));
+    const dateStr = date.toISOString().split('T')[0] ?? date.toISOString().slice(0, 10);
+    return {
+      date: dateStr,
+      apiCalls: Math.floor(baseApiCalls / 30 * (0.7 + Math.sin(seed + i) * 0.3)),
+      downloads: Math.floor(baseDownloads / 30 * (0.7 + Math.sin(seed + i + 1) * 0.3)),
+    };
+  });
+
+  return {
+    apiCalls: {
+      total: baseApiCalls,
+      last24h: Math.floor(baseApiCalls / 30),
+      last7d: Math.floor(baseApiCalls / 4),
+      last30d: baseApiCalls,
+    },
+    contentAccess: {
+      downloads: baseDownloads,
+      views: baseViews,
+      uniqueUsers: Math.floor(baseViews / seededRandom(2, 5)),
+    },
+    geographicDistribution,
+    platformUsage,
+    aiTrainingDetection: {
+      foundInDatasets: detectedDatasets.length,
+      datasetNames: detectedDatasets,
+      estimatedModelsUsingIP: seededRandom(0, 15),
+    },
+    usageTrend,
+  };
 }
 
 /**

@@ -19,28 +19,51 @@ export interface YakoaScore {
 
 /**
  * Yakoa API Response Structure
- * Based on official API documentation
+ * Based on actual API response from docs-demo environment
  */
 interface YakoaTokenResponse {
-  token_id: string;
-  network: string;
+  id: string;
+  registration_tx?: {
+    hash: string;
+    block_number: number;
+    timestamp: string;
+  };
+  creator_id?: string;
   metadata?: {
     name?: string;
     description?: string;
     image?: string;
   };
-  infringements?: Array<{
-    brand_id: string;
-    detected_at: string;
-    status: string;
+  license_parents?: Array<{
+    token_id: string;
+    license_id?: string;
   }>;
-  authorizations?: Array<{
+  token_authorizations?: Array<{
     brand_id: string;
-    authorized_at: string;
+    authorized_at?: string;
   }>;
-  status?: string;
-  created_at?: string;
-  updated_at?: string;
+  creator_authorizations?: Array<{
+    brand_id: string;
+    authorized_at?: string;
+  }>;
+  media?: Array<{
+    media_id: string;
+    url: string;
+    fetch_status?: string;
+  }>;
+  infringements?: {
+    status: string; // "succeeded", "pending", "failed"
+    result: string; // "not_checked", "clean", "detected"
+    in_network_infringements: Array<{
+      brand_id?: string;
+      token_id?: string;
+      detected_at?: string;
+    }>;
+    external_infringements: Array<{
+      brand_id?: string;
+      detected_at?: string;
+    }>;
+  };
 }
 
 /**
@@ -134,6 +157,24 @@ export async function fetchOriginalityScore(tokenId: string): Promise<YakoaScore
       },
     });
 
+    // Handle 404 - token not registered with Yakoa (graceful degradation)
+    if (response.status === 404) {
+      console.warn(`⚠️ Token ${normalizeTokenId(tokenId)} not registered with Yakoa. Returning default score.`);
+      console.warn('💡 Register the token with Yakoa to get real infringement data.');
+      
+      return {
+        score: 50, // Neutral score - we don't know if it's infringing or not
+        confidence: 0, // No confidence since we have no data
+        verified: false,
+        timestamp: Date.now(),
+        details: {
+          infringements: 0,
+          authorizations: 0,
+          status: 'not_registered'
+        }
+      };
+    }
+
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`Yakoa API error: ${response.status} ${response.statusText} - ${errorText}`);
@@ -145,35 +186,59 @@ export async function fetchOriginalityScore(tokenId: string): Promise<YakoaScore
 
     // Calculate originality score based on infringements
     // 100 = no infringements, decreases based on number of issues
-    const infringementCount = data.infringements?.length || 0;
-    const authorizationCount = data.authorizations?.length || 0;
+    const inNetworkCount = data.infringements?.in_network_infringements?.length || 0;
+    const externalCount = data.infringements?.external_infringements?.length || 0;
+    const infringementCount = inNetworkCount + externalCount;
+    const authorizationCount = data.token_authorizations?.length || 0;
+
+    // Determine status based on result
+    const infringementResult = data.infringements?.result || 'unknown';
+    const infringementStatus = data.infringements?.status || 'unknown';
 
     // Score calculation:
     // - Start at 100
     // - Subtract 20 points per infringement (minimum 0)
     // - Add bonus if authorized (up to 10 points)
-    let calculatedScore = 100 - (infringementCount * 20);
-    if (authorizationCount > 0) {
-      calculatedScore = Math.min(100, calculatedScore + 10);
+    // - If not_checked, give neutral score
+    let calculatedScore: number;
+    if (infringementResult === 'not_checked') {
+      calculatedScore = 50; // Neutral - no media to check
+    } else {
+      calculatedScore = 100 - (infringementCount * 20);
+      if (authorizationCount > 0) {
+        calculatedScore = Math.min(100, calculatedScore + 10);
+      }
+      calculatedScore = Math.max(0, calculatedScore);
     }
-    calculatedScore = Math.max(0, calculatedScore);
 
     const score: YakoaScore = {
       score: calculatedScore,
-      confidence: infringementCount === 0 ? 95 : 75, // Higher confidence when no issues
-      verified: infringementCount === 0, // Verified if no infringements
-      timestamp: data.updated_at ? new Date(data.updated_at).getTime() : Date.now(),
+      confidence: infringementResult === 'not_checked' ? 50 : (infringementCount === 0 ? 95 : 75),
+      verified: infringementResult !== 'not_checked' && infringementCount === 0,
+      timestamp: data.registration_tx?.timestamp ? new Date(data.registration_tx.timestamp).getTime() : Date.now(),
       details: {
         infringements: infringementCount,
         authorizations: authorizationCount,
-        status: data.status || 'unknown',
+        status: infringementResult,
       },
     };
 
     return score;
   } catch (error: any) {
     console.error('❌ Error fetching Yakoa data:', error.message);
-    throw error; // Throw error instead of returning fallback
+    
+    // Graceful degradation for network/API errors
+    return {
+      score: 50, // Neutral score
+      confidence: 0,
+      verified: false,
+      timestamp: Date.now(),
+      details: {
+        infringements: 0,
+        authorizations: 0,
+        status: 'error'
+      }
+    };
   }
 }
 

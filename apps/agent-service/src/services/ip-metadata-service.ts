@@ -1,12 +1,12 @@
 /**
  * IP Metadata Service
  * 
- * Fetches IP Asset metadata from Story Protocol using the existing Story SDK.
+ * Fetches IP Asset metadata from Story Protocol using the REST API.
  * Provides caching and bulk fetching capabilities for the marketplace.
  */
 
 import type { Address } from 'viem';
-import { getIPAsset } from '../../services/storyProtocol.js';
+import { getIPAsset as getIPAssetFromAPI } from '../clients/storyProtocolApiClient.js';
 
 export interface IPMetadata {
   name: string;
@@ -25,8 +25,8 @@ const metadataCache = new Map<string, { data: IPMetadata; timestamp: number }>()
 const CACHE_TTL = 3600000; // 1 hour
 
 /**
- * Fetch IP metadata from Story Protocol
- * Uses existing getIPAsset wrapper function
+ * Fetch IP metadata from Story Protocol REST API
+ * Uses the enriched API that returns name, description, and nftMetadata
  */
 export async function fetchIPMetadata(ipId: Address): Promise<IPMetadata | null> {
   try {
@@ -37,55 +37,26 @@ export async function fetchIPMetadata(ipId: Address): Promise<IPMetadata | null>
       return cached.data;
     }
 
-    console.log(`🔍 Fetching metadata for IP ${ipId} from Story Protocol...`);
+    console.log(`🔍 Fetching metadata for IP ${ipId} from Story Protocol API...`);
 
-    // Fetch from Story Protocol SDK using existing wrapper
-    const ipAsset = await getIPAsset(ipId);
+    // Fetch from Story Protocol REST API (returns enriched data with name/description)
+    const ipAsset = await getIPAssetFromAPI(ipId);
 
     if (!ipAsset) {
       console.warn(`⚠️ No IP Asset found for ${ipId}`);
       return null;
     }
 
-    // Parse the metadata from Story Protocol response
-    // The SDK returns the IP Asset data including metadata
+    // Parse the metadata from Story Protocol API response
+    // The API returns rich data including name, description, and nftMetadata
     const parsedMetadata: IPMetadata = {
-      name: (ipAsset as any).metadata?.name || (ipAsset as any).name || `IP Asset ${ipId.slice(0, 10)}...`,
-      description: (ipAsset as any).metadata?.description || (ipAsset as any).description || 'No description available',
-      contentURI: (ipAsset as any).metadataURI || (ipAsset as any).metadata?.metadataURI,
-      creator: ((ipAsset as any).owner || '0x0000000000000000000000000000000000000000') as Address,
-      thumbnailURI: (ipAsset as any).metadata?.image,
-      mediaUrl: (ipAsset as any).metadata?.mediaUrl,
-      mediaType: (ipAsset as any).metadata?.mediaType,
-      category: (ipAsset as any).metadata?.category,
+      name: ipAsset.nftMetadata?.name || ipAsset.name || ipAsset.title || `IP Asset ${ipId.slice(0, 10)}...`,
+      description: ipAsset.nftMetadata?.description || ipAsset.description || 'No description available',
+      contentURI: ipAsset.uri,
+      creator: (ipAsset.ownerAddress || '0x0000000000000000000000000000000000000000') as Address,
+      thumbnailURI: ipAsset.nftMetadata?.image?.cachedUrl || ipAsset.nftMetadata?.image?.originalUrl,
+      createdAt: ipAsset.registrationDate ? new Date(ipAsset.registrationDate).getTime() : undefined,
     };
-
-    // If metadata includes external URI (IPFS/HTTP), try to fetch it
-    if (parsedMetadata.contentURI && parsedMetadata.contentURI.startsWith('http')) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-
-        const response = await fetch(parsedMetadata.contentURI, { 
-          signal: controller.signal 
-        });
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          const externalData = await response.json() as any;
-          // Merge external metadata (prefer external data if available)
-          parsedMetadata.name = externalData.title || externalData.name || parsedMetadata.name;
-          parsedMetadata.description = externalData.description || parsedMetadata.description;
-          parsedMetadata.thumbnailURI = externalData.image || externalData.thumbnail || parsedMetadata.thumbnailURI;
-          parsedMetadata.category = externalData.category || parsedMetadata.category;
-          parsedMetadata.mediaUrl = externalData.mediaUrl || parsedMetadata.mediaUrl;
-          parsedMetadata.mediaType = externalData.mediaType || parsedMetadata.mediaType;
-        }
-      } catch (fetchError: any) {
-        console.warn(`⚠️ Failed to fetch external metadata from ${parsedMetadata.contentURI}:`, fetchError.message);
-        // Continue with on-chain metadata
-      }
-    }
 
     // Cache the result
     metadataCache.set(ipId.toLowerCase(), {

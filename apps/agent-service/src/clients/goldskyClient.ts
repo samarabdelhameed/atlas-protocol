@@ -49,7 +49,16 @@ export interface LicenseSale {
 export interface Vault {
   id: string;
   vaultAddress: string;
-  ipAsset: string | { id: string; ipId?: string };
+  ipAsset: string | { 
+    id: string; 
+    ipId?: string;
+    name?: string;
+    description?: string;
+    creator?: string;
+    cvsScore?: string;
+    totalLicenseRevenue?: string;
+    ipHash?: string;
+  };
   ipId?: string;
   creator: string;
   currentCVS: string;
@@ -284,6 +293,7 @@ export async function fetchAllVaultsWithIPData(): Promise<Vault[]> {
   console.log('🔍 Querying Goldsky endpoint for all vaults:', endpoint);
 
   try {
+    // Expand ipAsset relation to get full IP data including name and description
     const query = gql`
       query GetAllVaultsWithIPData {
         idovaults(
@@ -291,7 +301,16 @@ export async function fetchAllVaultsWithIPData(): Promise<Vault[]> {
         ) {
           id
           vaultAddress
-          ipAsset
+          ipAsset {
+            id
+            ipId
+            name
+            description
+            creator
+            cvsScore
+            totalLicenseRevenue
+            ipHash
+          }
           creator
           currentCVS
           totalLiquidity
