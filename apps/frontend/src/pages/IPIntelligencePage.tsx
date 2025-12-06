@@ -3,6 +3,7 @@
  *
  * Comprehensive dashboard showing all licensed IP intelligence data:
  * - Originality scores from Yakoa
+ * - Story Protocol usage stats (derivatives, licenses, transactions)
  * - Market metrics (sales, pricing, demand)
  * - CVS scores and vault financials
  * - Historical performance data
@@ -12,7 +13,7 @@ import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { useLicenseAuth } from '../hooks/useLicenseAuth';
 import { motion } from 'framer-motion';
-import { Brain, TrendingUp, DollarSign, ShieldCheck, Lock } from 'lucide-react';
+import { Brain, TrendingUp, DollarSign, ShieldCheck, Lock, GitBranch, FileText, Activity } from 'lucide-react';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
 
@@ -50,6 +51,22 @@ interface IPAssetData {
       buyer: string;
       price: string;
       timestamp: string;
+    }>;
+  };
+  // NEW: Story Protocol on-chain usage stats
+  storyProtocolStats?: {
+    directDerivatives: number;
+    totalDescendants: number;
+    parentIPs: number;
+    ancestorIPs: number;
+    licensesAttached: number;
+    licenseTokensIssued: number;
+    totalTransactions: number;
+    recentTransactions: Array<{
+      txHash: string;
+      eventType: string;
+      blockNumber: number;
+      createdAt: string;
     }>;
   };
 }
@@ -300,6 +317,107 @@ export default function IPIntelligencePage({ ipAssetId, onNavigate }: IPIntellig
             </div>
           </motion.div>
         </div>
+
+        {/* Story Protocol Usage Stats */}
+        {data.storyProtocolStats && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+            className="mt-6 bg-gradient-to-br from-orange-900/20 to-amber-900/20 backdrop-blur-xl border border-orange-500/30 rounded-2xl p-6"
+          >
+            <div className="flex items-center gap-2 mb-6">
+              <Activity className="w-5 h-5 text-orange-400" />
+              <h3 className="text-lg font-semibold text-white">
+                Story Protocol Usage Analytics
+              </h3>
+              <span className="ml-2 bg-orange-500/20 text-orange-400 text-xs font-medium px-2 py-0.5 rounded-full">
+                On-Chain
+              </span>
+            </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6">
+              <div className="bg-gray-900/40 rounded-xl p-4 border border-gray-700/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <GitBranch className="w-4 h-4 text-orange-400" />
+                  <p className="text-sm text-gray-400">Direct Derivatives</p>
+                </div>
+                <p className="text-3xl font-bold text-white">
+                  {data.storyProtocolStats.directDerivatives}
+                </p>
+              </div>
+              <div className="bg-gray-900/40 rounded-xl p-4 border border-gray-700/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <GitBranch className="w-4 h-4 text-amber-400" />
+                  <p className="text-sm text-gray-400">Total Descendants</p>
+                </div>
+                <p className="text-3xl font-bold text-white">
+                  {data.storyProtocolStats.totalDescendants}
+                </p>
+              </div>
+              <div className="bg-gray-900/40 rounded-xl p-4 border border-gray-700/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <FileText className="w-4 h-4 text-blue-400" />
+                  <p className="text-sm text-gray-400">License Tokens</p>
+                </div>
+                <p className="text-3xl font-bold text-white">
+                  {data.storyProtocolStats.licenseTokensIssued}
+                </p>
+              </div>
+              <div className="bg-gray-900/40 rounded-xl p-4 border border-gray-700/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <Activity className="w-4 h-4 text-green-400" />
+                  <p className="text-sm text-gray-400">Transactions</p>
+                </div>
+                <p className="text-3xl font-bold text-white">
+                  {data.storyProtocolStats.totalTransactions}
+                </p>
+              </div>
+            </div>
+
+            {/* IP Lineage */}
+            {(data.storyProtocolStats.parentIPs > 0 || data.storyProtocolStats.ancestorIPs > 0) && (
+              <div className="mb-6 bg-gray-900/40 rounded-xl p-4 border border-gray-700/30">
+                <h4 className="text-sm font-medium text-gray-400 mb-3">IP Lineage</h4>
+                <div className="flex gap-6">
+                  <div>
+                    <span className="text-gray-500 text-sm">Parent IPs:</span>
+                    <span className="ml-2 text-white font-semibold">{data.storyProtocolStats.parentIPs}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 text-sm">Ancestor IPs:</span>
+                    <span className="ml-2 text-white font-semibold">{data.storyProtocolStats.ancestorIPs}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Recent Transactions */}
+            {data.storyProtocolStats.recentTransactions.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-400 mb-3">Recent On-Chain Activity</h4>
+                <div className="space-y-2">
+                  {data.storyProtocolStats.recentTransactions.slice(0, 5).map((tx, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between text-sm bg-gray-900/50 border border-gray-700/30 p-3 rounded-lg"
+                    >
+                      <span className="bg-orange-500/20 text-orange-400 text-xs font-medium px-2 py-0.5 rounded">
+                        {tx.eventType}
+                      </span>
+                      <span className="text-gray-400 font-mono text-xs">
+                        {tx.txHash.slice(0, 10)}...{tx.txHash.slice(-8)}
+                      </span>
+                      <span className="text-gray-500 text-xs">
+                        Block #{tx.blockNumber}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
 
         {/* Market Metrics */}
         <motion.div

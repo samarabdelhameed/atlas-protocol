@@ -96,6 +96,7 @@ CVS = (License Revenue × 0.05) + (Vault Liquidity × 0.02) + (Yakoa Score × We
 | Technology | Purpose | Integration Status |
 |------------|---------|-------------------|
 | **Story Protocol** | IP Asset Registry, Licensing, Royalties | ✅ 100% |
+| **Story Protocol REST API** | On-chain usage analytics (derivatives, licenses, transactions) | ✅ 100% |
 | **Goldsky** | Real-time event indexing & GraphQL API | ✅ 100% |
 | **Owlto Finance** | Cross-chain loan disbursement | ✅ 100% |
 | **World ID** | Creator verification & Sybil resistance | ✅ 100% |
@@ -137,6 +138,9 @@ CVS = (License Revenue × 0.05) + (Vault Liquidity × 0.02) + (Yakoa Score × We
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │  │
 │  │  │ World ID API │  │ Owlto Bridge │  │ Yakoa API    │    │  │
 │  │  └──────────────┘  └──────────────┘  └──────────────┘    │  │
+│  │  ┌──────────────────────────────────────────────────┐    │  │
+│  │  │ Story Protocol REST API (Usage Analytics)        │    │  │
+│  │  └──────────────────────────────────────────────────┘    │  │
 │  └────────────────────────────────────────────────────────────┘  │
 └────────────────────────┬─────────────────────────────────────────┘
                          │
@@ -813,26 +817,151 @@ function createVault(
 
 ### 5. Yakoa Integration ⭐
 
-**Integration Scope:** 100% (IP Intelligence)
+**Integration Scope:** 100% (IP Intelligence & Provenance)
 
-**Purpose:** Detect IP infringements and calculate originality scores for CVS
+**Purpose:** Detect IP infringements, track authorizations, and calculate originality scores for CVS
 
 **How It Works:**
-1. When a license is purchased or CVS is calculated, Yakoa API is queried
-2. Returns infringement count, authorization status, and originality score
-3. Score affects CVS calculation and loan eligibility
+1. IP assets are registered with Yakoa when created on Story Protocol
+2. Yakoa monitors for infringements across the web and AI training datasets
+3. Originality scores are fetched and integrated into the CVS calculation
+4. License holders can view infringement/authorization data via the Usage Analytics tab
+
+**API Integration:**
+```typescript
+// apps/agent-service/src/clients/yakoaClient.ts
+export async function fetchOriginalityScore(tokenId: string): Promise<YakoaOriginalityScore> {
+  // Normalize token ID from bytes32 to standard format
+  const normalizedId = normalizeTokenId(tokenId);
+  
+  const response = await fetch(
+    `https://${YAKOA_SUBDOMAIN}.ip-api-sandbox.yakoa.io/${YAKOA_SUBDOMAIN}/token/${normalizedId}`,
+    {
+      headers: {
+        'X-API-KEY': YAKOA_API_KEY,
+        'accept': 'application/json'
+      }
+    }
+  );
+  
+  // Returns: score (0-100), verified status, infringements, authorizations
+  return parseYakoaResponse(await response.json());
+}
+
+// Register new IP with Yakoa for monitoring
+export async function registerWithYakoa(
+  tokenId: string,
+  txHash: string,
+  blockNumber: number,
+  creatorAddress: string
+): Promise<boolean> {
+  // POST to Yakoa API to register token for monitoring
+}
+```
+
+**Response Data Used:**
+| Field | Purpose |
+|-------|---------|
+| `yakoaScore` (0-100) | Originality score affects CVS |
+| `infringements.in_network` | Unauthorized uses on-chain |
+| `infringements.external` | Unauthorized uses off-chain (AI datasets, etc.) |
+| `authorizations` | Legitimate licensed uses |
+| `registration_tx.timestamp` | When IP was registered |
 
 **Key Files:**
 - API Client: [`apps/agent-service/src/clients/yakoaClient.ts`](apps/agent-service/src/clients/yakoaClient.ts)
 - Usage Service: [`apps/agent-service/src/services/usage-data-service.ts`](apps/agent-service/src/services/usage-data-service.ts)
 - IP Intelligence UI: [`apps/frontend/src/pages/IPIntelligencePage.tsx`](apps/frontend/src/pages/IPIntelligencePage.tsx)
+- My Licenses Analytics: [`apps/frontend/src/pages/MyLicensesPage.tsx`](apps/frontend/src/pages/MyLicensesPage.tsx)
 
 **Environment Variables:**
 ```bash
-YAKOA_API_KEY=your_api_key
-YAKOA_SUBDOMAIN=your_subdomain
+YAKOA_API_KEY=vNNpOgalG02fmMbEDlbafaGUgpudgwhO9EU6Izs4
+YAKOA_SUBDOMAIN=docs-demo
 YAKOA_NETWORK=story-aeneid
 ```
+
+---
+
+### 6. Story Protocol REST API Integration ⭐ (NEW)
+
+**Integration Scope:** 100% (On-Chain Usage Analytics)
+
+**Purpose:** Fetch real-time on-chain usage data from Story Protocol's official REST API
+
+**Data Retrieved:**
+| Metric | Description |
+|--------|-------------|
+| **Direct Derivatives** | Immediate child IPs (remixes) |
+| **Total Descendants** | All descendants in IP tree |
+| **Parent IPs** | Number of parent IP assets |
+| **Ancestor IPs** | Full lineage count |
+| **License Tokens Issued** | Number of license tokens minted |
+| **Total Transactions** | All on-chain activity |
+| **Recent Activity** | Last 10 transactions with event types |
+
+**API Endpoints Used:**
+```
+POST /assets          - Get IP asset details with derivative counts
+POST /assets/edges    - Get all derivative relationships
+POST /licenses/tokens - Get license tokens for an IP
+POST /transactions    - Get all IP-related transactions
+```
+
+**Client Implementation:**
+```typescript
+// apps/agent-service/src/clients/storyProtocolApiClient.ts
+export async function getIPUsageStats(ipId: string): Promise<IPUsageStats | null> {
+  const normalizedId = normalizeIpId(ipId); // Convert bytes32 to standard format
+  
+  // Fetch all data in parallel
+  const [asset, derivatives, licenseTokens, transactions] = await Promise.all([
+    client.getIPAsset(normalizedId),
+    client.getDerivatives(normalizedId),
+    client.getLicenseTokens(normalizedId),
+    client.getTransactions(normalizedId),
+  ]);
+  
+  return {
+    ipId: asset.ipId,
+    name: asset.name,
+    directDerivatives: asset.childrenCount,
+    totalDescendants: asset.descendantsCount,
+    parentIPs: asset.parentsCount,
+    ancestorIPs: asset.ancestorsCount,
+    licensesAttached: asset.licenses?.length || 0,
+    licenseTokensIssued: licenseTokens.pagination.total,
+    totalTransactions: transactions.pagination.total,
+    recentTransactions: transactions.data.slice(0, 10),
+  };
+}
+```
+
+**Environment Variables:**
+```bash
+# Aeneid Testnet (used for development)
+STORY_API_URL=https://staging-api.storyprotocol.net/api/v4
+STORY_API_KEY=KOTbaGUSWQ6cUJWhiJYiOjPgB0kTRu1eCFFvQL0IWls
+
+# Mainnet (for production)
+# STORY_API_URL=https://api.storyapis.com/api/v4
+# STORY_API_KEY=MhBsxkU1z9fG6TofE59KqiiWV-YlYE8Q4awlLQehF3U
+```
+
+**Frontend Display:**
+The Story Protocol stats are displayed in the **Usage Analytics** tab with an orange gradient "On-Chain" badge:
+- Direct Derivatives count
+- Total Descendants count
+- License Tokens issued
+- Transaction count
+- IP Lineage (parent/ancestor IPs)
+- Recent On-Chain Activity (last 5 transactions)
+
+**Key Files:**
+- Story API Client: [`apps/agent-service/src/clients/storyProtocolApiClient.ts`](apps/agent-service/src/clients/storyProtocolApiClient.ts)
+- Usage Service: [`apps/agent-service/src/services/usage-data-service.ts`](apps/agent-service/src/services/usage-data-service.ts)
+- My Licenses Page: [`apps/frontend/src/pages/MyLicensesPage.tsx`](apps/frontend/src/pages/MyLicensesPage.tsx)
+- SDK Client: [`packages/sdk/src/AtlasClient.ts`](packages/sdk/src/AtlasClient.ts)
 
 ---
 

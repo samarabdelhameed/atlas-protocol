@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { useLicenseAuth } from '../hooks/useLicenseAuth';
 import { motion } from 'framer-motion';
-import { FileText, Clock, CheckCircle, XCircle, BarChart3, TrendingUp, Users, DollarSign, Code } from 'lucide-react';
+import { FileText, Clock, CheckCircle, XCircle, BarChart3, TrendingUp, DollarSign, Code, GitBranch, Activity } from 'lucide-react';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
 
@@ -91,6 +91,58 @@ interface UsageData {
       commercial: number;
       exclusive: number;
     };
+  };
+
+  // Story Protocol on-chain usage stats
+  storyProtocolStats?: {
+    directDerivatives: number;
+    totalDescendants: number;
+    parentIPs: number;
+    ancestorIPs: number;
+    licensesAttached: number;
+    licenseTokensIssued: number;
+    totalTransactions: number;
+    recentTransactions: Array<{
+      txHash: string;
+      eventType: string;
+      blockNumber: number;
+      createdAt: string;
+    }>;
+  };
+
+  // Mock Usage Analytics (for hackathon demo)
+  mockUsageAnalytics?: {
+    apiCalls: {
+      total: number;
+      last24h: number;
+      last7d: number;
+      last30d: number;
+    };
+    contentAccess: {
+      downloads: number;
+      views: number;
+      uniqueUsers: number;
+    };
+    geographicDistribution: Array<{
+      country: string;
+      percentage: number;
+      accessCount: number;
+    }>;
+    platformUsage: Array<{
+      platform: string;
+      usageCount: number;
+      lastAccessed: string;
+    }>;
+    aiTrainingDetection: {
+      foundInDatasets: number;
+      datasetNames: string[];
+      estimatedModelsUsingIP: number;
+    };
+    usageTrend: Array<{
+      date: string;
+      apiCalls: number;
+      downloads: number;
+    }>;
   };
 }
 
@@ -601,6 +653,200 @@ export default function MyLicensesPage({ onNavigate }: MyLicensesPageProps) {
                     </div>
                   </div>
                 </div>
+
+                {/* Story Protocol Usage Stats */}
+                {usageData.storyProtocolStats && (
+                  <div className="bg-gradient-to-br from-orange-900/20 to-amber-900/20 backdrop-blur-xl border border-orange-500/30 rounded-2xl p-6">
+                    <div className="flex items-center gap-2 mb-6">
+                      <Activity className="w-5 h-5 text-orange-400" />
+                      <h3 className="text-xl font-bold text-white">
+                        Story Protocol Usage Stats
+                      </h3>
+                      <span className="ml-2 bg-orange-500/20 text-orange-400 text-xs font-medium px-2 py-0.5 rounded-full">
+                        On-Chain
+                      </span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                      <div className="bg-gray-900/40 rounded-xl p-4 border border-gray-700/30">
+                        <div className="flex items-center gap-2 mb-2">
+                          <GitBranch className="w-4 h-4 text-orange-400" />
+                          <p className="text-sm text-gray-400">Direct Derivatives</p>
+                        </div>
+                        <p className="text-2xl font-bold text-white">
+                          {formatNumber(usageData.storyProtocolStats.directDerivatives)}
+                        </p>
+                      </div> 
+                      <div className="bg-gray-900/40 rounded-xl p-4 border border-gray-700/30">
+                        <div className="flex items-center gap-2 mb-2">
+                          <GitBranch className="w-4 h-4 text-amber-400" />
+                          <p className="text-sm text-gray-400">Total Descendants</p>
+                        </div>
+                        <p className="text-2xl font-bold text-white">
+                          {formatNumber(usageData.storyProtocolStats.totalDescendants)}
+                        </p>
+                      </div>
+                      <div className="bg-gray-900/40 rounded-xl p-4 border border-gray-700/30">
+                        <div className="flex items-center gap-2 mb-2">
+                          <FileText className="w-4 h-4 text-blue-400" />
+                          <p className="text-sm text-gray-400">License Tokens</p>
+                        </div>
+                        <p className="text-2xl font-bold text-white">
+                          {formatNumber(usageData.storyProtocolStats.licenseTokensIssued)}
+                        </p>
+                      </div>
+                      <div className="bg-gray-900/40 rounded-xl p-4 border border-gray-700/30">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Activity className="w-4 h-4 text-green-400" />
+                          <p className="text-sm text-gray-400">Transactions</p>
+                        </div>
+                        <p className="text-2xl font-bold text-white">
+                          {formatNumber(usageData.storyProtocolStats.totalTransactions)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* IP Lineage */}
+                    {(usageData.storyProtocolStats.parentIPs > 0 || usageData.storyProtocolStats.ancestorIPs > 0) && (
+                      <div className="mb-6 bg-gray-900/40 rounded-xl p-4 border border-gray-700/30">
+                        <h4 className="text-sm font-medium text-gray-400 mb-3">IP Lineage</h4>
+                        <div className="flex gap-6">
+                          <div>
+                            <span className="text-gray-500 text-sm">Parent IPs:</span>
+                            <span className="ml-2 text-white font-semibold">{usageData.storyProtocolStats.parentIPs}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500 text-sm">Ancestor IPs:</span>
+                            <span className="ml-2 text-white font-semibold">{usageData.storyProtocolStats.ancestorIPs}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Recent Transactions */}
+                    {usageData.storyProtocolStats.recentTransactions.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-400 mb-3">Recent On-Chain Activity</h4>
+                        <div className="space-y-2">
+                          {usageData.storyProtocolStats.recentTransactions.slice(0, 5).map((tx, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center justify-between text-sm bg-gray-900/50 border border-gray-700/30 p-3 rounded-lg"
+                            >
+                              <span className="bg-orange-500/20 text-orange-400 text-xs font-medium px-2 py-0.5 rounded">
+                                {tx.eventType}
+                              </span>
+                              <span className="text-gray-400 font-mono text-xs">
+                                {tx.txHash.slice(0, 10)}...{tx.txHash.slice(-8)}
+                              </span>
+                              <span className="text-gray-500 text-xs">
+                                Block #{tx.blockNumber}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Usage Analytics Section (Mock Data for Hackathon) */}
+                {usageData.mockUsageAnalytics && (
+                  <div className="p-6 bg-gray-900/30 border-t border-gray-700/50">
+                    <div className="flex items-center gap-2 mb-6">
+                      <div className="px-3 py-1 bg-orange-500/10 border border-orange-500/30 rounded-full">
+                        <span className="text-orange-400 text-xs font-medium">📊 Usage Analytics</span>
+                      </div>
+                      <h3 className="text-lg font-semibold text-white">Platform Usage Data</h3>
+                    </div>
+
+                    {/* API Calls & Content Access Grid */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                      <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/30">
+                        <p className="text-sm text-gray-400 mb-1">Total API Calls</p>
+                        <p className="text-2xl font-bold text-white">{formatNumber(usageData.mockUsageAnalytics.apiCalls.total)}</p>
+                        <p className="text-xs text-green-400">+{formatNumber(usageData.mockUsageAnalytics.apiCalls.last24h)} today</p>
+                      </div>
+                      <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/30">
+                        <p className="text-sm text-gray-400 mb-1">Downloads</p>
+                        <p className="text-2xl font-bold text-white">{formatNumber(usageData.mockUsageAnalytics.contentAccess.downloads)}</p>
+                      </div>
+                      <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/30">
+                        <p className="text-sm text-gray-400 mb-1">Total Views</p>
+                        <p className="text-2xl font-bold text-white">{formatNumber(usageData.mockUsageAnalytics.contentAccess.views)}</p>
+                      </div>
+                      <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/30">
+                        <p className="text-sm text-gray-400 mb-1">Unique Users</p>
+                        <p className="text-2xl font-bold text-white">{formatNumber(usageData.mockUsageAnalytics.contentAccess.uniqueUsers)}</p>
+                      </div>
+                    </div>
+
+                    {/* Geographic Distribution */}
+                    <div className="mb-6">
+                      <h4 className="text-sm font-medium text-gray-400 mb-3">Geographic Distribution</h4>
+                      <div className="space-y-2">
+                        {usageData.mockUsageAnalytics.geographicDistribution.map((geo, idx) => (
+                          <div key={idx} className="flex items-center gap-3">
+                            <span className="text-white text-sm w-32">{geo.country}</span>
+                            <div className="flex-1 bg-gray-800 rounded-full h-2 overflow-hidden">
+                              <div 
+                                className="h-full bg-gradient-to-r from-orange-500/80 to-orange-400/60"
+                                style={{ width: `${geo.percentage}%` }}
+                              />
+                            </div>
+                            <span className="text-gray-400 text-sm w-16 text-right">{geo.percentage}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Platform Usage */}
+                    <div className="mb-6">
+                      <h4 className="text-sm font-medium text-gray-400 mb-3">AI Platform Usage</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {usageData.mockUsageAnalytics.platformUsage.map((platform, idx) => (
+                          <div key={idx} className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/30">
+                            <p className="text-white text-sm font-medium truncate">{platform.platform}</p>
+                            <p className="text-orange-400 font-bold">{formatNumber(platform.usageCount)} uses</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* AI Training Detection */}
+                    <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/30">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-sm font-medium text-gray-400">AI Training Dataset Detection</h4>
+                        {usageData.mockUsageAnalytics.aiTrainingDetection.foundInDatasets > 0 ? (
+                          <span className="px-2 py-0.5 bg-amber-500/20 text-amber-400 text-xs rounded-full">
+                            ⚠️ Detected
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded-full">
+                            ✓ Not Found
+                          </span>
+                        )}
+                      </div>
+                      {usageData.mockUsageAnalytics.aiTrainingDetection.foundInDatasets > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-sm text-gray-300">
+                            Found in <span className="text-amber-400 font-semibold">{usageData.mockUsageAnalytics.aiTrainingDetection.foundInDatasets}</span> training datasets
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {usageData.mockUsageAnalytics.aiTrainingDetection.datasetNames.map((name, idx) => (
+                              <span key={idx} className="px-2 py-1 bg-gray-700/50 text-gray-300 text-xs rounded">
+                                {name}
+                              </span>
+                            ))}
+                          </div>
+                          <p className="text-xs text-gray-500">
+                            Estimated {usageData.mockUsageAnalytics.aiTrainingDetection.estimatedModelsUsingIP} models may be using this IP
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -706,7 +952,20 @@ console.log(usageData);
 //     status: 'verified'
 //   },
 //   cvs: { currentScore: '1250000000000000000', rank: 42 },
-//   licensingSummary: { ... }
+//   licensingSummary: { ... },
+//   storyProtocolStats: {
+//     directDerivatives: 3,
+//     totalDescendants: 8,
+//     licenseTokensIssued: 15,
+//     totalTransactions: 47
+//   },
+//   mockUsageAnalytics: {
+//     apiCalls: { total: 25000, last24h: 850 },
+//     contentAccess: { downloads: 3200, views: 18500 },
+//     geographicDistribution: [{ country: 'US', percentage: 45 }],
+//     platformUsage: [{ platform: 'OpenAI GPT-4', usageCount: 1200 }],
+//     aiTrainingDetection: { foundInDatasets: 2, datasetNames: ['LAION-5B'] }
+//   }
 // }`}
                 </pre>
               </div>
@@ -739,6 +998,14 @@ console.log(usageData);
                 <div className="bg-gray-900/50 p-3 rounded-lg">
                   <p className="text-orange-400 font-semibold">cvs</p>
                   <p className="text-gray-400 text-sm">Content Value Score from Story Protocol</p>
+                </div>
+                <div className="bg-gray-900/50 p-3 rounded-lg">
+                  <p className="text-orange-400 font-semibold">storyProtocolStats</p>
+                  <p className="text-gray-400 text-sm">On-chain derivatives, license tokens, and transactions from Story Protocol API</p>
+                </div>
+                <div className="bg-gray-900/50 p-3 rounded-lg">
+                  <p className="text-purple-400 font-semibold">mockUsageAnalytics</p>
+                  <p className="text-gray-400 text-sm">Platform usage data: API calls, downloads, geographic distribution, AI training detection</p>
                 </div>
               </div>
             </div>

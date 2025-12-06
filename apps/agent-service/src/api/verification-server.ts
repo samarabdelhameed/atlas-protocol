@@ -842,17 +842,121 @@ export class VerificationServer {
         return this.jsonResponse({ assets: [], count: 0 }, 200);
       }
 
-      // Extract unique IP IDs
+      // Debug: Log first vault structure
+      if (vaults.length > 0) {
+        console.log('🔍 Sample vault data:', JSON.stringify(vaults[0], null, 2));
+      }
+
+      // Extract unique IP IDs - handle ipAsset as string (Bytes) from subgraph
       const ipIds = [...new Set(vaults.map(v => {
-        if (typeof v.ipAsset === 'object' && v.ipAsset !== null) {
-          return v.ipAsset.ipId || v.ipAsset.id;
+        // ipAsset can be a Bytes string directly from subgraph
+        const ipAssetValue = v.ipAsset as unknown;
+        if (typeof ipAssetValue === 'string' && ipAssetValue.startsWith('0x') && ipAssetValue.length > 2) {
+          return ipAssetValue;
         }
-        return v.ipAsset || v.ipId;
-      }).filter(Boolean))].filter((id): id is string => !!id);
+        if (typeof ipAssetValue === 'object' && ipAssetValue !== null) {
+          return (ipAssetValue as any).ipId || (ipAssetValue as any).id;
+        }
+        return v.ipId;
+      }).filter(Boolean))].filter((id): id is string => !!id && id !== '0x');
 
       console.log(`📦 Found ${vaults.length} vaults with ${ipIds.length} unique IP assets`);
 
-      // Fetch metadata for all IPs in parallel
+      // If vaults have embedded IP asset data, use it - but enrich with Story API if names are defaults
+      const vaultsWithIPData = vaults.filter(v => 
+        typeof v.ipAsset === 'object' && v.ipAsset !== null && v.ipAsset.name
+      );
+
+      if (vaultsWithIPData.length > 0) {
+        console.log(`✅ Found ${vaultsWithIPData.length} vaults with IP data`);
+        
+        // Extract IP IDs to fetch real metadata from Story Protocol
+        const vaultIpIds = vaultsWithIPData.map(vault => {
+          const ipAsset = vault.ipAsset as { ipId?: string; ipHash?: string; id: string };
+          const ipIdBytes = ipAsset.ipId ? (typeof ipAsset.ipId === 'string' ? ipAsset.ipId : `${ipAsset.ipId}`) : '';
+          return ipIdBytes.length === 66 ? '0x' + ipIdBytes.slice(-40) : ipIdBytes || ipAsset.ipHash || '';
+        }).filter(Boolean) as `0x${string}`[];
+
+        // Fetch real metadata from Story Protocol API (for proper names/descriptions)
+        const { fetchBulkIPMetadata } = await import('../services/ip-metadata-service.js');
+        const metadataMap = await fetchBulkIPMetadata(vaultIpIds);
+        console.log(`📋 Fetched metadata for ${metadataMap.size} IP assets from Story Protocol`);
+        
+        const assets = vaultsWithIPData.map(vault => {
+          const ipAsset = vault.ipAsset as { id: string; ipId: string; name: string; description: string; creator: string; ipHash?: string };
+          // Convert ipId from bytes32 to clean address
+          const ipIdBytes = ipAsset.ipId ? (typeof ipAsset.ipId === 'string' ? ipAsset.ipId : `${ipAsset.ipId}`) : '';
+          const cleanIpId = ipIdBytes.length === 66 ? '0x' + ipIdBytes.slice(-40) : ipIdBytes;
+          const resolvedIpId = cleanIpId || ipAsset.ipHash || ipAsset.id;
+          
+          // Get real metadata from Story Protocol API, fall back to subgraph data
+          const storyMetadata = metadataMap.get(resolvedIpId as `0x${string}`);
+          
+          return {
+            vaultAddress: vault.vaultAddress,
+            ipId: resolvedIpId,
+            creator: vault.creator,
+            cvsScore: vault.currentCVS || '0',
+            totalLicensesSold: 0,
+            totalRevenue: vault.totalLicenseRevenue || '0',
+            createdAt: vault.createdAt || vault.timestamp,
+            metadata: {
+              // Prefer Story Protocol metadata over subgraph defaults
+              name: storyMetadata?.name || ipAsset.name || `IP Asset ${cleanIpId.slice(0, 10)}...`,
+              description: storyMetadata?.description || ipAsset.description || 'No description available',
+              creator: (storyMetadata?.creator || ipAsset.creator || vault.creator) as `0x${string}`,
+              thumbnailURI: storyMetadata?.thumbnailURI,
+            },
+          };
+        });
+
+        // Sort by CVS score (highest first)
+        assets.sort((a, b) => Number(b.cvsScore || 0) - Number(a.cvsScore || 0));
+
+        console.log(`✅ Returning ${assets.length} marketplace assets (enriched with Story Protocol API)`);
+
+        return this.jsonResponse({
+          assets,
+          count: assets.length,
+          timestamp: Date.now(),
+          source: 'goldsky_subgraph+story_api',
+        }, 200);
+      }
+
+      // Fallback: If no IP IDs from vaults, fetch IP assets directly from Story Protocol API
+      if (ipIds.length === 0) {
+        console.log('⚠️ No IP IDs in vaults, fetching IP assets directly from Story Protocol API...');
+        const { listAllIPAssets } = await import('../clients/storyProtocolApiClient.js');
+        const storyAssets = await listAllIPAssets({ limit: 50 });
+        
+        if (storyAssets.assets.length > 0) {
+          const assets = storyAssets.assets.map(asset => ({
+            vaultAddress: '', // No vault linked yet
+            ipId: asset.ipId,
+            creator: asset.ownerAddress,
+            cvsScore: '0',
+            totalLicensesSold: 0,
+            totalRevenue: '0',
+            createdAt: asset.registrationDate,
+            metadata: {
+              name: asset.nftMetadata?.name || asset.name || asset.title || `IP Asset ${asset.ipId.slice(0, 10)}...`,
+              description: asset.nftMetadata?.description || asset.description || 'No description available',
+              creator: asset.ownerAddress as `0x${string}`,
+              thumbnailURI: asset.nftMetadata?.image?.cachedUrl || asset.nftMetadata?.image?.originalUrl,
+            },
+          }));
+          
+          console.log(`✅ Returning ${assets.length} IP assets from Story Protocol API`);
+          return this.jsonResponse({
+            assets,
+            count: assets.length,
+            timestamp: Date.now(),
+            source: 'story_protocol_api',
+          }, 200);
+        }
+      }
+
+      // Fallback: Fetch metadata for all IPs in parallel from Story API
       const { fetchBulkIPMetadata } = await import('../services/ip-metadata-service.js');
       const metadataMap = await fetchBulkIPMetadata(ipIds as `0x${string}`[]);
 
