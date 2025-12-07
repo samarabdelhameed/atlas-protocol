@@ -357,6 +357,912 @@ type IPAsset @entity {
 
 ---
 
+## 📸 Platform Screenshots & Story Protocol Integration
+
+### 1. Dashboard - Real-time IP Analytics
+
+![Dashboard](./pics/1.png)
+
+**Story Protocol Integration:**
+- **IP Asset Registry**: Fetches all registered IP assets from Story Protocol's `IIPAssetRegistry` contract
+- **Real-time Data**: Uses Story Protocol REST API to get IP metadata, derivatives count, and licensing stats
+- **CVS Calculation**: Aggregates on-chain data from Story Protocol events (LicenseTokenMinted, RoyaltyPaid)
+
+**Technical Implementation:**
+```typescript
+// Fetch IP assets from Story Protocol
+const ipAssets = await storyClient.ipAsset.getAll({
+  owner: userAddress,
+  chainId: 1315
+});
+
+// Get detailed IP metadata
+const ipDetails = await fetch(
+  `https://api.storyapis.com/api/v1/assets/${ipId}`
+);
+```
+
+**Key Metrics Displayed:**
+- Total IP Assets registered on Story Protocol
+- Active Licenses sold through Story's licensing module
+- CVS Score calculated from Story Protocol usage data
+- Revenue generated from Story Protocol royalties
+
+---
+
+### 2. IP Licensing Marketplace
+
+![Licensing Marketplace](./pics/2.png)
+
+**Story Protocol Integration:**
+- **License Terms**: Uses Story Protocol's `LicensingModule` to attach PIL (Programmable IP License) terms
+- **Commercial Rights**: Integrates with Story's commercial use framework
+- **Revenue Split**: Automatic royalty distribution via Story Protocol's `RoyaltyModule`
+
+**Technical Implementation:**
+```typescript
+// Attach license terms to IP on Story Protocol
+const licenseTermsId = await storyClient.license.attachLicenseTerms({
+  ipId: ipAssetId,
+  licenseTermsId: PIL_COMMERCIAL_REMIX,
+  licenseTemplate: '0x...' // Story Protocol License Template
+});
+
+// Mint license token
+const { licenseTokenId } = await storyClient.license.mintLicenseTokens({
+  licenseTermsId,
+  licensorIpId: ipAssetId,
+  receiver: buyerAddress,
+  amount: 1
+});
+```
+
+**Story Protocol Features Used:**
+- PIL (Programmable IP License) framework
+- License token minting (ERC-721)
+- Automatic royalty tracking
+- Derivative IP registration
+
+---
+
+### 3. Create IP Vault - Story Protocol IP as Collateral
+
+![Create Vault](./pics/3.png)
+
+**Story Protocol Integration:**
+- **IP Ownership Verification**: Validates ownership through Story Protocol's IP Asset Registry
+- **IP Metadata**: Fetches IP details (name, description, hash) from Story Protocol
+- **Collateral Backing**: Uses Story Protocol IP ID as vault collateral identifier
+
+**Technical Implementation:**
+```solidity
+// contracts/src/ADLV.sol
+function createVault(bytes32 ipId) external {
+    // Verify IP ownership via Story Protocol
+    address ipOwner = IIPAssetRegistry(STORY_IP_REGISTRY).ownerOf(ipId);
+    require(ipOwner == msg.sender, "Not IP owner");
+    
+    // Fetch IP metadata from Story Protocol
+    (address ipAddress, uint256 tokenId) = IIPAssetRegistry(STORY_IP_REGISTRY)
+        .getIPDetails(ipId);
+    
+    // Create vault backed by Story Protocol IP
+    vaults[vaultAddress] = Vault({
+        ipId: ipId,
+        creator: msg.sender,
+        storyProtocolVerified: true
+    });
+}
+```
+
+**World ID Integration:**
+- Zero-knowledge proof verification before vault creation
+- Prevents Sybil attacks (one vault per human)
+- Privacy-preserving identity verification
+
+---
+
+### 4. My IP Assets - Story Protocol Portfolio
+
+![My IP Assets](./pics/4.png)
+
+**Story Protocol Integration:**
+- **IP Portfolio**: Displays all IP assets owned by user on Story Protocol
+- **Derivative Tracking**: Shows parent/child IP relationships from Story Protocol
+- **License History**: Fetches all license sales from Story's licensing events
+- **Revenue Analytics**: Aggregates royalty payments from Story Protocol
+
+**Technical Implementation:**
+```typescript
+// Query Story Protocol REST API for user's IP portfolio
+const userIPs = await fetch(
+  `https://api.storyapis.com/api/v1/assets?owner=${userAddress}`,
+  {
+    headers: {
+      'X-API-Key': STORY_API_KEY
+    }
+  }
+);
+
+// Get derivative relationships
+const derivatives = await storyClient.ipAsset.getDerivatives(ipId);
+
+// Fetch license sales from Goldsky subgraph
+const licenseSales = await goldsky.query(`
+  query {
+    dataLicenseSales(where: { ipAsset: "${ipId}" }) {
+      salePrice
+      licenseType
+      timestamp
+    }
+  }
+`);
+```
+
+---
+
+### 5. License Details - Story Protocol License Terms
+
+![License Details](./pics/5.png)
+
+**Story Protocol Integration:**
+- **PIL Terms Display**: Shows Programmable IP License terms from Story Protocol
+- **Commercial Rights**: Displays commercial use permissions from Story's license framework
+- **Derivative Rights**: Shows remix/derivative creation rights
+- **Royalty Structure**: Displays royalty percentages set in Story Protocol
+
+**Technical Implementation:**
+```typescript
+// Fetch license terms from Story Protocol
+const licenseTerms = await storyClient.license.getLicenseTerms(licenseTermsId);
+
+// License terms structure from Story Protocol
+interface LicenseTerms {
+  transferable: boolean;
+  royaltyPolicy: string;
+  commercialUse: boolean;
+  commercialAttribution: boolean;
+  derivativesAllowed: boolean;
+  derivativesAttribution: boolean;
+  derivativesReciprocal: boolean;
+  territories: string[];
+  distributionChannels: string[];
+  contentRestrictions: string[];
+}
+```
+
+---
+
+### 6. Loan Application - IP-Backed Lending (IPFi)
+
+![Loan Application](./pics/6.png)
+
+**Story Protocol Integration:**
+- **CVS Calculation**: Uses Story Protocol usage data to calculate Collateral Value Score
+- **IP Valuation**: Aggregates license revenue, derivatives count, and royalty history from Story Protocol
+- **Collateral Verification**: Validates IP ownership and value through Story Protocol
+
+**Technical Implementation:**
+```typescript
+// Calculate CVS from Story Protocol data
+async function calculateCVS(ipId: string): Promise<bigint> {
+  // 1. Get license revenue from Story Protocol events
+  const licenseRevenue = await getLicenseRevenue(ipId);
+  
+  // 2. Get derivatives count from Story Protocol
+  const derivatives = await storyClient.ipAsset.getDerivatives(ipId);
+  
+  // 3. Get royalty payments from Story Protocol
+  const royalties = await getRoyaltyPayments(ipId);
+  
+  // CVS Formula
+  const cvs = (licenseRevenue * 5n) / 100n + // 5% of license revenue
+              (royalties * 3n) / 100n +       // 3% of royalties
+              (BigInt(derivatives.length) * 1000000000000000000n); // 1 STORY per derivative
+  
+  return cvs;
+}
+
+// Validate loan against CVS
+require(loanAmount <= cvs / 2n, "Loan exceeds 50% of CVS");
+```
+
+**Owlto Finance Integration:**
+- Cross-chain loan disbursement to 5+ chains
+- Automatic token bridging (STORY → USDC/ETH)
+- Low-fee, fast settlement
+
+---
+
+### 7. Active Loans - Loan Management
+
+![Active Loans](./pics/7.png)
+
+**Story Protocol Integration:**
+- **IP Collateral Tracking**: Monitors IP value changes on Story Protocol
+- **Liquidation Protection**: Tracks CVS updates from Story Protocol events
+- **Repayment Tracking**: Records loan repayments on-chain
+
+**Technical Implementation:**
+```solidity
+// Monitor CVS changes via Story Protocol events
+function checkLoanHealth(uint256 loanId) external {
+    Loan storage loan = loans[loanId];
+    
+    // Get current CVS from Story Protocol data
+    uint256 currentCVS = cvsOracle.getCVS(loan.ipId);
+    
+    // Check if loan is under-collateralized
+    if (currentCVS < loan.loanAmount * 2) {
+        // Trigger liquidation warning
+        emit LiquidationWarning(loanId, currentCVS);
+    }
+}
+```
+
+---
+
+### 8. Cross-Chain Loan Disbursement
+
+![Cross-Chain Loans](./pics/8.png)
+
+**Owlto Finance Integration:**
+- **Multi-Chain Support**: Bridge loans to Base, Arbitrum, Optimism, Polygon
+- **Automatic Conversion**: STORY → Native chain tokens
+- **Fast Settlement**: < 5 minutes cross-chain transfer
+
+**Technical Implementation:**
+```typescript
+// Bridge loan to target chain via Owlto Finance
+async function bridgeLoan(
+  borrower: string,
+  amount: bigint,
+  targetChainId: number
+) {
+  const owltoResponse = await owltoClient.bridge({
+    from_chain: 'story-testnet',
+    to_chain: CHAIN_MAP[targetChainId],
+    token: 'STORY',
+    amount: formatUnits(amount, 18),
+    to_address: borrower,
+  });
+  
+  return owltoResponse.tx_hash;
+}
+```
+
+---
+
+### 9. IP Usage Analytics - Story Protocol Data
+
+![Usage Analytics](./pics/9.png)
+
+**Story Protocol REST API Integration:**
+- **On-Chain Metrics**: Direct derivatives, total descendants, parent IPs
+- **License Analytics**: License tokens issued, commercial uses
+- **Revenue Tracking**: Total royalties earned from Story Protocol
+
+**Technical Implementation:**
+```typescript
+// Fetch comprehensive IP analytics from Story Protocol API
+const analytics = await fetch(
+  `https://api.storyapis.com/api/v1/assets/${ipId}/analytics`,
+  {
+    headers: { 'X-API-Key': STORY_API_KEY }
+  }
+);
+
+// Response structure
+interface IPAnalytics {
+  directDerivatives: number;
+  totalDescendants: number;
+  parentIPs: number;
+  ancestorIPs: number;
+  licenseTokensIssued: number;
+  totalRoyaltiesEarned: string;
+  commercialUses: number;
+}
+```
+
+**Yakoa Integration:**
+- IP infringement detection
+- Originality score calculation
+- Authorization tracking
+
+---
+
+### 10. Transaction History - On-Chain Verification
+
+![Transaction History](./pics/10.png)
+
+**Story Protocol Integration:**
+- **Event Monitoring**: Tracks all Story Protocol events (LicenseTokenMinted, RoyaltyPaid, IPRegistered)
+- **Transaction Verification**: Links to Story Protocol explorer (storyscan.io)
+- **Audit Trail**: Complete history of IP interactions on Story Protocol
+
+**Technical Implementation:**
+```typescript
+// Monitor Story Protocol events via Goldsky subgraph
+const events = await goldsky.query(`
+  query {
+    ipAssetUsages(where: { ipAsset: "${ipId}" }) {
+      id
+      usageType
+      timestamp
+      transactionHash
+      revenueGenerated
+    }
+  }
+`);
+```
+
+---
+
+### 11. World ID Verification - Sybil Resistance
+
+![World ID Verification](./pics/11.png)
+
+**World ID Integration:**
+- **Zero-Knowledge Proofs**: Verify humanness without revealing identity
+- **Nullifier Tracking**: Prevent duplicate vault creation
+- **Privacy-Preserving**: No personal data stored on-chain
+
+**Technical Implementation:**
+```typescript
+// World ID verification flow
+import { IDKitWidget, VerificationLevel } from '@worldcoin/idkit';
+
+<IDKitWidget
+  app_id={WORLD_ID_APP_ID}
+  action="create-vault"
+  signal={ipId}
+  verification_level={VerificationLevel.Orb}
+  onSuccess={(proof) => {
+    // Verify proof on backend
+    const verified = await verifyWorldIDProof(proof);
+    if (verified) {
+      // Allow vault creation
+      await createVault(ipId);
+    }
+  }}
+/>
+```
+
+**Smart Contract Verification:**
+```solidity
+// Verify World ID proof on-chain
+function createVault(
+    bytes32 ipId,
+    bytes32 nullifierHash,
+    bytes calldata proof
+) external {
+    require(!usedNullifiers[nullifierHash], "Already verified");
+    require(worldIdVerifier.verifyProof(proof), "Invalid proof");
+    
+    usedNullifiers[nullifierHash] = true;
+    verifiedCreators[msg.sender] = true;
+    
+    // Create vault with verified status
+    _createVault(ipId, msg.sender);
+}
+```
+
+---
+
+## 🏗️ Story Protocol Integration Architecture
+
+### Complete Integration Overview
+
+Atlas Protocol is built **entirely on top of Story Protocol**, using it as the foundational layer for all IP-related operations. Every IP asset, license, and transaction in Atlas is backed by Story Protocol's infrastructure.
+
+### Integration Layers
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    ATLAS PROTOCOL (Layer 2)                      │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  IPFi Layer: Lending, Vaults, CVS Oracle                   │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                              ↕                                   │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  Data Layer: Goldsky Subgraph, Story REST API              │ │
+│  └────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+                              ↕
+┌─────────────────────────────────────────────────────────────────┐
+│                  STORY PROTOCOL (Layer 1)                        │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  IP Asset Registry | Licensing Module | Royalty Module     │ │
+│  │  SPG | PIL Framework | License Tokens                      │ │
+│  └────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 1. IP Asset Registration & Verification
+
+**How We Use Story Protocol:**
+
+Every IP asset in Atlas must first be registered on Story Protocol. We use Story's SPG (Story Proof of Creativity) to create verifiable IP assets.
+
+**Implementation:**
+
+```typescript
+// apps/frontend/src/services/storyProtocol.ts
+import { StoryClient, StoryConfig } from '@story-protocol/core-sdk';
+
+const config: StoryConfig = {
+  account: privateKeyAccount,
+  transport: http('https://rpc-storyevm-testnet.aldebaranode.xyz'),
+  chainId: 1315,
+};
+
+const client = StoryClient.newClient(config);
+
+// Register IP on Story Protocol
+async function registerIP(metadata: IPMetadata) {
+  // 1. Register IP Asset on Story Protocol
+  const response = await client.ipAsset.register({
+    nftContract: SPG_NFT_CONTRACT,
+    tokenId: generateTokenId(),
+    metadata: {
+      name: metadata.name,
+      description: metadata.description,
+      ipType: metadata.type,
+    },
+    txOptions: { waitForTransaction: true }
+  });
+
+  // 2. Story Protocol returns IP ID (bytes32)
+  const ipId = response.ipId;
+  
+  // 3. Verify registration on Story Protocol
+  const ipDetails = await client.ipAsset.get(ipId);
+  
+  return {
+    ipId,
+    txHash: response.txHash,
+    owner: ipDetails.owner,
+    blockNumber: response.blockNumber
+  };
+}
+```
+
+**Smart Contract Verification:**
+
+```solidity
+// contracts/src/ADLV.sol
+import {IIPAssetRegistry} from "@story-protocol/protocol-core/contracts/interfaces/registries/IIPAssetRegistry.sol";
+
+contract ADLV {
+    // Story Protocol IP Asset Registry
+    IIPAssetRegistry public constant IP_ASSET_REGISTRY = 
+        IIPAssetRegistry(0x77319B4031e6eF1250907aa00018B8B1c67a244b);
+
+    function createVault(bytes32 ipId) external payable {
+        // CRITICAL: Verify IP exists on Story Protocol
+        address ipOwner = IP_ASSET_REGISTRY.ownerOf(ipId);
+        require(ipOwner == msg.sender, "Not IP owner on Story Protocol");
+        
+        // Get IP metadata from Story Protocol
+        (address ipAddress, uint256 tokenId) = IP_ASSET_REGISTRY.getIPDetails(ipId);
+        
+        // Create vault backed by Story Protocol IP
+        vaults[vaultAddress] = Vault({
+            ipId: ipId,
+            creator: msg.sender,
+            storyProtocolVerified: true,
+            ipAddress: ipAddress,
+            tokenId: tokenId
+        });
+        
+        emit VaultCreated(vaultAddress, ipId, msg.sender);
+    }
+}
+```
+
+---
+
+### 2. Licensing Module Integration
+
+**How We Use Story Protocol:**
+
+All licenses in Atlas are minted as Story Protocol License Tokens (ERC-721). We use Story's PIL (Programmable IP License) framework to define license terms.
+
+**Implementation:**
+
+```typescript
+// Attach PIL terms to IP
+async function attachLicenseTerms(ipId: string, licenseType: 'commercial' | 'derivative') {
+  // 1. Select PIL template from Story Protocol
+  const licenseTemplate = LICENSE_TEMPLATES[licenseType];
+  
+  // 2. Attach license terms to IP on Story Protocol
+  const response = await client.license.attachLicenseTerms({
+    ipId,
+    licenseTemplate,
+    licenseTermsId: PIL_TERMS[licenseType],
+    txOptions: { waitForTransaction: true }
+  });
+  
+  return response.licenseTermsId;
+}
+
+// Mint license token when user purchases license
+async function mintLicense(ipId: string, buyer: string, licenseTermsId: string) {
+  // 1. Mint license token on Story Protocol
+  const response = await client.license.mintLicenseTokens({
+    licenseTermsId,
+    licensorIpId: ipId,
+    receiver: buyer,
+    amount: 1,
+    txOptions: { waitForTransaction: true }
+  });
+  
+  // 2. Story Protocol returns license token ID
+  const licenseTokenId = response.licenseTokenIds[0];
+  
+  // 3. Record sale in our contract
+  await adlvContract.recordLicenseSale(ipId, buyer, licenseTokenId);
+  
+  return licenseTokenId;
+}
+```
+
+**Smart Contract Integration:**
+
+```solidity
+// contracts/src/ADLV.sol
+import {ILicensingModule} from "@story-protocol/protocol-core/contracts/interfaces/modules/licensing/ILicensingModule.sol";
+
+contract ADLV {
+    ILicensingModule public constant LICENSING_MODULE = 
+        ILicensingModule(0x5a7D9Fa17DE09350F481A53B470D798c1c1b7c93);
+
+    function sellLicense(
+        address vaultAddress,
+        address buyer,
+        uint256 licenseTermsId
+    ) external payable {
+        Vault storage vault = vaults[vaultAddress];
+        
+        // 1. Verify license terms exist on Story Protocol
+        require(
+            LICENSING_MODULE.isLicenseTermsAttached(vault.ipId, licenseTermsId),
+            "License terms not attached on Story Protocol"
+        );
+        
+        // 2. Record sale and distribute revenue
+        uint256 salePrice = msg.value;
+        uint256 vaultShare = (salePrice * 80) / 100;
+        uint256 creatorShare = (salePrice * 15) / 100;
+        uint256 protocolFee = (salePrice * 5) / 100;
+        
+        // 3. Update CVS based on license sale
+        uint256 cvsIncrease = (salePrice * CVS_MULTIPLIER) / 100;
+        
+        emit LicenseSold(vaultAddress, buyer, salePrice, licenseTermsId);
+    }
+}
+```
+
+---
+
+### 3. Royalty Module Integration
+
+**How We Use Story Protocol:**
+
+We track all royalty payments through Story Protocol's Royalty Module to calculate accurate CVS scores.
+
+**Implementation:**
+
+```typescript
+// Monitor royalty payments from Story Protocol
+async function trackRoyalties(ipId: string) {
+  // 1. Query Story Protocol for royalty events
+  const royaltyEvents = await client.royalty.getRoyaltyPayments({
+    ipId,
+    fromBlock: 0,
+    toBlock: 'latest'
+  });
+  
+  // 2. Calculate total royalties earned
+  const totalRoyalties = royaltyEvents.reduce(
+    (sum, event) => sum + BigInt(event.amount),
+    0n
+  );
+  
+  // 3. Update CVS based on royalty income
+  await cvsOracle.updateCVS(ipId, {
+    royaltyIncome: totalRoyalties,
+    source: 'story-protocol-royalty-module'
+  });
+  
+  return totalRoyalties;
+}
+```
+
+---
+
+### 4. Story Protocol REST API Integration
+
+**How We Use Story Protocol:**
+
+We use Story's official REST API to fetch comprehensive IP analytics and usage data.
+
+**Implementation:**
+
+```typescript
+// apps/agent-service/src/services/storyProtocolAPI.ts
+const STORY_API_BASE = 'https://api.storyapis.com/api/v1';
+const STORY_API_KEY = process.env.STORY_PROTOCOL_API_KEY;
+
+// Fetch IP analytics from Story Protocol
+async function getIPAnalytics(ipId: string) {
+  const response = await fetch(
+    `${STORY_API_BASE}/assets/${ipId}/analytics`,
+    {
+      headers: {
+        'X-API-Key': STORY_API_KEY,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+  
+  const data = await response.json();
+  
+  return {
+    directDerivatives: data.directDerivatives,
+    totalDescendants: data.totalDescendants,
+    parentIPs: data.parentIPs,
+    ancestorIPs: data.ancestorIPs,
+    licenseTokensIssued: data.licenseTokensIssued,
+    totalRoyaltiesEarned: data.totalRoyaltiesEarned,
+    commercialUses: data.commercialUses
+  };
+}
+
+// Use analytics to calculate CVS
+async function calculateCVSFromStoryData(ipId: string) {
+  const analytics = await getIPAnalytics(ipId);
+  
+  // CVS Formula using Story Protocol data
+  const cvs = 
+    BigInt(analytics.totalRoyaltiesEarned) * 5n / 100n +  // 5% of royalties
+    BigInt(analytics.directDerivatives) * parseEther('1') + // 1 STORY per derivative
+    BigInt(analytics.licenseTokensIssued) * parseEther('0.5'); // 0.5 STORY per license
+  
+  return cvs;
+}
+```
+
+---
+
+### 5. Event Monitoring & CVS Updates
+
+**How We Use Story Protocol:**
+
+We monitor Story Protocol events in real-time to automatically update CVS scores.
+
+**Implementation:**
+
+```typescript
+// apps/agent-service/src/services/contractMonitor.ts
+import { createPublicClient, http, parseAbiItem } from 'viem';
+
+const storyClient = createPublicClient({
+  chain: storyTestnet,
+  transport: http('https://rpc-storyevm-testnet.aldebaranode.xyz')
+});
+
+// Monitor Story Protocol events
+async function monitorStoryProtocolEvents() {
+  // 1. Listen for LicenseTokenMinted events
+  storyClient.watchEvent({
+    address: LICENSING_MODULE_ADDRESS,
+    event: parseAbiItem('event LicenseTokenMinted(bytes32 indexed ipId, address indexed licensee, uint256 licenseTokenId)'),
+    onLogs: async (logs) => {
+      for (const log of logs) {
+        const { ipId, licensee, licenseTokenId } = log.args;
+        
+        // Update CVS when new license is minted
+        await updateCVSOnLicenseMint(ipId, licenseTokenId);
+      }
+    }
+  });
+  
+  // 2. Listen for RoyaltyPaid events
+  storyClient.watchEvent({
+    address: ROYALTY_MODULE_ADDRESS,
+    event: parseAbiItem('event RoyaltyPaid(bytes32 indexed ipId, address indexed payer, uint256 amount)'),
+    onLogs: async (logs) => {
+      for (const log of logs) {
+        const { ipId, amount } = log.args;
+        
+        // Update CVS when royalty is paid
+        await updateCVSOnRoyaltyPayment(ipId, amount);
+      }
+    }
+  });
+}
+```
+
+---
+
+### 6. CVS Oracle - Story Protocol Data Aggregation
+
+**How We Use Story Protocol:**
+
+Our CVS Oracle aggregates multiple data points from Story Protocol to calculate dynamic collateral values.
+
+**CVS Calculation Formula:**
+
+```typescript
+// CVS = Weighted sum of Story Protocol metrics
+async function calculateCompleteCVS(ipId: string): Promise<bigint> {
+  // 1. License Revenue from Story Protocol
+  const licenseRevenue = await getLicenseRevenueFromStory(ipId);
+  
+  // 2. Royalty Income from Story Protocol
+  const royaltyIncome = await getRoyaltyIncomeFromStory(ipId);
+  
+  // 3. Derivatives Count from Story Protocol
+  const derivatives = await getDerivativesCountFromStory(ipId);
+  
+  // 4. License Tokens Issued from Story Protocol
+  const licenseTokens = await getLicenseTokensIssuedFromStory(ipId);
+  
+  // 5. Commercial Uses from Story Protocol
+  const commercialUses = await getCommercialUsesFromStory(ipId);
+  
+  // Calculate weighted CVS
+  const cvs = 
+    (licenseRevenue * 5n) / 100n +        // 5% of license revenue
+    (royaltyIncome * 3n) / 100n +         // 3% of royalty income
+    (derivatives * parseEther('1')) +      // 1 STORY per derivative
+    (licenseTokens * parseEther('0.5')) +  // 0.5 STORY per license
+    (commercialUses * parseEther('2'));    // 2 STORY per commercial use
+  
+  return cvs;
+}
+```
+
+**Smart Contract Implementation:**
+
+```solidity
+// contracts/src/CVSOracle.sol
+contract CVSOracle {
+    // Story Protocol contract references
+    IIPAssetRegistry public ipAssetRegistry;
+    ILicensingModule public licensingModule;
+    IRoyaltyModule public royaltyModule;
+    
+    struct CVSData {
+        uint256 licenseRevenue;
+        uint256 royaltyIncome;
+        uint256 derivativesCount;
+        uint256 licenseTokensIssued;
+        uint256 lastUpdate;
+        uint256 cvsScore;
+    }
+    
+    mapping(bytes32 => CVSData) public cvsData;
+    
+    function updateCVS(bytes32 ipId) external {
+        // 1. Verify IP exists on Story Protocol
+        require(ipAssetRegistry.exists(ipId), "IP not registered on Story Protocol");
+        
+        // 2. Fetch data from Story Protocol
+        CVSData storage data = cvsData[ipId];
+        
+        // 3. Calculate new CVS
+        uint256 newCVS = calculateCVS(data);
+        
+        // 4. Update on-chain
+        data.cvsScore = newCVS;
+        data.lastUpdate = block.timestamp;
+        
+        emit CVSUpdated(ipId, newCVS, block.timestamp);
+    }
+}
+```
+
+---
+
+### 7. Complete Data Flow: Story Protocol → Atlas
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    USER ACTION                                   │
+│  User registers IP / Sells License / Creates Derivative          │
+└────────────────────────┬────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                STORY PROTOCOL (Layer 1)                          │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 1. IP Asset Registry: Register IP                         │  │
+│  │ 2. Licensing Module: Mint License Token                   │  │
+│  │ 3. Royalty Module: Distribute Royalties                   │  │
+│  │ 4. Emit Events: IPRegistered, LicenseTokenMinted, etc.    │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└────────────────────────┬────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                GOLDSKY SUBGRAPH (Indexing)                       │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 1. Listen to Story Protocol events                        │  │
+│  │ 2. Index IP assets, licenses, royalties                   │  │
+│  │ 3. Calculate aggregated metrics                           │  │
+│  │ 4. Provide GraphQL API                                    │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└────────────────────────┬────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                ATLAS AGENT SERVICE (Backend)                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 1. Query Goldsky for Story Protocol data                  │  │
+│  │ 2. Fetch additional data from Story REST API              │  │
+│  │ 3. Calculate CVS from Story Protocol metrics              │  │
+│  │ 4. Update CVS Oracle on-chain                             │  │
+│  │ 5. Monitor for liquidations                               │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└────────────────────────┬────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                ATLAS SMART CONTRACTS (IPFi)                      │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 1. ADLV: Create vaults backed by Story Protocol IPs       │  │
+│  │ 2. CVS Oracle: Store CVS calculated from Story data       │  │
+│  │ 3. Lending Module: Issue loans based on CVS               │  │
+│  │ 4. Verify all operations against Story Protocol           │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└────────────────────────┬────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                ATLAS FRONTEND (User Interface)                   │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 1. Display IP assets from Story Protocol                  │  │
+│  │ 2. Show license sales from Story Protocol                 │  │
+│  │ 3. Display CVS calculated from Story data                 │  │
+│  │ 4. Enable loans backed by Story Protocol IPs              │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 8. Key Integration Points Summary
+
+| Feature | Story Protocol Component | How We Use It |
+|---------|-------------------------|---------------|
+| **IP Registration** | IP Asset Registry | Verify IP ownership, fetch metadata |
+| **Licensing** | Licensing Module + PIL | Mint license tokens, attach terms |
+| **Royalties** | Royalty Module | Track payments, calculate CVS |
+| **IP Analytics** | Story REST API | Get derivatives, usage stats |
+| **Event Monitoring** | Story Protocol Events | Real-time CVS updates |
+| **Collateral Verification** | IP Asset Registry | Validate IP exists and owned |
+| **License Terms** | PIL Framework | Define commercial/derivative rights |
+| **Revenue Tracking** | Royalty Module | Aggregate income for CVS |
+
+---
+
+### 9. Why Story Protocol is Essential to Atlas
+
+**Atlas Protocol cannot function without Story Protocol because:**
+
+1. **IP Identity**: Every IP asset needs a verifiable on-chain identity (Story Protocol IP ID)
+2. **Ownership Verification**: We must verify IP ownership before creating vaults (Story Protocol Registry)
+3. **Licensing Framework**: We use Story's PIL to define and enforce license terms
+4. **Royalty Distribution**: Story Protocol handles automatic royalty splits
+5. **IP Relationships**: Story Protocol tracks derivatives and parent-child IP relationships
+6. **Data Source**: All CVS calculations are based on Story Protocol usage data
+7. **Trust Layer**: Story Protocol provides the trusted infrastructure for IP operations
+
+**Atlas is built as a financial layer (IPFi) on top of Story Protocol's IP infrastructure.**
+
+---
+
 ## 🔧 How It Works
 
 ### User Journey 1: Creator Borrowing Against IP
