@@ -7,9 +7,13 @@
 [![World ID](https://img.shields.io/badge/World_ID-Verified-green?style=for-the-badge)](https://worldcoin.org)
 [![Owlto Finance](https://img.shields.io/badge/Owlto-Bridge-purple?style=for-the-badge)](https://owlto.finance)
 
-**Live Demo:** [https://atlas-protocol.vercel.app](https://atlas-protocol.vercel.app)
-**Contracts:** [Story Aeneid Testnet](https://aeneid.storyscan.io)
-**Video Demo:** [Watch on YouTube](#)
+**🌐 Live Demo:** [https://frontend-samarabdelhameeds-projects-df99c328.vercel.app](https://frontend-samarabdelhameeds-projects-df99c328.vercel.app)
+
+**📱 Contracts:** [Story Aeneid Testnet](https://aeneid.storyscan.io)
+
+**🎥 Video Demo:** [Watch on YouTube](https://www.youtube.com/watch?v=4i-WnMpG6fE)
+
+**📊 Presentation:** [Watch on YouTube](https://www.youtube.com/watch?v=DDL-Lgo2KKM)
 
 ---
 
@@ -1416,15 +1420,14 @@ Open http://localhost:5173 in your browser
 
 ### Video Demos
 
-- **[Full Platform Walkthrough](#)** - 10-minute demo (YouTube)
-- **[Smart Contract Deep Dive](#)** - Technical explanation (YouTube)
-- **[Cross-Chain Loan Demo](#)** - Owlto bridge in action (Loom)
+- **🎥 [Full Platform Demo](https://www.youtube.com/watch?v=4i-WnMpG6fE)** - Complete walkthrough (YouTube)
+- **📊 [Project Presentation](https://www.youtube.com/watch?v=DDL-Lgo2KKM)** - Technical overview (YouTube)
 
 ### Live Links
 
-- **Frontend:** [https://atlas-protocol.vercel.app](https://atlas-protocol.vercel.app)
-- **Subgraph:** [https://api.goldsky.com/api/public/project_cmi7k5szzd54101yy44xg05em/subgraphs/atlasprotocol/2.0.0/gn](https://api.goldsky.com/api/public/project_cmi7k5szzd54101yy44xg05em/subgraphs/atlasprotocol/2.0.0/gn)
-- **GitHub:** [https://github.com/samarabdelhameed/atlas-protocol](https://github.com/samarabdelhameed/atlas-protocol)
+- **🌐 Frontend:** [https://frontend-samarabdelhameeds-projects-df99c328.vercel.app](https://frontend-samarabdelhameeds-projects-df99c328.vercel.app)
+- **📊 Subgraph:** [https://api.goldsky.com/api/public/project_cmi7k5szzd54101yy44xg05em/subgraphs/atlas-protocol/6.0.1/gn](https://api.goldsky.com/api/public/project_cmi7k5szzd54101yy44xg05em/subgraphs/atlas-protocol/6.0.1/gn)
+- **📱 Story Explorer:** [https://aeneid.storyscan.io](https://aeneid.storyscan.io)
 
 ---
 
@@ -1452,6 +1455,18 @@ We've built not just a hackathon project, but a **foundation for the future of I
 
 **Built with ❤️ for Story Protocol Buildathon 2025**
 
-**Last Updated:** December 4, 2025
+**Last Updated:** December 7, 2025
 **Version:** 2.0.0
 **Status:** ✅ Live on Story Aeneid Testnet
+
+---
+
+## 🔗 Quick Links
+
+| Resource | Link |
+|----------|------|
+| 🌐 **Live Demo** | [https://frontend-samarabdelhameeds-projects-df99c328.vercel.app](https://frontend-samarabdelhameeds-projects-df99c328.vercel.app) |
+| 🎥 **Video Demo** | [https://www.youtube.com/watch?v=4i-WnMpG6fE](https://www.youtube.com/watch?v=4i-WnMpG6fE) |
+| 📊 **Presentation** | [https://www.youtube.com/watch?v=DDL-Lgo2KKM](https://www.youtube.com/watch?v=DDL-Lgo2KKM) |
+| 📱 **Contracts** | [Story Aeneid Testnet Explorer](https://aeneid.storyscan.io) |
+| 📊 **Subgraph** | [Goldsky GraphQL API](https://api.goldsky.com/api/public/project_cmi7k5szzd54101yy44xg05em/subgraphs/atlas-protocol/6.0.1/gn) |
