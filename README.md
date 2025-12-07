@@ -359,9 +359,32 @@ type IPAsset @entity {
 
 ## 📸 Platform Screenshots & Story Protocol Integration
 
-### 1. Dashboard - Real-time IP Analytics
+### 1. Home Page - Platform Overview
 
-![Dashboard](./pics/1.png)
+![Home Page 1](./pics/1.png)
+![Home Page 2](./pics/2.png)
+![Home Page 3](./pics/3.png)
+
+**Story Protocol Integration:**
+- **Platform Introduction**: Overview of Atlas Protocol's IPFi capabilities
+- **Story Protocol Foundation**: Built entirely on Story Protocol infrastructure
+- **Key Features**: IP-backed lending, licensing marketplace, cross-chain loans
+- **Integration Highlights**: SPG, Licensing Module, Royalty Module, PIL Framework
+
+**Key Features Displayed:**
+- IP Asset Registration on Story Protocol
+- Dynamic CVS (Collateral Value Score) calculation
+- GenAI Licensing marketplace
+- Cross-chain loan disbursement via Owlto Finance
+- World ID verification for Sybil resistance
+- Real-time analytics from Story Protocol
+
+---
+
+### 2. Dashboard - Real-time IP Analytics
+
+![Dashboard 1](./pics/4.png)
+![Dashboard 2](./pics/5.png)
 
 **Story Protocol Integration:**
 - **IP Asset Registry**: Fetches all registered IP assets from Story Protocol's `IIPAssetRegistry` contract
@@ -390,44 +413,9 @@ const ipDetails = await fetch(
 
 ---
 
-### 2. IP Licensing Marketplace
-
-![Licensing Marketplace](./pics/2.png)
-
-**Story Protocol Integration:**
-- **License Terms**: Uses Story Protocol's `LicensingModule` to attach PIL (Programmable IP License) terms
-- **Commercial Rights**: Integrates with Story's commercial use framework
-- **Revenue Split**: Automatic royalty distribution via Story Protocol's `RoyaltyModule`
-
-**Technical Implementation:**
-```typescript
-// Attach license terms to IP on Story Protocol
-const licenseTermsId = await storyClient.license.attachLicenseTerms({
-  ipId: ipAssetId,
-  licenseTermsId: PIL_COMMERCIAL_REMIX,
-  licenseTemplate: '0x...' // Story Protocol License Template
-});
-
-// Mint license token
-const { licenseTokenId } = await storyClient.license.mintLicenseTokens({
-  licenseTermsId,
-  licensorIpId: ipAssetId,
-  receiver: buyerAddress,
-  amount: 1
-});
-```
-
-**Story Protocol Features Used:**
-- PIL (Programmable IP License) framework
-- License token minting (ERC-721)
-- Automatic royalty tracking
-- Derivative IP registration
-
----
-
 ### 3. Create IP Vault - Story Protocol IP as Collateral
 
-![Create Vault](./pics/3.png)
+![Create Vault](./pics/6.png)
 
 **Story Protocol Integration:**
 - **IP Ownership Verification**: Validates ownership through Story Protocol's IP Asset Registry
@@ -462,80 +450,19 @@ function createVault(bytes32 ipId) external {
 
 ---
 
-### 4. My IP Assets - Story Protocol Portfolio
+### 4. Loan Application & Management - IP-Backed Lending (IPFi)
 
-![My IP Assets](./pics/4.png)
-
-**Story Protocol Integration:**
-- **IP Portfolio**: Displays all IP assets owned by user on Story Protocol
-- **Derivative Tracking**: Shows parent/child IP relationships from Story Protocol
-- **License History**: Fetches all license sales from Story's licensing events
-- **Revenue Analytics**: Aggregates royalty payments from Story Protocol
-
-**Technical Implementation:**
-```typescript
-// Query Story Protocol REST API for user's IP portfolio
-const userIPs = await fetch(
-  `https://api.storyapis.com/api/v1/assets?owner=${userAddress}`,
-  {
-    headers: {
-      'X-API-Key': STORY_API_KEY
-    }
-  }
-);
-
-// Get derivative relationships
-const derivatives = await storyClient.ipAsset.getDerivatives(ipId);
-
-// Fetch license sales from Goldsky subgraph
-const licenseSales = await goldsky.query(`
-  query {
-    dataLicenseSales(where: { ipAsset: "${ipId}" }) {
-      salePrice
-      licenseType
-      timestamp
-    }
-  }
-`);
-```
-
----
-
-### 5. License Details - Story Protocol License Terms
-
-![License Details](./pics/5.png)
+![Loan Page 1](./pics/7.png)
+![Loan Page 2](./pics/8.png)
 
 **Story Protocol Integration:**
-- **PIL Terms Display**: Shows Programmable IP License terms from Story Protocol
-- **Commercial Rights**: Displays commercial use permissions from Story's license framework
-- **Derivative Rights**: Shows remix/derivative creation rights
-- **Royalty Structure**: Displays royalty percentages set in Story Protocol
-
-**Technical Implementation:**
-```typescript
-// Fetch license terms from Story Protocol
-const licenseTerms = await storyClient.license.getLicenseTerms(licenseTermsId);
-
-// License terms structure from Story Protocol
-interface LicenseTerms {
-  transferable: boolean;
-  royaltyPolicy: string;
-  commercialUse: boolean;
-  commercialAttribution: boolean;
-  derivativesAllowed: boolean;
-  derivativesAttribution: boolean;
-  derivativesReciprocal: boolean;
-  territories: string[];
-  distributionChannels: string[];
-  contentRestrictions: string[];
-}
-```
-
----
-
-### 6. Loan Application - IP-Backed Lending (IPFi)
-
-![Loan Application](./pics/6.png)
+- **CVS Calculation**: Uses Story Protocol usage data to calculate Collateral Value Score
+- **IP Valuation**: Aggregates license revenue, derivatives count, and royalty history from Story Protocol
+- **Collateral Verification**: Validates IP ownership and value through Story Protocol
+- **Loan Issuance**: Issues loans based on CVS calculated from Story Protocol data
+- **IP Collateral Tracking**: Monitors IP value changes on Story Protocol
+- **Liquidation Protection**: Tracks CVS updates from Story Protocol events
+- **Repayment Tracking**: Records loan repayments on-chain
 
 **Story Protocol Integration:**
 - **CVS Calculation**: Uses Story Protocol usage data to calculate Collateral Value Score
@@ -567,23 +494,6 @@ async function calculateCVS(ipId: string): Promise<bigint> {
 require(loanAmount <= cvs / 2n, "Loan exceeds 50% of CVS");
 ```
 
-**Owlto Finance Integration:**
-- Cross-chain loan disbursement to 5+ chains
-- Automatic token bridging (STORY → USDC/ETH)
-- Low-fee, fast settlement
-
----
-
-### 7. Active Loans - Loan Management
-
-![Active Loans](./pics/7.png)
-
-**Story Protocol Integration:**
-- **IP Collateral Tracking**: Monitors IP value changes on Story Protocol
-- **Liquidation Protection**: Tracks CVS updates from Story Protocol events
-- **Repayment Tracking**: Records loan repayments on-chain
-
-**Technical Implementation:**
 ```solidity
 // Monitor CVS changes via Story Protocol events
 function checkLoanHealth(uint256 loanId) external {
@@ -600,152 +510,54 @@ function checkLoanHealth(uint256 loanId) external {
 }
 ```
 
----
-
-### 8. Cross-Chain Loan Disbursement
-
-![Cross-Chain Loans](./pics/8.png)
-
 **Owlto Finance Integration:**
-- **Multi-Chain Support**: Bridge loans to Base, Arbitrum, Optimism, Polygon
-- **Automatic Conversion**: STORY → Native chain tokens
-- **Fast Settlement**: < 5 minutes cross-chain transfer
-
-**Technical Implementation:**
-```typescript
-// Bridge loan to target chain via Owlto Finance
-async function bridgeLoan(
-  borrower: string,
-  amount: bigint,
-  targetChainId: number
-) {
-  const owltoResponse = await owltoClient.bridge({
-    from_chain: 'story-testnet',
-    to_chain: CHAIN_MAP[targetChainId],
-    token: 'STORY',
-    amount: formatUnits(amount, 18),
-    to_address: borrower,
-  });
-  
-  return owltoResponse.tx_hash;
-}
-```
+- Cross-chain loan disbursement to 5+ chains
+- Automatic token bridging (STORY → USDC/ETH)
+- Low-fee, fast settlement
 
 ---
 
-### 9. IP Usage Analytics - Story Protocol Data
+### 5. IP Licensing Marketplace
 
-![Usage Analytics](./pics/9.png)
-
-**Story Protocol REST API Integration:**
-- **On-Chain Metrics**: Direct derivatives, total descendants, parent IPs
-- **License Analytics**: License tokens issued, commercial uses
-- **Revenue Tracking**: Total royalties earned from Story Protocol
-
-**Technical Implementation:**
-```typescript
-// Fetch comprehensive IP analytics from Story Protocol API
-const analytics = await fetch(
-  `https://api.storyapis.com/api/v1/assets/${ipId}/analytics`,
-  {
-    headers: { 'X-API-Key': STORY_API_KEY }
-  }
-);
-
-// Response structure
-interface IPAnalytics {
-  directDerivatives: number;
-  totalDescendants: number;
-  parentIPs: number;
-  ancestorIPs: number;
-  licenseTokensIssued: number;
-  totalRoyaltiesEarned: string;
-  commercialUses: number;
-}
-```
-
-**Yakoa Integration:**
-- IP infringement detection
-- Originality score calculation
-- Authorization tracking
-
----
-
-### 10. Transaction History - On-Chain Verification
-
-![Transaction History](./pics/10.png)
+![Licensing Marketplace 1](./pics/9.png)
+![Licensing Marketplace 2](./pics/10.png)
+![Licensing Marketplace 3](./pics/11.png)
 
 **Story Protocol Integration:**
-- **Event Monitoring**: Tracks all Story Protocol events (LicenseTokenMinted, RoyaltyPaid, IPRegistered)
-- **Transaction Verification**: Links to Story Protocol explorer (storyscan.io)
-- **Audit Trail**: Complete history of IP interactions on Story Protocol
+- **License Terms**: Uses Story Protocol's `LicensingModule` to attach PIL (Programmable IP License) terms
+- **Commercial Rights**: Integrates with Story's commercial use framework
+- **Revenue Split**: Automatic royalty distribution via Story Protocol's `RoyaltyModule`
+- **License Token Minting**: Mints ERC-721 license tokens on Story Protocol
+- **PIL Framework**: Uses Programmable IP License for flexible licensing terms
 
 **Technical Implementation:**
 ```typescript
-// Monitor Story Protocol events via Goldsky subgraph
-const events = await goldsky.query(`
-  query {
-    ipAssetUsages(where: { ipAsset: "${ipId}" }) {
-      id
-      usageType
-      timestamp
-      transactionHash
-      revenueGenerated
-    }
-  }
-`);
+// Attach license terms to IP on Story Protocol
+const licenseTermsId = await storyClient.license.attachLicenseTerms({
+  ipId: ipAssetId,
+  licenseTermsId: PIL_COMMERCIAL_REMIX,
+  licenseTemplate: '0x...' // Story Protocol License Template
+});
+
+// Mint license token when user purchases
+const { licenseTokenId } = await storyClient.license.mintLicenseTokens({
+  licenseTermsId,
+  licensorIpId: ipAssetId,
+  receiver: buyerAddress,
+  amount: 1
+});
+
+// Fetch license terms from Story Protocol
+const licenseTerms = await storyClient.license.getLicenseTerms(licenseTermsId);
 ```
 
----
-
-### 11. World ID Verification - Sybil Resistance
-
-![World ID Verification](./pics/11.png)
-
-**World ID Integration:**
-- **Zero-Knowledge Proofs**: Verify humanness without revealing identity
-- **Nullifier Tracking**: Prevent duplicate vault creation
-- **Privacy-Preserving**: No personal data stored on-chain
-
-**Technical Implementation:**
-```typescript
-// World ID verification flow
-import { IDKitWidget, VerificationLevel } from '@worldcoin/idkit';
-
-<IDKitWidget
-  app_id={WORLD_ID_APP_ID}
-  action="create-vault"
-  signal={ipId}
-  verification_level={VerificationLevel.Orb}
-  onSuccess={(proof) => {
-    // Verify proof on backend
-    const verified = await verifyWorldIDProof(proof);
-    if (verified) {
-      // Allow vault creation
-      await createVault(ipId);
-    }
-  }}
-/>
-```
-
-**Smart Contract Verification:**
-```solidity
-// Verify World ID proof on-chain
-function createVault(
-    bytes32 ipId,
-    bytes32 nullifierHash,
-    bytes calldata proof
-) external {
-    require(!usedNullifiers[nullifierHash], "Already verified");
-    require(worldIdVerifier.verifyProof(proof), "Invalid proof");
-    
-    usedNullifiers[nullifierHash] = true;
-    verifiedCreators[msg.sender] = true;
-    
-    // Create vault with verified status
-    _createVault(ipId, msg.sender);
-}
-```
+**Story Protocol Features Used:**
+- PIL (Programmable IP License) framework
+- License token minting (ERC-721)
+- Automatic royalty tracking
+- Derivative IP registration
+- Commercial use permissions
+- Territory and distribution channel restrictions
 
 ---
 
