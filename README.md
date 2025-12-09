@@ -237,13 +237,28 @@ Create liquidity vaults backed by your Story Protocol IP assets:
 **Technical Implementation:**
 ```solidity
 // contracts/src/ADLV.sol
-function createVault(
-    bytes32 ipId,
-    uint256 initialDeposit
-) external payable returns (address vaultAddress) {
-    // Create ERC-4626 compatible vault
-    // Set IP as collateral asset
-    // Initialize CVS from Story Protocol
+function createVault(bytes32 ipId) external returns (address vaultAddress) {
+    require(ipToVault[ipId] == address(0), "ADLV: Vault already exists");
+    
+    // Get current CVS from IDO contract
+    uint256 initialCVS = idoContract.getCVS(ipId);
+    
+    // Generate deterministic vault address
+    vaultCounter++;
+    vaultAddress = address(uint160(uint256(keccak256(
+        abi.encodePacked(address(this), ipId, block.timestamp, vaultCounter)
+    ))));
+    
+    // Create vault struct
+    vaults[vaultAddress] = Vault({
+        vaultAddress: vaultAddress,
+        ipId: ipId,
+        creator: msg.sender,
+        // ... initialize other fields
+    });
+    
+    emit VaultCreated(vaultAddress, ipId, msg.sender, initialCVS);
+    return vaultAddress;
 }
 ```
 
@@ -319,16 +334,38 @@ Sybil-resistant creator verification:
 - **Reduced Interest Rates**: Verified users get 0.5% APR discount
 
 **Implementation:**
-```typescript
-// apps/frontend/src/pages/MyLicensesPage.tsx
-const { verify } = useWorldID({
-  appId: process.env.WORLD_ID_APP_ID,
-  action: 'create-vault',
-  onSuccess: async (proof) => {
-    // Proof verified, proceed with vault creation
-    await createVault(ipId, proof);
-  },
-});
+```tsx
+// apps/frontend/src/pages/VaultCreation.tsx
+import { IDKitWidget, VerificationLevel } from "@worldcoin/idkit";
+
+// State to store World ID proof
+const [proof, setProof] = useState<string>("");
+const [isVerified, setIsVerified] = useState(false);
+
+// Handle World ID verification success
+const handleWorldIDSuccess = async (result: WorldIDResult) => {
+  console.log("World ID verification successful:", result);
+  setIsVerified(true);
+  setProof(result.proof);  // Store proof in state
+  setStep(3);  // Proceed to next step
+  //you can now use proof and signal to create vault
+  fetchVaultMetrics();
+};
+
+// Render World ID widget
+<IDKitWidget
+  app_id={WORLD_ID_APP_ID}
+  action={WORLD_ID_ACTION}
+  signal={ipAssetId || "vault_creation"}
+  verification_level={VerificationLevel.Device}
+  onSuccess={handleWorldIDSuccess}
+>
+  {({ open }) => (
+    <button onClick={open}>
+      Verify with World ID
+    </button>
+  )}
+</IDKitWidget>
 ```
 
 ### 6. **Real-Time CVS Oracle** 📊
@@ -1954,30 +1991,33 @@ function getLoan(uint256 loanId)
 
 ### 📋 Smart Contract Addresses & Verification
 
-### 🏆 Production Contracts (v4.1 - Final - Cross-Chain Support)
+### 🏆 Production Contracts (v6.0 - Owlto Bridge Integrated)
 
 **Network:** Story Aeneid Testnet (Chain ID: 1315)  
 **RPC URL:** `https://rpc-storyevm-testnet.aldebaranode.xyz`  
 **Explorer:** https://aeneid.storyscan.io  
-**Deployment Date:** November 30, 2024  
+**Deployment Date:** December 2024  
 **Status:** ✅ Production Ready & Tested with Real Transactions
 
 | Contract | Address | Status | Verification | Features |
 |----------|---------|--------|--------------|----------|
 | **Story Protocol Core** | `0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5` | ✅ Active | [✅ Verified Code ↗️](https://aeneid.storyscan.io/address/0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5) | Story Protocol integration layer |
-| **Loan NFT** | `0x9386262027dc860337eC4F93A8503aD4ee852c41` | ✅ Active | [✅ Verified Code ↗️](https://aeneid.storyscan.io/address/0x9386262027dc860337eC4F93A8503aD4ee852c41) | ERC-721 loan position tokens |
-| **Lending Module** | `0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3` | ✅ Active | [✅ Verified Code ↗️](https://aeneid.storyscan.io/address/0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3) | IP-backed lending system |
-| **ADLV (v4.1)** 🌉 | `0xFe9E0Dd8893F71303ACF8164462d323905199669` | ✅ Active | [✅ Live Contract ↗️](https://aeneid.storyscan.io/address/0xFe9E0Dd8893F71303ACF8164462d323905199669) | **Cross-chain vault system** |
-| **IDO (v4.1)** | `0x64A5997775e59Ae304662D0850B281A5a224E0cf` | ✅ Active | [✅ Live Contract ↗️](https://aeneid.storyscan.io/address/0x64A5997775e59Ae304662D0850B281A5a224E0cf) | **CVS Oracle & data management** |
+| **ADLV (v6.0)** 🌉 | `0x084A44Ddc404B0D8F7A021d64Ec24f4520B7f1C6` | ✅ Active | [✅ Live Contract ↗️](https://aeneid.storyscan.io/address/0x084A44Ddc404B0D8F7A021d64Ec24f4520B7f1C6) | **Cross-chain vault system** |
+| **IDO (v6.0)** | `0xea7dFd2572ceC090C0517Ea345B82CA07E394034` | ✅ Active | [✅ Live Contract ↗️](https://aeneid.storyscan.io/address/0xea7dFd2572ceC090C0517Ea345B82CA07E394034) | **CVS Oracle & data management** |
+| **CVS Oracle** | `0xBc57dBFA4936A5F1D10bDE8A65ABf2f9864e5170` | ✅ Active | [✅ Live Contract ↗️](https://aeneid.storyscan.io/address/0xBc57dBFA4936A5F1D10bDE8A65ABf2f9864e5170) | Dynamic CVS calculation |
+| **Lending Module** | `0x1f74B15A2AB01734151697Cc7E19F5681125A6f9` | ✅ Active | [✅ Verified Code ↗️](https://aeneid.storyscan.io/address/0x1f74B15A2AB01734151697Cc7E19F5681125A6f9) | IP-backed lending system |
+| **Loan NFT** | `0x9FC6018a786c79Be7d1fEdc8D1fd27f6C4d86385` | ✅ Active | [✅ Verified Code ↗️](https://aeneid.storyscan.io/address/0x9FC6018a786c79Be7d1fEdc8D1fd27f6C4d86385) | ERC-721 loan position tokens |
+| **IP Asset Registry** | `0x77319B4031e6eF1250907aa00018B8B1c67a244b` | ✅ Active | [✅ Verified Code ↗️](https://aeneid.storyscan.io/address/0x77319B4031e6eF1250907aa00018B8B1c67a244b) | Story Protocol IP registry |
+| **SPG** | `0x69415CE984A79a3Cfbe3F51024C63b6C107331e3` | ✅ Active | [✅ Verified Code ↗️](https://aeneid.storyscan.io/address/0x69415CE984A79a3Cfbe3F51024C63b6C107331e3) | Story Protocol Gateway |
 
-### 🔥 New Features in v4.1:
+### 🔥 New Features in v6.0:
 - ✅ **Cross-chain loan disbursement** (Base, Arbitrum, Optimism, Polygon)
 - ✅ **Owlto Finance bridge integration** for instant cross-chain transfers
 - ✅ **Target chain selection** in `issueLoan()` function
 - ✅ **Automatic ETH → USDC conversion** on destination chains
-- ✅ **Enhanced CVS management** with `updateIPCVS()` function
+- ✅ **Enhanced CVS management** with dedicated CVS Oracle contract
 - ✅ **Proper contract ownership** (ADLV owns IDO)
-- ✅ **Real transaction testing** - [View Live Test ↗️](https://aeneid.storyscan.io/tx/0x3d703811f9d95f3aeb0c3f481c848bb84e40c6ec03d1ce0564e9bc79ee47735e)
+- ✅ **IP Asset Registry integration** with Story Protocol
 
 ### 📊 Contract Verification Details
 
@@ -2055,16 +2095,21 @@ function getLoan(uint256 loanId)
 #### For Frontend Integration (Copy-Paste Ready)
 
 ```typescript
-// Atlas Protocol Contracts (v4.1 - PRODUCTION - FINAL)
+// Atlas Protocol Contracts (v6.0 - PRODUCTION - Owlto Bridge Integrated)
 const ATLAS_CONTRACTS = {
   // Core contracts
   StoryProtocolCore: "0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5",
-  ADLV: "0xFe9E0Dd8893F71303ACF8164462d323905199669", // ← Main vault system
-  IDO: "0x64A5997775e59Ae304662D0850B281A5a224E0cf",  // ← CVS Oracle
+  ADLV: "0x084A44Ddc404B0D8F7A021d64Ec24f4520B7f1C6", // ← Main vault system (v6.0)
+  IDO: "0xea7dFd2572ceC090C0517Ea345B82CA07E394034",  // ← Data management (v6.0)
+  CVSOracle: "0xBc57dBFA4936A5F1D10bDE8A65ABf2f9864e5170", // ← CVS Oracle (v6.0)
   
   // Lending system
-  LendingModule: "0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3",
-  LoanNFT: "0x9386262027dc860337eC4F93A8503aD4ee852c41",
+  LendingModule: "0x1f74B15A2AB01734151697Cc7E19F5681125A6f9",
+  LoanNFT: "0x9FC6018a786c79Be7d1fEdc8D1fd27f6C4d86385",
+  
+  // Story Protocol
+  IPAssetRegistry: "0x77319B4031e6eF1250907aa00018B8B1c67a244b",
+  SPG: "0x69415CE984A79a3Cfbe3F51024C63b6C107331e3",
   
   // Network configuration
   chainId: 1315,
@@ -2086,16 +2131,19 @@ const SUPPORTED_CHAINS = {
 #### For Backend Integration (Environment Variables)
 
 ```bash
-# Atlas Protocol Contracts (v4.1 - PRODUCTION)
+# Atlas Protocol Contracts (v6.0 - PRODUCTION - Owlto Bridge Integrated)
 export STORY_PROTOCOL_CORE=0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5
-export ADLV_V4=0xFe9E0Dd8893F71303ACF8164462d323905199669
-export IDO_V4=0x64A5997775e59Ae304662D0850B281A5a224E0cf
-export LENDING_MODULE=0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3
-export LOAN_NFT=0x9386262027dc860337eC4F93A8503aD4ee852c41
+export ADLV_V6=0x084A44Ddc404B0D8F7A021d64Ec24f4520B7f1C6
+export IDO_V6=0xea7dFd2572ceC090C0517Ea345B82CA07E394034
+export CVS_ORACLE=0xBc57dBFA4936A5F1D10bDE8A65ABf2f9864e5170
+export LENDING_MODULE=0x1f74B15A2AB01734151697Cc7E19F5681125A6f9
+export LOAN_NFT=0x9FC6018a786c79Be7d1fEdc8D1fd27f6C4d86385
+export IP_ASSET_REGISTRY=0x77319B4031e6eF1250907aa00018B8B1c67a244b
+export SPG=0x69415CE984A79a3Cfbe3F51024C63b6C107331e3
 
 # Backward compatibility aliases
-export ADLV_ADDRESS=0xFe9E0Dd8893F71303ACF8164462d323905199669
-export IDO_ADDRESS=0x64A5997775e59Ae304662D0850B281A5a224E0cf
+export ADLV_ADDRESS=0x084A44Ddc404B0D8F7A021d64Ec24f4520B7f1C6
+export IDO_ADDRESS=0xea7dFd2572ceC090C0517Ea345B82CA07E394034
 
 # Network configuration
 export RPC_URL=https://rpc-storyevm-testnet.aldebaranode.xyz
@@ -2110,20 +2158,23 @@ export OWLTO_API_URL=https://owlto.finance/api
 
 ## ✅ Verified Contracts - Complete Reference
 
-### 🏆 Production Contracts (v4.1 - Cross-Chain Support - FINAL)
+### 🏆 Production Contracts (v6.0 - Owlto Bridge Integrated)
 
 **Network:** Story Aeneid Testnet (Chain ID: 1315)  
-**Deployment Date:** November 30, 2024  
+**Deployment Date:** December 2024  
 **Features:** IP-Backed Lending, Loan NFTs, Dynamic Interest Rates, **Cross-Chain Disbursement via Owlto Bridge** 🌉  
 **Status:** ✅ Production Ready & Tested with Real Data
 
 | Contract | Address | Status | Explorer Link | Features |
 |----------|---------|--------|---------------|----------|
 | **Story Protocol Core** | `0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5` | ✅ Verified | [View Code ↗️](https://aeneid.storyscan.io/address/0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5) | Story Protocol integration layer |
-| **Loan NFT** | `0x9386262027dc860337eC4F93A8503aD4ee852c41` | ✅ Verified | [View Code ↗️](https://aeneid.storyscan.io/address/0x9386262027dc860337eC4F93A8503aD4ee852c41) | ERC-721 loan position tokens |
-| **Lending Module** | `0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3` | ✅ Verified | [View Code ↗️](https://aeneid.storyscan.io/address/0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3) | IP-backed lending system |
-| **ADLV (v4.1)** 🌉 | `0xFe9E0Dd8893F71303ACF8164462d323905199669` | ✅ Deployed | [View Contract ↗️](https://aeneid.storyscan.io/address/0xFe9E0Dd8893F71303ACF8164462d323905199669) | **Cross-chain vault system** |
-| **IDO (v4.1)** | `0x64A5997775e59Ae304662D0850B281A5a224E0cf` | ✅ Deployed | [View Contract ↗️](https://aeneid.storyscan.io/address/0x64A5997775e59Ae304662D0850B281A5a224E0cf) | **CVS Oracle & data management** |
+| **ADLV (v6.0)** 🌉 | `0x084A44Ddc404B0D8F7A021d64Ec24f4520B7f1C6` | ✅ Deployed | [View Contract ↗️](https://aeneid.storyscan.io/address/0x084A44Ddc404B0D8F7A021d64Ec24f4520B7f1C6) | **Cross-chain vault system** |
+| **IDO (v6.0)** | `0xea7dFd2572ceC090C0517Ea345B82CA07E394034` | ✅ Deployed | [View Contract ↗️](https://aeneid.storyscan.io/address/0xea7dFd2572ceC090C0517Ea345B82CA07E394034) | **Data management** |
+| **CVS Oracle** | `0xBc57dBFA4936A5F1D10bDE8A65ABf2f9864e5170` | ✅ Deployed | [View Contract ↗️](https://aeneid.storyscan.io/address/0xBc57dBFA4936A5F1D10bDE8A65ABf2f9864e5170) | **Dynamic CVS calculation** |
+| **Lending Module** | `0x1f74B15A2AB01734151697Cc7E19F5681125A6f9` | ✅ Verified | [View Code ↗️](https://aeneid.storyscan.io/address/0x1f74B15A2AB01734151697Cc7E19F5681125A6f9) | IP-backed lending system |
+| **Loan NFT** | `0x9FC6018a786c79Be7d1fEdc8D1fd27f6C4d86385` | ✅ Verified | [View Code ↗️](https://aeneid.storyscan.io/address/0x9FC6018a786c79Be7d1fEdc8D1fd27f6C4d86385) | ERC-721 loan position tokens |
+| **IP Asset Registry** | `0x77319B4031e6eF1250907aa00018B8B1c67a244b` | ✅ Verified | [View Code ↗️](https://aeneid.storyscan.io/address/0x77319B4031e6eF1250907aa00018B8B1c67a244b) | Story Protocol IP registry |
+| **SPG** | `0x69415CE984A79a3Cfbe3F51024C63b6C107331e3` | ✅ Verified | [View Code ↗️](https://aeneid.storyscan.io/address/0x69415CE984A79a3Cfbe3F51024C63b6C107331e3) | Story Protocol Gateway |
 
 ### 🔗 Legacy Contracts (For Reference)
 
@@ -2261,19 +2312,19 @@ export OWLTO_API_URL=https://owlto.finance/api
 #### Quick Contract Status Check
 
 ```bash
-# Check ADLV v4.1 vault counter
-cast call 0xFe9E0Dd8893F71303ACF8164462d323905199669 \
+# Check ADLV v6.0 vault counter
+cast call 0x084A44Ddc404B0D8F7A021d64Ec24f4520B7f1C6 \
   "vaultCounter()(uint256)" \
   --rpc-url https://rpc-storyevm-testnet.aldebaranode.xyz
 
-# Check IDO v4.1 owner (should be ADLV)
-cast call 0x64A5997775e59Ae304662D0850B281A5a224E0cf \
+# Check IDO v6.0 owner (should be ADLV)
+cast call 0xea7dFd2572ceC090C0517Ea345B82CA07E394034 \
   "owner()(address)" \
   --rpc-url https://rpc-storyevm-testnet.aldebaranode.xyz
-# Expected: 0xFe9E0Dd8893F71303ACF8164462d323905199669
+# Expected: 0x084A44Ddc404B0D8F7A021d64Ec24f4520B7f1C6
 
 # Check Loan NFT total supply
-cast call 0x9386262027dc860337eC4F93A8503aD4ee852c41 \
+cast call 0x9FC6018a786c79Be7d1fEdc8D1fd27f6C4d86385 \
   "totalSupply()(uint256)" \
   --rpc-url https://rpc-storyevm-testnet.aldebaranode.xyz
 ```
@@ -2298,32 +2349,40 @@ cast call 0x9386262027dc860337eC4F93A8503aD4ee852c41 \
 | Contract Name | Address | Function | Verification Status | Key Features |
 |---------------|---------|----------|-------------------|--------------|
 | **Story Protocol Core** | [`0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5`](https://aeneid.storyscan.io/address/0x825B9Ad5F77B64aa1d56B52ef01291E6D4aA60a5) | Story Protocol integration | ✅ Verified | IP Asset Registry, Licensing, Royalties |
-| **ADLV (v4.1)** | [`0xFe9E0Dd8893F71303ACF8164462d323905199669`](https://aeneid.storyscan.io/address/0xFe9E0Dd8893F71303ACF8164462d323905199669) | Main vault system | ✅ Deployed | Cross-chain loans, IP vaults, License sales |
-| **IDO (v4.1)** | [`0x64A5997775e59Ae304662D0850B281A5a224E0cf`](https://aeneid.storyscan.io/address/0x64A5997775e59Ae304662D0850B281A5a224E0cf) | CVS Oracle | ✅ Deployed | Dynamic CVS calculation, Revenue tracking |
-| **Lending Module** | [`0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3`](https://aeneid.storyscan.io/address/0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3) | Loan management | ✅ Verified | Interest calculation, Health monitoring |
-| **Loan NFT** | [`0x9386262027dc860337eC4F93A8503aD4ee852c41`](https://aeneid.storyscan.io/address/0x9386262027dc860337eC4F93A8503aD4ee852c41) | Loan tokenization | ✅ Verified | ERC-721 loan positions, Transferable debt |
+| **ADLV (v6.0)** | [`0x084A44Ddc404B0D8F7A021d64Ec24f4520B7f1C6`](https://aeneid.storyscan.io/address/0x084A44Ddc404B0D8F7A021d64Ec24f4520B7f1C6) | Main vault system | ✅ Deployed | Cross-chain loans, IP vaults, License sales |
+| **IDO (v6.0)** | [`0xea7dFd2572ceC090C0517Ea345B82CA07E394034`](https://aeneid.storyscan.io/address/0xea7dFd2572ceC090C0517Ea345B82CA07E394034) | Data management | ✅ Deployed | Revenue tracking, Vault data |
+| **CVS Oracle** | [`0xBc57dBFA4936A5F1D10bDE8A65ABf2f9864e5170`](https://aeneid.storyscan.io/address/0xBc57dBFA4936A5F1D10bDE8A65ABf2f9864e5170) | CVS Oracle | ✅ Deployed | Dynamic CVS calculation |
+| **Lending Module** | [`0x1f74B15A2AB01734151697Cc7E19F5681125A6f9`](https://aeneid.storyscan.io/address/0x1f74B15A2AB01734151697Cc7E19F5681125A6f9) | Loan management | ✅ Verified | Interest calculation, Health monitoring |
+| **Loan NFT** | [`0x9FC6018a786c79Be7d1fEdc8D1fd27f6C4d86385`](https://aeneid.storyscan.io/address/0x9FC6018a786c79Be7d1fEdc8D1fd27f6C4d86385) | Loan tokenization | ✅ Verified | ERC-721 loan positions, Transferable debt |
+| **IP Asset Registry** | [`0x77319B4031e6eF1250907aa00018B8B1c67a244b`](https://aeneid.storyscan.io/address/0x77319B4031e6eF1250907aa00018B8B1c67a244b) | IP Registry | ✅ Verified | Story Protocol IP assets |
+| **SPG** | [`0x69415CE984A79a3Cfbe3F51024C63b6C107331e3`](https://aeneid.storyscan.io/address/0x69415CE984A79a3Cfbe3F51024C63b6C107331e3) | Protocol Gateway | ✅ Verified | Story Protocol Gateway |
 
 ### 🛠️ Quick Contract Testing Commands
 
 ```bash
-# Check ADLV v4.1 status
-cast call 0xFe9E0Dd8893F71303ACF8164462d323905199669 \
+# Check ADLV v6.0 status
+cast call 0x084A44Ddc404B0D8F7A021d64Ec24f4520B7f1C6 \
   "vaultCounter()(uint256)" \
   --rpc-url https://rpc-storyevm-testnet.aldebaranode.xyz
 
 # Verify IDO ownership (should return ADLV address)
-cast call 0x64A5997775e59Ae304662D0850B281A5a224E0cf \
+cast call 0xea7dFd2572ceC090C0517Ea345B82CA07E394034 \
   "owner()(address)" \
   --rpc-url https://rpc-storyevm-testnet.aldebaranode.xyz
-# Expected: 0xFe9E0Dd8893F71303ACF8164462d323905199669
+# Expected: 0x084A44Ddc404B0D8F7A021d64Ec24f4520B7f1C6
+
+# Check CVS Oracle
+cast call 0xBc57dBFA4936A5F1D10bDE8A65ABf2f9864e5170 \
+  "owner()(address)" \
+  --rpc-url https://rpc-storyevm-testnet.aldebaranode.xyz
 
 # Check total loans issued
-cast call 0xbefb2fF399Bd0faCDBd100A16A569c625e1E4bf3 \
+cast call 0x1f74B15A2AB01734151697Cc7E19F5681125A6f9 \
   "loanCounter()(uint256)" \
   --rpc-url https://rpc-storyevm-testnet.aldebaranode.xyz
 
 # Check Loan NFT supply
-cast call 0x9386262027dc860337eC4F93A8503aD4ee852c41 \
+cast call 0x9FC6018a786c79Be7d1fEdc8D1fd27f6C4d86385 \
   "totalSupply()(uint256)" \
   --rpc-url https://rpc-storyevm-testnet.aldebaranode.xyz
 ```
