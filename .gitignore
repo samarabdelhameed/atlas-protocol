@@ -3,7 +3,7 @@
 .AppleDouble
 .LSOverride
 
-# IDEs
+# IDEs and Editors
 .vscode/
 .idea/
 *.swp
@@ -11,6 +11,7 @@
 *~
 .trae/
 .claude/
+.bolt/
 
 # Dependencies
 node_modules/
@@ -20,16 +21,18 @@ node_modules/
 # Testing
 coverage/
 
-# Production
+# Production builds
 dist/
 build/
 out/
+demo/dist/
 
-# Misc
-*.log
+# Environment files
 .env
 .env.local
 .env.*.local
+.env.development
+.env.production
 deployed_addresses.env
 *.env
 !*.env.example
@@ -38,11 +41,40 @@ deployed_addresses.env
 .hg/
 .hgignore
 
-# Cache
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Cache directories
 .cache/
 .turbo/
+.npm/
+.yarn/
 
 # Next.js
 .next/
 .next-env.d.ts
 
+# Media files (large)
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.flv
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+
+# Temporary files
+*.tmp
+*.temp
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
