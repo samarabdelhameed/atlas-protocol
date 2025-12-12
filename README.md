@@ -15,6 +15,8 @@
 
 **📊 Presentation:** [Watch on YouTube](https://www.youtube.com/watch?v=DDL-Lgo2KKM)
 
+**🔗 Story Protocol Integration:** [Watch on YouTube](https://youtu.be/vfpgG-7TIO8)
+
 ---
 
 ## 📋 Table of Contents
